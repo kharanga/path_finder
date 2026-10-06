@@ -23,7 +23,5 @@ export function start({ svg, statusElement }) {
   });
 }
 
-start({
-  svg: document.getElementById("orbit"),
-  statusElement: document.getElementById("status"),
-});
+const orbitElement = typeof document === "undefined" ? null : document.getElementById("orbit");
+if (orbitElement) start({ svg: orbitElement, statusElement: document.getElementById("status") });

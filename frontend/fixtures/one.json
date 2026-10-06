@@ -1,0 +1,11 @@
+{
+  "snapshot": {
+    "sessions": [
+      {"ts":"2026-10-05T21:40:00Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"busy","role":null}
+    ],
+    "messages": []
+  },
+  "events": [
+    {"delayMs": 2000, "event": "session", "data": {"ts":"2026-10-05T21:41:00Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"idle","role":null}}
+  ]
+}

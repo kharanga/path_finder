@@ -2,7 +2,7 @@ import { ringPositions, labelPlacement, truncateLabel } from "./layout.js";
 import { liveSessions, sessionLabel } from "./state.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const VIEW_WIDTH = 1200;
+const VIEW_WIDTH = 1360;
 const VIEW_HEIGHT = 1000;
 const CENTER_X = VIEW_WIDTH / 2;
 const CENTER_Y = VIEW_HEIGHT / 2;
@@ -10,9 +10,12 @@ const RING_RADIUS = 340;
 const BODY_RADIUS = 18;
 const LINE_HEIGHT = 22;
 const MAX_LABEL_CHARS = 24;
+const HALO_RADIUS = BODY_RADIUS + 12;
+const DEFAULT_GHOST_MS = 8000;
+const nextFrame = typeof requestAnimationFrame === "function" ? (fn) => requestAnimationFrame(fn) : (fn) => setTimeout(fn, 16);
 
 // Builds the Orbit renderer bound to an <svg> element and returns its draw function.
-export function createRenderer(svg) {
+export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS } = {}) {
   svg.setAttribute("viewBox", `0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`);
   const ring = appendTo(svg, "circle", { class: "ring", cx: CENTER_X, cy: CENTER_Y, r: RING_RADIUS });
   const emptyLabel = appendTo(svg, "text", { class: "empty-label", x: CENTER_X, y: CENTER_Y, "text-anchor": "middle" });
@@ -32,26 +35,39 @@ export function createRenderer(svg) {
       updateBodyNode(node, session, positions.get(session.pid));
     }
     for (const [pid, node] of bodyNodes) {
-      if (!seen.has(pid)) {
-        node.group.remove();
-        bodyNodes.delete(pid);
-      }
+      if (!seen.has(pid) && !node.ghostTimer) startGhost(node, bodyNodes, pid, ghostMs);
     }
   };
 }
 
+function startGhost(node, bodyNodes, pid, ghostMs) {
+  node.group.dataset.state = "ended";
+  node.group.classList.add("leaving");
+  node.ghostTimer = setTimeout(() => {
+    node.group.remove();
+    bodyNodes.delete(pid);
+  }, ghostMs);
+}
+
 function createBodyNode(layer, bodyNodes, pid) {
-  const group = appendTo(layer, "g", { class: "body", "data-pid": pid });
-  const circle = appendTo(group, "circle", { r: BODY_RADIUS });
+  const group = appendTo(layer, "g", { class: "body entering", "data-pid": pid });
+  appendTo(group, "circle", { class: "halo", r: HALO_RADIUS });
+  const circle = appendTo(group, "circle", { class: "core", r: BODY_RADIUS });
   const title = appendTo(group, "title", {});
   const name = appendTo(group, "text", { class: "name" });
   const role = appendTo(group, "text", { class: "role" });
-  const node = { group, circle, title, name, role };
+  const node = { group, circle, title, name, role, ghostTimer: null };
   bodyNodes.set(pid, node);
+  nextFrame(() => group.classList.remove("entering"));
   return node;
 }
 
 function updateBodyNode(node, session, position) {
+  if (node.ghostTimer) {
+    clearTimeout(node.ghostTimer);
+    node.ghostTimer = null;
+    node.group.classList.remove("leaving");
+  }
   node.group.style.transform = `translate(${position.x.toFixed(1)}px, ${position.y.toFixed(1)}px)`;
   node.group.dataset.state = session.state;
   node.group.dataset.folder = session.folder;

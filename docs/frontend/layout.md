@@ -1,10 +1,10 @@
 # layout.js
 
-Pure geometry. Decides where each session sits on the ring.
+Pure geometry. Decides where each session sits on the ring and where its labels go. No DOM.
 
 ## ringPositions(sessions, { cx, cy, radius })
 
-What it does: sorts sessions by folder, then by display name (or PID when unnamed), and spaces them evenly around a circle starting at the top and going clockwise. Grouping by folder keeps same-folder sessions adjacent. Because ordering depends only on folder and name, a restarted session with the same folder lands in the same group. F2 will refine the position so it survives restarts with a new name.
+What it does: sorts sessions by folder, then by display name (or PID when unnamed), and spaces them evenly around a circle starting at the top and going clockwise. Grouping by folder keeps same-folder sessions adjacent. Ordering depends only on folder and name, never on arrival order, so a reload gives the same picture, and a restarted session (new PID, new name, same folder) returns to its folder's group. With one session per folder its spot is identical after a restart.
 
 Inputs:
 - `sessions` (Session[]): usually `liveSessions(state)`. The input array is not mutated.
@@ -36,14 +36,63 @@ What it does: picks which side of a body its label goes on so the text points aw
 
 Inputs: `angle` (number, radians) from `ringPositions`.
 
-Output: `"right"` when the body is on the right half, `"left"` on the left half, `"center"` when it is within about 11° of the top or bottom.
+Output: `"right"` on the right half, `"left"` on the left half, `"top"` or `"bottom"` when the body is within about 11.5° of the vertical axis (`|cos(angle)| < 0.2`).
 
 Errors: none.
 
 Example:
 
 ```js
-labelSide(-Math.PI / 2) // "center"
+labelSide(-Math.PI / 2) // "top"
+labelSide(Math.PI / 2)  // "bottom"
 labelSide(0)            // "right"
 labelSide(Math.PI)      // "left"
+```
+
+## labelPlacement(angle, { bodyRadius, lineHeight, hasRole })
+
+What it does: returns the text anchor and the x and y offsets, relative to the body center, for the name line and the role line. Side labels hang off the outer side of the body and are vertically centered (two lines when a role exists). Top labels stack above the body, bottom labels below, so neither line ever crosses the body circle. With 15 evenly spaced bodies on a radius-340 ring the neighbors are about 142 units apart along the arc, which is more than two lines of 22-unit text, so labels do not overlap.
+
+Inputs:
+- `angle` (number, radians).
+- `bodyRadius` (number): body circle radius.
+- `lineHeight` (number): font size of the name line in user units.
+- `hasRole` (boolean): whether a second line will be drawn.
+
+Output: `{ anchor, x, nameY, roleY }` where `anchor` is an SVG `text-anchor` value.
+
+Errors: none.
+
+Example:
+
+```js
+labelPlacement(0, { bodyRadius: 18, lineHeight: 22, hasRole: false })
+// { anchor: "start", x: 32, nameY: 7.7, roleY: 7.7 }
+labelPlacement(0, { bodyRadius: 18, lineHeight: 22, hasRole: true })
+// { anchor: "start", x: 32, nameY: -3.3, roleY: 18.7 }
+labelPlacement(-Math.PI / 2, { bodyRadius: 18, lineHeight: 22, hasRole: true })
+// { anchor: "middle", x: 0, nameY: -58, roleY: -36 }
+labelPlacement(Math.PI / 2, { bodyRadius: 18, lineHeight: 22, hasRole: false })
+// { anchor: "middle", x: 0, nameY: 54, roleY: 76 }
+```
+
+Values are computed with floating point; compare with a tolerance of 0.01.
+
+## truncateLabel(label, maxChars)
+
+What it does: cuts a label that is longer than `maxChars` and appends an ellipsis so the result is exactly `maxChars` characters. The full name stays available in the body's tooltip.
+
+Inputs: `label` (string), `maxChars` (number, at least 2).
+
+Output: string.
+
+Errors: none.
+
+Example:
+
+```js
+truncateLabel("add-semantic-similarity-scores-4a", 24) // "add-semantic-similarity…"
+truncateLabel("listings-bc", 24)                       // "listings-bc"
+truncateLabel("abcdefghij", 5)                         // "abcd…"
+truncateLabel("ab", 1)                                 // "a…"
 ```

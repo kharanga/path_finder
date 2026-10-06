@@ -22,7 +22,14 @@ The page has no build step but uses ES modules, so it must be served over HTTP, 
 python3 -m http.server 8787 --bind 127.0.0.1 --directory frontend
 ```
 
-Then open `http://127.0.0.1:8787/`. Because `/events` returns 404 there, the page falls back to `frontend/fixtures/empty.json`. Force a fixture with `?fixture=<name>`, for example `http://127.0.0.1:8787/?fixture=few`.
+Then open `http://127.0.0.1:8787/`. Because `/events` returns 404 there, the page falls back to `frontend/fixtures/empty.json`. Force a fixture with `?fixture=<name>`:
+
+| Fixture | Contents |
+|---|---|
+| `empty` | zero sessions |
+| `one` | one busy session that goes idle after 2 s |
+| `few` | 5 sessions across 4 folders, roles, an unnamed session that gets its name, a `liveness` end |
+| `many` | 15 sessions across 8 folders, same-folder siblings, a 30-character name, then a restart: one session ends by `liveness` and a new PID appears in the same folder |
 
 Fixture file shape:
 
