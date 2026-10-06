@@ -42,16 +42,25 @@ export const CONTENT_TYPES = {
 /** Parses CLI flags (--events, --frontend, --sessions-dir, --port, --host, --liveness-interval, --poll, --demo) into options. */
 export function parseArgs(argv, defaults = DEFAULTS) {
   const options = { ...defaults };
+  const numeric = (flag, value) => {
+    const parsed = Number(value);
+    if (value === undefined || value === "" || Number.isNaN(parsed) || parsed < 0) throw new Error(`${flag} needs a non-negative number`);
+    return parsed;
+  };
+  const text = (flag, value) => {
+    if (value === undefined || value === "") throw new Error(`${flag} needs a value`);
+    return value;
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
     const value = argv[index + 1];
-    if (flag === "--events") options.eventsPath = value, index += 1;
-    else if (flag === "--frontend") options.frontendDir = value, index += 1;
-    else if (flag === "--sessions-dir") options.sessionsDir = value, index += 1;
-    else if (flag === "--port") options.port = Number(value), index += 1;
-    else if (flag === "--host") options.host = value, index += 1;
-    else if (flag === "--liveness-interval") options.livenessIntervalMs = Number(value), index += 1;
-    else if (flag === "--poll") options.pollMs = Number(value), index += 1;
+    if (flag === "--events") options.eventsPath = text(flag, value), index += 1;
+    else if (flag === "--frontend") options.frontendDir = text(flag, value), index += 1;
+    else if (flag === "--sessions-dir") options.sessionsDir = text(flag, value), index += 1;
+    else if (flag === "--port") options.port = numeric(flag, value), index += 1;
+    else if (flag === "--host") options.host = text(flag, value), index += 1;
+    else if (flag === "--liveness-interval") options.livenessIntervalMs = numeric(flag, value), index += 1;
+    else if (flag === "--poll") options.pollMs = numeric(flag, value), index += 1;
     else if (flag === "--demo") options.demo = true;
     else throw new Error(`unknown flag ${flag}`);
   }
@@ -75,12 +84,17 @@ export function resolveStaticFile(frontendDir, urlPath) {
   const relative = decoded === "/" ? "index.html" : decoded.replace(/^\/+/, "");
   const candidate = resolve(root, relative);
   if (candidate !== root && !candidate.startsWith(root + sep)) return null;
+  let realRoot;
+  let realCandidate;
   try {
-    if (!statSync(candidate).isFile()) return null;
+    realRoot = realpathSync(root);
+    realCandidate = realpathSync(candidate);
+    if (!statSync(realCandidate).isFile()) return null;
   } catch {
     return null;
   }
-  return { filePath: candidate, contentType: CONTENT_TYPES[extname(candidate).toLowerCase()] ?? "application/octet-stream" };
+  if (!realCandidate.startsWith(realRoot + sep)) return null;
+  return { filePath: realCandidate, contentType: CONTENT_TYPES[extname(realCandidate).toLowerCase()] ?? "application/octet-stream" };
 }
 
 /** Creates the dashboard hub: in-memory state, connected SSE clients, ingestion, liveness, and broadcast. */

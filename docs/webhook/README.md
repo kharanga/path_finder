@@ -11,5 +11,6 @@ Owner: webhook-builder. One markdown file per module in `webhook/`.
 | `tail.md` | `webhook/tail.js` | W6 |
 | `state.md` | `webhook/state.js` | W6 |
 | `liveness.md` | `webhook/liveness.js` | W6 |
+| `declare-role.md` | `webhook/declare-role.js` | W7 |
 
 Each public function, class, or endpoint is documented with What it does, Inputs, Output, Errors, and an Example with a realistic input and the expected output. Docs are updated in the same task as the code. The validator checks every example.

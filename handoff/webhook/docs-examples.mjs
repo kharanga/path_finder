@@ -168,4 +168,26 @@ check("hook main cli", () => {
   const e = JSON.parse(lines[0]); assert.deepEqual([e.type, e.session, e.folder, e.pid, e.state, e.role], ["session", "path-finder-37", "path_finder", 52134, "waiting", null]);
 });
 
+check("hook registry by pid", () => { assert.equal(hk.readSessionRegistry("/nonexistent").length, 0); assert.equal(hk.lookupSessionRegistryByPid(1), null); assert.equal(hk.lookupSessionRegistryByPid(52134).name, "path-finder-37"); });
+check("server parseArgs port", () => assert.throws(() => sv.parseArgs(["--port"]), /--port needs a non-negative number/));
+
+const dr = await import(`${R}/webhook/declare-role.js`);
+check("declare parseRole", () => { assert.equal(dr.parseRole(["  manager "]), "manager"); assert.throws(() => dr.parseRole([]), /usage/); assert.throws(() => dr.parseRole(["bad/role!"]), /usage/); });
+check("declare resolve", () => {
+  assert.equal(J(dr.resolveCallingSession({ findPid: () => 1, lookup: () => ({ pid: 1, name: "x-1", cwd: "/a/b/listings", status: "idle" }) })), '{"pid":1,"name":"x-1","folder":"listings","state":"idle"}');
+  assert.equal(J(dr.resolveCallingSession({ findPid: () => 1, lookup: () => ({ pid: 1, name: null, cwd: null, status: "weird" }) })), '{"pid":1,"name":null,"folder":"","state":"busy"}');
+  assert.throws(() => dr.resolveCallingSession({ findPid: () => null }), /no claude process found above this one/);
+  assert.throws(() => dr.resolveCallingSession({ findPid: () => 999999, lookup: () => null }), /no registry entry for claude pid 999999/);
+});
+check("declare buildRoleEvent", () => assert.equal(J(dr.buildRoleEvent({ pid: 29904, name: "listings-bc", folder: "listings", state: "idle" }, "validator", new Date("2026-10-05T21:40:00Z"))), '{"ts":"2026-10-05T21:40:00.000Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"idle","role":"validator"}'));
+check("declare cli", () => {
+  const ef = `${T}/role/events.jsonl`; rmSync(`${T}/role`, { recursive: true, force: true }); const env = { ...process.env, CC_DASHBOARD_EVENTS: ef };
+  assert.equal(execFileSync("node", [`${R}/webhook/declare-role.js`, "webhook-builder"], { env }).toString(), "");
+  const e = JSON.parse(readFileSync(ef, "utf8").trim()); assert.deepEqual([e.type, e.session, e.pid, e.role], ["session", "path-finder-37", 52134, "webhook-builder"]); assert.ok(schema.validateEvent(e).ok);
+  let code = 0, err = ""; try { execFileSync("node", [`${R}/webhook/declare-role.js`], { env, stdio: ["ignore", "pipe", "pipe"] }); } catch (x) { code = x.status; err = x.stderr.toString(); }
+  assert.equal(code, 1); assert.match(err, /^usage: declare-role.js <role>/); assert.equal(err.trim().split("\n").length, 1);
+  code = 0; try { execFileSync("node", [`${R}/webhook/declare-role.js`, "manager"], { env: { ...env, CC_DASHBOARD_EVENTS: "/nonexistent-root/e.jsonl" }, stdio: ["ignore", "pipe", "pipe"] }); } catch (x) { code = x.status; err = x.stderr.toString(); }
+  assert.equal(code, 1); assert.equal(err, "declare-role: cannot write /nonexistent-root/e.jsonl\n");
+});
+
 console.log(`passed ${passed}, failed ${fail.length}`); for (const f of fail) console.log("FAIL", f); process.exit(fail.length ? 1 : 0);

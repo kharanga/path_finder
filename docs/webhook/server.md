@@ -96,7 +96,7 @@ Inputs: `argv` (string[]) without the node and script entries; `defaults` (objec
 
 Output: a copy of `defaults` with `eventsPath`, `frontendDir`, `sessionsDir`, `port`, `host`, `livenessIntervalMs`, `pollMs`, `demo` overridden by the flags present.
 
-Errors: throws `Error("unknown flag <flag>")`.
+Errors: throws `Error("unknown flag <flag>")`, `Error("<flag> needs a non-negative number")` for `--port`, `--liveness-interval`, `--poll` without a usable value, and `Error("<flag> needs a value")` for a path or host flag without one.
 
 Example:
 
@@ -105,6 +105,7 @@ import { parseArgs } from "./webhook/server.js";
 parseArgs(["--events", "/tmp/e", "--port", "5000", "--liveness-interval", "0", "--demo"], { port: 1, demo: false })
 // {"port":5000,"demo":true,"eventsPath":"/tmp/e","livenessIntervalMs":0}
 parseArgs(["--bogus"]) // throws Error: unknown flag --bogus
+parseArgs(["--port"])  // throws Error: --port needs a non-negative number
 ```
 
 ## sseFrame(eventName, payload)
@@ -127,7 +128,7 @@ Inputs: `frontendDir` (string); `urlPath` (string, the percent-encoded URL pathn
 
 Output: `{filePath, contentType}` or `null`.
 
-Errors: none thrown. Traversal outside the directory, directories, missing files, and undecodable paths all give `null`.
+Errors: none thrown. Traversal outside the directory, directories, missing files, undecodable paths, and symlinks inside the directory that point outside it all give `null`. The returned `filePath` is the real path.
 
 Example, with the repo's `frontend/` as `dir`:
 
@@ -143,6 +144,7 @@ resolveStaticFile(dir, "/%2e%2e/CLAUDE.md")           // null
 resolveStaticFile(dir, "/fixtures")                   // null (directory)
 resolveStaticFile(dir, "/nope.js")                    // null
 resolveStaticFile(dir, "/%E0%A4%A")                   // null (bad encoding)
+// with `ln -s /etc/hosts <dir>/escape.txt`: resolveStaticFile(dir, "/escape.txt") is null
 ```
 
 ## createHub(options = {})

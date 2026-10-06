@@ -1,3 +1,14 @@
+# Review: F4 (round 2), F6 2026-10-05
+
+1. `docs/frontend/render.md`, "Selection, with ..." example  input: `messages.json` fully replayed, `document.querySelector('.particle[data-message-index="7"]')`  expected (per docs): the null-sender particle, `onSelect` called with `(state.messages[7], 7)`, `draw.select(7)`  actual: no particle has index 7. The fixture has 7 messages (1 in the snapshot, 6 in events), so the null-sender message is `state.messages[6]` and its particle has `data-message-index="6"`.
+2. `docs/frontend/state.md`, `applyEvent` example "after all 10 events"  input: same replay  expected (per docs): `state.messages.length // 8`  actual: `7`. Same off-by-one as failure 1.
+
+## What passed
+
+F4 round 1 failure closed: `applyMessageEvent` keeps `from: null` and absent `from` (stored as `null`), drops non-string, non-null `from` and non-string `to`, creates no placeholder for a null sender. The null-sender particle's path starts at the ring center (680, 500) and the dot rests on the recipient; title and `aria-label` say `unknown sender`. `state.md` describes this; thread sequence after all 10 events is `["1:path-finder-e5:snapped", "4:nobody-99:waiting", "5:listings-bc:dropped"]` with `nobody-99` the only waiting thread and the only placeholder.
+
+F6 `panel.md`: `describeMessage` both examples match (time compared against the local zone), `formatTimestamp` null and `nope` give `unknown time`, missing text gives `""`. `createPanel` through the DOM stub: `show` unhides the panel, fills from/to/time/text, toggles `unknown` on the sender, hides the badge for plain messages and shows it for `notify_on_idle`, sets the ISO tooltip on the time, records `selectedIndex`, focuses the close button; `hide` hides, clears the index, calls `onClose`; the close button click does the same; missing markup throws. `render.js`: particles carry `role="button"`, `tabindex="0"`, an `aria-label`, a hit circle; click and Enter call `onSelect` with the stored message object and index, other keys do not; `draw.select(i)` adds `selected` and `draw.select(null)` clears it. `app.js` wires `onSelect` to `panel.show` plus `draw.select`, Escape to `panel.hide`, and `onClose` to `draw.select(null)` (read only).
+
 # Review: F5 2026-10-05
 
 PASS

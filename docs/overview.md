@@ -41,7 +41,7 @@ Session state:
 | `folder` | string | basename of the session's start folder |
 | `pid` | integer | process id, the stable key |
 | `state` | `started`, `busy`, `waiting`, `idle`, `ended` | `waiting` is a permission prompt |
-| `role` | string or null | declared role, if any |
+| `role` | string or null | declared role, if any. A session declares one by running `node webhook/declare-role.js <role>`, which appends a session event with the role set. Roles live only in the event log, so they are re-declared after the log is truncated. |
 
 Message:
 
