@@ -1,16 +1,17 @@
 # app.js and index.html
 
-`index.html` is the only page. It has a top bar with the title and a connection status badge, a `<main>` holding `<svg id="orbit">` (the circuit board; the element id is kept from v1), a `<footer id="timeline">` with the scrubber strip, and loads `app.js` as an ES module. `orbit.css` holds all styles. No build step.
+`index.html` is the only page. It has a top bar with the title, a connection status badge, and the editor controls (Edit toggle, Remove all ended, hint), a confirmation bar under it, a `<main>` holding `<svg id="orbit">` (the circuit board; the element id is kept from v1), a `<footer id="timeline">` with the scrubber strip, and loads `app.js` as an ES module. `orbit.css` holds all styles. No build step.
 
-## start({ svg, statusElement, timelineElement, panelElement })
+## start({ svg, statusElement, timelineElement, panelElement, editorElements })
 
-What it does: creates the live state, the timeline recorder, the message panel, and the renderer (with `onSelect` opening the panel and highlighting the pulse), mounts the strip, draws the empty board at once, then calls `connect`. Every snapshot or event is applied to the live state and recorded in the timeline with the same arrival time. If the strip is in live mode the live state is drawn; in scrub mode the board keeps showing the scrubbed instant while the strip's range still grows. Scrubbing draws `timeline.stateAt(tsMs)` with `instant: true`; clicking Live draws the live state with `instant: true` and resumes. Every 5 s placeholders older than 60 s are pruned and, if any were, the live view is redrawn. Escape closes the panel when it is open; closing it clears the pulse highlight. Clicking a timeline tick opens the panel for that message (no pulse highlight). The query parameter `motion=reduce` forces the renderer's reduced-motion behavior and `motion=full` forces it off; without it the user's `prefers-reduced-motion` setting decides. Connection status is written into `statusElement` as text and as `data-status` for styling.
+What it does: creates the live state, the timeline recorder, the message panel, and the renderer (with `onSelect` opening the panel and highlighting the pulse), mounts the strip, draws the empty board at once, then calls `connect`. Every snapshot or event is applied to the live state and recorded in the timeline with the same arrival time. If the strip is in live mode the live state is drawn; in scrub mode the board keeps showing the scrubbed instant while the strip's range still grows. Scrubbing draws `timeline.stateAt(tsMs)` with `instant: true`; clicking Live draws the live state with `instant: true` and resumes. Every 5 s placeholders older than 60 s are pruned and, if any were, the live view is redrawn. Escape closes the panel when it is open; closing it clears the pulse highlight. Clicking a timeline tick opens the panel for that message (no pulse highlight). The query parameter `motion=reduce` forces the renderer's reduced-motion behavior and `motion=full` forces it off; without it the user's `prefers-reduced-motion` setting decides. Connection status is written into `statusElement` as text and as `data-status` for styling, and enables the removal editor when it is `live` or `reconnecting` (fixture and offline modes keep it disabled with a hint). The renderer's remove controls call `editor.requestRemove`. The board follows `matchMedia("(max-width: 600px)")`: portrait at start when it matches, and on change the renderer switches orientation and the current view (live or scrubbed) is redrawn instantly.
 
 Inputs:
 - `svg` (SVGSVGElement): the board target (`<svg id="orbit">`, id kept from v1).
 - `statusElement` (HTMLElement): where the status word is shown.
 - `timelineElement` (HTMLElement): the footer with the four `data-role` elements that `mountTimelineStrip` expects.
 - `panelElement` (HTMLElement): the `<aside id="panel">` that `createPanel` expects.
+- `editorElements` (object): `{ toggleButton, removeAllButton, hintElement, confirmElement }` for `createEditor`.
 
 Output: the disconnect function returned by `connect`.
 
@@ -18,7 +19,7 @@ Errors: none thrown directly. DOM errors surface if the elements are missing.
 
 `start` runs automatically at module load only when an element with id `orbit` exists, so importing `app.js` in a test without that element does nothing.
 
-Responsive layout: the page keeps a 16 px gutter at every width, `overflow-x` is hidden on the document, and under 600 px the side panel docks to the bottom and the capsule and row labels grow (name 22 px, role 17 px, row label 20 px in viewBox units) so they stay legible. At a 390 px wide viewport `document.documentElement.scrollWidth` equals `clientWidth`.
+Responsive layout: the page keeps a 16 px gutter at every width, `overflow-x` is hidden on the document, and under 600 px the board switches to the portrait layout (two capsules per line, folder labels above rows, viewBox 760×1100), the side panel docks to the bottom, and the capsule and row labels grow (name 22 px, role 17 px, row label 20 px in viewBox units). At a 390 px wide viewport `document.documentElement.scrollWidth` equals `clientWidth`.
 
 Example: open `?fixture=messages`, wait 15 s, drag the knob left to about a third. The label shows a clock time, the border above the strip turns yellow, the board shows that moment's state with no animation. Click Live: the board returns to the current state and the label reads `Live`.
 

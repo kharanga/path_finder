@@ -1,34 +1,48 @@
-export const BOARD = { width: 1360, height: 1000, marginX: 60, marginTop: 70, marginBottom: 70, labelWidth: 170 };
+export const BOARD = { width: 1360, height: 1000, marginX: 60, marginTop: 70, marginBottom: 70, labelWidth: 170, labelAbove: 0 };
+export const BOARD_PORTRAIT = { width: 760, height: 1100, marginX: 60, marginTop: 60, marginBottom: 60, labelWidth: 0, labelAbove: 30 };
 export const CAPSULE = { width: 220, height: 56, gapX: 36, rowGap: 64, cornerRadius: 14 };
 const CHANNEL_GAP = 22;
 const DEFAULT_PITCH = CAPSULE.height + CAPSULE.rowGap;
 
+// Returns the board constants for the landscape or the portrait (phone) orientation.
+export function boardFor(portrait) {
+  return portrait ? BOARD_PORTRAIT : BOARD;
+}
+
 // Groups sessions into one row per folder and returns capsule boxes keyed by PID plus the row list.
-export function boardLayout(sessions, { width = BOARD.width, height = BOARD.height } = {}) {
+export function boardLayout(sessions, { portrait = false, width, height } = {}) {
+  const board = boardFor(portrait);
+  const boardWidth = width ?? board.width;
+  const boardHeight = height ?? board.height;
   const rows = groupIntoRows(sessions);
-  const perLine = Math.max(1, Math.floor((width - BOARD.marginX * 2 - BOARD.labelWidth + CAPSULE.gapX) / (CAPSULE.width + CAPSULE.gapX)));
+  const perLine = Math.max(1, Math.floor((boardWidth - board.marginX * 2 - board.labelWidth + CAPSULE.gapX) / (CAPSULE.width + CAPSULE.gapX)));
   const lines = [];
   for (const row of rows) {
     for (let start = 0; start < row.sessions.length; start += perLine) {
       lines.push({ row, sessions: row.sessions.slice(start, start + perLine), firstOfRow: start === 0 });
     }
   }
-  const usable = height - BOARD.marginTop - BOARD.marginBottom - CAPSULE.height;
-  const pitch = lines.length > 1 ? Math.min(CAPSULE.height + CAPSULE.rowGap, usable / (lines.length - 1)) : 0;
-  const stackHeight = (lines.length - 1) * pitch + CAPSULE.height;
-  const startY = BOARD.marginTop + (usable + CAPSULE.height - stackHeight) / 2;
-  const startX = BOARD.marginX + BOARD.labelWidth;
+  const lineHeight = CAPSULE.height + board.labelAbove;
+  const usable = boardHeight - board.marginTop - board.marginBottom - lineHeight;
+  const pitch = lines.length > 1 ? Math.min(lineHeight + CAPSULE.rowGap, usable / (lines.length - 1)) : 0;
+  const stackHeight = (lines.length - 1) * pitch + lineHeight;
+  const startY = board.marginTop + (usable + lineHeight - stackHeight) / 2 + board.labelAbove;
+  const startX = board.marginX + board.labelWidth;
   const capsules = new Map();
   const rowBoxes = [];
   lines.forEach((line, lineIndex) => {
     const y = startY + lineIndex * pitch;
-    if (line.firstOfRow) rowBoxes.push({ folder: line.row.folder, label: line.row.folder, x: BOARD.marginX, y, cy: y + CAPSULE.height / 2 });
+    if (line.firstOfRow) {
+      rowBoxes.push(board.labelAbove > 0
+        ? { folder: line.row.folder, label: line.row.folder, x: startX, y, cy: y + CAPSULE.height / 2, labelX: startX, labelY: y - 10, anchor: "start" }
+        : { folder: line.row.folder, label: line.row.folder, x: board.marginX, y, cy: y + CAPSULE.height / 2, labelX: board.marginX, labelY: y + CAPSULE.height / 2, anchor: "start" });
+    }
     line.sessions.forEach((session, index) => {
       const x = startX + index * (CAPSULE.width + CAPSULE.gapX);
-      capsules.set(session.pid, { pid: session.pid, folder: line.row.folder, x, y, width: CAPSULE.width, height: CAPSULE.height, cx: x + CAPSULE.width / 2, cy: y + CAPSULE.height / 2, line: lineIndex, index, pitch: pitch || DEFAULT_PITCH });
+      capsules.set(session.pid, { pid: session.pid, folder: line.row.folder, x, y, width: CAPSULE.width, height: CAPSULE.height, cx: x + CAPSULE.width / 2, cy: y + CAPSULE.height / 2, line: lineIndex, index, pitch: pitch || DEFAULT_PITCH, columnOrigin: startX });
     });
   });
-  return { capsules, rows: rowBoxes, lineCount: lines.length, perLine };
+  return { capsules, rows: rowBoxes, lineCount: lines.length, perLine, board: { width: boardWidth, height: boardHeight, portrait } };
 }
 
 // Routes an orthogonal trace from one capsule box to another and returns its path, corner points, and length.
@@ -44,8 +58,8 @@ export function traceKey(pidA, pidB) {
 
 // Returns a zero-width box at the left edge of a capsule's line, used as the origin for an unknown sender.
 export function edgeBox(nearBox) {
-  const x = BOARD.marginX + BOARD.labelWidth - CAPSULE.gapX;
-  return { pid: null, folder: nearBox.folder, x, y: nearBox.y, width: 0, height: nearBox.height, cx: x, cy: nearBox.cy, line: nearBox.line, index: -1, pitch: nearBox.pitch };
+  const x = (nearBox.columnOrigin ?? BOARD.marginX + BOARD.labelWidth) - CAPSULE.gapX;
+  return { pid: null, folder: nearBox.folder, x, y: nearBox.y, width: 0, height: nearBox.height, cx: x, cy: nearBox.cy, line: nearBox.line, index: -1, pitch: nearBox.pitch, columnOrigin: nearBox.columnOrigin };
 }
 
 // Shortens a label to at most maxChars characters, ending with an ellipsis when cut.
@@ -95,7 +109,7 @@ function routePoints(from, to) {
   }
   const nearChannelY = downward ? startY + channelGap : startY - channelGap;
   const farChannelY = downward ? endY - channelGap : endY + channelGap;
-  const busX = columnGapX(Math.max(from.index, to.index) + 1);
+  const busX = columnGapX(from.columnOrigin ?? BOARD.marginX + BOARD.labelWidth, Math.max(from.index, to.index) + 1);
   return [
     { x: from.cx, y: startY },
     { x: from.cx, y: nearChannelY },
@@ -106,8 +120,8 @@ function routePoints(from, to) {
   ];
 }
 
-function columnGapX(gapIndex) {
-  return BOARD.marginX + BOARD.labelWidth + gapIndex * (CAPSULE.width + CAPSULE.gapX) - CAPSULE.gapX / 2;
+function columnGapX(columnOrigin, gapIndex) {
+  return columnOrigin + gapIndex * (CAPSULE.width + CAPSULE.gapX) - CAPSULE.gapX / 2;
 }
 
 function roundedPath(points, radius) {

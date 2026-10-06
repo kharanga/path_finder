@@ -1,20 +1,38 @@
 # layout.js
 
-Pure geometry for the Circuit board. No DOM, runs in Node. Exports two constant objects and five functions.
+Pure geometry for the Circuit board. No DOM, runs in Node. Exports three constant objects and six functions.
 
-Constants: `BOARD = { width: 1360, height: 1000, marginX: 60, marginTop: 70, marginBottom: 70, labelWidth: 170 }` (the viewBox and the space reserved on the left for folder labels) and `CAPSULE = { width: 220, height: 56, gapX: 36, rowGap: 64, cornerRadius: 14 }`.
+Constants: `BOARD = { width: 1360, height: 1000, marginX: 60, marginTop: 70, marginBottom: 70, labelWidth: 170, labelAbove: 0 }` (landscape: the viewBox and the space reserved on the left for folder labels), `BOARD_PORTRAIT = { width: 760, height: 1100, marginX: 60, marginTop: 60, marginBottom: 60, labelWidth: 0, labelAbove: 30 }` (phone: labels above each row), and `CAPSULE = { width: 220, height: 56, gapX: 36, rowGap: 64, cornerRadius: 14 }`.
 
-A capsule box is `{ pid, folder, x, y, width, height, cx, cy, line, index, pitch }`: top-left corner, size, center, which line of the board it sits on (0 at the top), its position in that line, and the vertical distance between lines in this layout (used to keep trace channels inside the gaps).
+A capsule box is `{ pid, folder, x, y, width, height, cx, cy, line, index, pitch, columnOrigin }`: top-left corner, size, center, which line of the board it sits on (0 at the top), its position in that line, the vertical distance between lines in this layout (used to keep trace channels inside the gaps), and the x where column 0 starts (used to find column gaps and the row edge).
 
-## boardLayout(sessions, { width, height })
+## boardFor(portrait)
 
-What it does: groups sessions into one row per folder (folders compared with `_` and `-` equal, sorted alphabetically), orders each row by `firstSeen` then name so a capsule keeps its slot while live and newcomers append at the end (placeholders, which have no `firstSeen`, go last), wraps a row onto further lines when it has more capsules than fit (`perLine = floor((width - 2·marginX - labelWidth + gapX) / (capsule width + gapX))`, 4 at the default width), spaces the lines evenly (pitch at most `height + rowGap` of a capsule, compressed when many lines must fit) and centers the stack vertically.
+What it does: picks the board constants for an orientation.
+
+Inputs: `portrait` (boolean).
+
+Output: `BOARD_PORTRAIT` when true, `BOARD` otherwise.
+
+Errors: none.
+
+Example:
+
+```js
+boardFor(false).width // 1360
+boardFor(true).width  // 760
+```
+
+## boardLayout(sessions, { portrait, width, height })
+
+What it does: groups sessions into one row per folder (folders compared with `_` and `-` equal, sorted alphabetically), orders each row by `firstSeen` then name so a capsule keeps its slot while live and newcomers append at the end (placeholders, which have no `firstSeen`, go last), wraps a row onto further lines when it has more capsules than fit (`perLine = floor((width - 2·marginX - labelWidth + gapX) / (capsule width + gapX))`: 4 in landscape, 2 in portrait), spaces the lines evenly (pitch at most capsule height plus `labelAbove` plus `rowGap`, compressed when many lines must fit) and centers the stack vertically. In portrait the folder label goes above the first capsule of its row instead of to the left.
 
 Inputs:
 - `sessions` (Session[]): usually `liveSessions(state)`. Not mutated.
-- `width`, `height` (number, optional): board size in user units, default `BOARD.width` × `BOARD.height`.
+- `portrait` (boolean, optional, default false): selects `BOARD_PORTRAIT`.
+- `width`, `height` (number, optional): override the board size in user units.
 
-Output: `{ capsules: Map<pid, box>, rows: [{ folder, label, x, y, cy }], lineCount, perLine }`. `rows` has one entry per folder at its first line, for the row label.
+Output: `{ capsules: Map<pid, box>, rows: [{ folder, label, x, y, cy, labelX, labelY, anchor }], lineCount, perLine, board: { width, height, portrait } }`. `rows` has one entry per folder at its first line; `labelX`/`labelY` is where the label text is anchored (`anchor` is an SVG `text-anchor` value).
 
 Errors: none. An empty array yields an empty map, no rows, `lineCount` 0.
 
@@ -32,7 +50,7 @@ layout.capsules.get(30333).index           // 1, path-finder-e5 sits to its righ
 boardLayout([]).capsules.size              // 0
 ```
 
-With `many.json` (15 sessions, 8 folders): 8 lines, every folder on one line; `add-semantic-similarity-scores` is the first row.
+With `many.json` (15 sessions, 8 folders): 8 lines, every folder on one line; `add-semantic-similarity-scores` is the first row, its label at `labelX` 60, `labelY` 98 (vertically centered on the capsule). In portrait: `perLine` 2, `lineCount` 10, `board` `{ width: 760, height: 1100, portrait: true }`, every capsule inside the board (right edge at most 536, bottom at most 1040), and the first row's label at `labelX` 60, `labelY` 80, ten units above its capsule at `y` 90.
 
 ## tracePath(from, to, { cornerRadius })
 
@@ -78,11 +96,11 @@ traceKey(30222, 30333) // "30222|30333"
 
 ## edgeBox(nearBox)
 
-What it does: returns a zero-width box at the left edge of the given box's line, just right of the folder label. The renderer uses it as the origin of a pulse whose sender is unknown (`from: null`) and as the destination when only the sender is known.
+What it does: returns a zero-width box at the left edge of the given box's line, one gap left of column 0. The renderer uses it as the origin of a pulse whose sender is unknown (`from: null`) and as the destination when only the sender is known.
 
 Inputs: `nearBox` (capsule box).
 
-Output: a box with `width` 0, `cx` equal to `BOARD.marginX + BOARD.labelWidth - CAPSULE.gapX` (194), same `y`, `height`, `cy`, and `line` as `nearBox`, `pid` null, `index` -1.
+Output: a box with `width` 0, `cx` equal to `nearBox.columnOrigin - CAPSULE.gapX` (194 in landscape, 24 in portrait), same `y`, `height`, `cy`, `line`, and `columnOrigin` as `nearBox`, `pid` null, `index` -1.
 
 Errors: throws `TypeError` if `nearBox` is missing.
 
@@ -91,6 +109,7 @@ Example:
 ```js
 edgeBox(a).cx    // 194
 edgeBox(a).line  // 1
+edgeBox(boardLayout(liveSessions(state), { portrait: true }).capsules.get(30222)).cx // 24
 ```
 
 ## truncateLabel(label, maxChars)

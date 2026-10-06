@@ -15,9 +15,10 @@ Files in `frontend/` and where each is documented:
 | `render.js` | SVG renderer: capsules, traces, charges, pulses, selection | `render.md` |
 | `timeline.js` | event recorder, state at an instant, scrubber strip | `timeline.md` |
 | `panel.js` | message detail panel | `panel.md` |
+| `editor.js` | session removal editor: Edit toggle, confirmation, `POST /sessions/<pid>/remove` | `editor.md` |
 | `fixtures/*.json` | page fixtures, table below | this file |
 
-Pure modules (`state.js`, `layout.js`, `panel.js` except `createPanel`, `timeline.js` except `mountTimelineStrip`) import nothing from the DOM and run in Node as is. The rest need a DOM; a stub that implements `createElement`, `createElementNS`, `setAttribute`/`getAttribute`, `classList`, `dataset`, `style`, `appendChild`/`remove`, `querySelector(All)` with class, attribute, and descendant selectors, `textContent`, `addEventListener`/`dispatchEvent`, `hidden`, `click`, and `focus` is enough to run every example in these docs.
+Pure modules (`state.js`, `layout.js`, `panel.js` except `createPanel`, `timeline.js` except `mountTimelineStrip`, `editor.js` except `createEditor`) import nothing from the DOM and run in Node as is. The rest need a DOM; a stub that implements `createElement`, `createElementNS`, `setAttribute`/`getAttribute`, `classList`, `dataset`, `style`, `appendChild`/`remove`, `querySelector(All)` with class, attribute, and descendant selectors, `textContent`, `addEventListener`/`dispatchEvent`, `hidden`, `click`, and `focus` is enough to run every example in these docs.
 
 Each public function is documented with What it does, Inputs, Output, Errors, and Example. Docs are updated in the same task as the code. The validator checks every example.
 
@@ -29,7 +30,7 @@ The page has no build step but uses ES modules, so it must be served over HTTP, 
 python3 -m http.server 8787 --bind 127.0.0.1 --directory frontend
 ```
 
-Then open `http://127.0.0.1:8787/`. Because `/events` returns 404 there, the page falls back to `frontend/fixtures/empty.json`. Force a fixture with `?fixture=<name>`:
+Then open `http://127.0.0.1:8787/`. Because `/events` returns 404 there, the page falls back to `frontend/fixtures/empty.json`, and the Edit toggle stays disabled with the hint "Removal needs the server. Fixture mode has none." For the editor, run the real server (`node webhook/server.js --demo --port 4848` gives a safe sandbox with its own temp events file; the default port 4747 may be the user's live dashboard). Force a fixture with `?fixture=<name>`:
 
 | Fixture | Contents |
 |---|---|

@@ -2,9 +2,9 @@
 
 Draws the Circuit board into an `<svg>`. Geometry is in the fixed `0 0 1360 1000` viewBox from `layout.js`, so the browser scales it to the available space.
 
-## createRenderer(svg, { ghostMs, travelMs, lingerMs, reducedMotion, onSelect })
+## createRenderer(svg, { ghostMs, travelMs, lingerMs, reducedMotion, onSelect, onRemove, portrait })
 
-What it does: sets the viewBox, adds the board rectangle, the "No sessions running" label, and five layers (`rows`, `traces`, `charges`, `capsules`, `pulses`), and returns a `draw(state, { instant })` function.
+What it does: sets the viewBox (landscape `0 0 1360 1000`, or portrait `0 0 760 1100` when `portrait` is true), adds the board rectangle, the "No sessions running" label, and five layers (`rows`, `traces`, `charges`, `capsules`, `pulses`), and returns a `draw(state, { instant })` function.
 
 Capsules. Each `draw` reconciles one `<g class="capsule" data-pid data-state data-folder tabindex="0" role="img" aria-label>` per live session at the box `boardLayout` gives it, with a `<rect class="shell">`, a `<title>` (name, role, folder, `formerly <names>` after a rename), a `<text class="name">` truncated to 21 characters, and a `<text class="role">` hidden unless a role is declared. One `<text class="row-label" data-folder>` per folder sits left of its row, positioned with a transform so it glides with the capsules when rows shift, and is removed when the folder has no live capsule. States are CSS on `data-state`:
 
@@ -12,6 +12,7 @@ Capsules. Each `draw` reconciles one `<g class="capsule" data-pid data-state dat
 - A new capsule is created with class `entering` (opacity 0) and its position already set; styles are flushed synchronously and the class removed, so it fades in at its slot, also in a background tab.
 - When a session stops being live and its state is `ended` (or it simply left the live set), the capsule stays as a footprint: `data-state="ended"`, class `leaving`, faint, removed after `ghostMs`. If the same PID is live again before then, the node is reused. When the state is `removed` the capsule is removed at once with no footprint.
 - A label change (rename, or a PID-only capsule receiving its name) updates the text in place and flashes it yellow for 1.8 s (class `renamed`).
+- Remove control (F11): when `onRemove` is given, every non-placeholder capsule gets a `<g class="remove" role="button" aria-label="Remove <name>">` (a red × at its top-right corner). It is hidden by CSS unless the svg has class `editing`, and its `tabindex` is `0` only in edit mode so it is skipped by Tab otherwise. Click, Enter, or Space calls `onRemove(session)` with the capsule's latest session object (a footprint reports state `ended`).
 
 Traces. A `<path class="trace" data-trace="<traceKey>">` is created the first time a message travels between two capsules that both have a box, routed by `tracePath`, kept faint afterwards, and re-routed on every draw. When a snapshot arrives (`state.snapshotSeq` changes) all layers are cleared and traces are rebuilt from the snapshot's messages without pulses, so a reload still shows who talks to whom. A trace is dropped when either capsule is gone.
 
@@ -28,8 +29,10 @@ Inputs:
 - `lingerMs` (number, optional, default 15000): how long an arrived pulse stays clickable.
 - `reducedMotion` (boolean, optional): overrides the media query for the JavaScript behavior; `app.js` passes `true` for `?motion=reduce`, `false` for `?motion=full`.
 - `onSelect` (function(message, index), optional).
+- `onRemove` (function(session), optional): enables the remove controls.
+- `portrait` (boolean, optional, default false): start with the portrait board.
 
-Output: `draw(state, { instant })`, returning nothing, with one method `draw.select(index)` that adds class `selected` to the pulse whose `data-message-index` equals `index` and removes it elsewhere (`null` clears). `instant: true` (used by the timeline when scrubbing and when returning to live) removes non-live capsules at once, skips fade-in and power-on, and shows charges fully drawn. Pulses are never spawned for a state whose `snapshotSeq` differs from the previous draw, which is always the case for replayed states.
+Output: `draw(state, { instant })`, returning nothing, with three methods: `draw.select(index)` adds class `selected` to the pulse whose `data-message-index` equals `index` and removes it elsewhere (`null` clears); `draw.setPortrait(boolean)` switches the viewBox and board size, the next `draw` re-lays everything out; `draw.setEditing(boolean)` toggles class `editing` on the svg and the remove controls' `tabindex`. `instant: true` (used by the timeline when scrubbing and when returning to live) removes non-live capsules at once, skips fade-in and power-on, and shows charges fully drawn. Pulses are never spawned for a state whose `snapshotSeq` differs from the previous draw, which is always the case for replayed states.
 
 Errors: throws if `svg` is not an element. `draw` never throws on valid state.
 
@@ -104,4 +107,19 @@ draw.select(6); pulse.classList.contains("selected") // true
 draw.select(null); pulse.classList.contains("selected") // false
 ```
 
-Styling hooks in `orbit.css`: `.board`, `.board.empty`, `.row-label`, `.capsule[data-state="busy"|"waiting"|"idle"|"started"|"ended"|"placeholder"]`, `.capsule.entering`, `.capsule.leaving`, `.capsule.powering`, `.capsule.renamed`, `.capsule .shell`, `.trace`, `.charge`, `.charge.drawing`, `.charge.draining`, `.charge.dropping`, `.pulse`, `.pulse.notify`, `.pulse.arrived`, `.pulse.selected`, `.pulse-dot`, `.pulse-hit`, `.empty-label`, `.hidden`.
+Edit mode, with `few.json` and `createRenderer(svg, { onRemove })`:
+
+```js
+draw(state);
+document.querySelectorAll(".capsule .remove").length                       // 5 (placeholders get none)
+document.querySelector('.capsule[data-pid="30111"] .remove').getAttribute("aria-label") // "Remove tag-analyzer-63"
+document.querySelector('.capsule[data-pid="30111"] .remove').getAttribute("tabindex")   // "-1"
+draw.setEditing(true);
+svg.classList.contains("editing")                                           // true
+document.querySelector('.capsule[data-pid="30111"] .remove').getAttribute("tabindex")   // "0"
+document.querySelector('.capsule[data-pid="30111"] .remove').dispatchEvent(new Event("click")); // onRemove called with the session for pid 30111
+draw.setPortrait(true); svg.getAttribute("viewBox")                        // "0 0 760 1100"
+draw(state); document.querySelectorAll(".row-label").length                 // 4, now above their rows
+```
+
+Styling hooks in `orbit.css`: `.board`, `.board.empty`, `.row-label`, `.capsule[data-state="busy"|"waiting"|"idle"|"started"|"ended"|"placeholder"]`, `.capsule.entering`, `.capsule.leaving`, `.capsule.powering`, `.capsule.renamed`, `.capsule .shell`, `.trace`, `.charge`, `.charge.drawing`, `.charge.draining`, `.charge.dropping`, `.pulse`, `.pulse.notify`, `.pulse.arrived`, `.pulse.selected`, `.pulse-dot`, `.pulse-hit`, `.capsule .remove` (shown under `.orbit.editing`), `.empty-label`, `.hidden`.
