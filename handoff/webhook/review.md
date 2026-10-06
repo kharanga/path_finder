@@ -1,3 +1,18 @@
+# Review: W6 2026-10-05
+
+PASS
+
+## What was checked
+
+Acceptance: every public function has a one-line docstring; every module has a docs file with what, inputs, output, errors, example; every documented example produces the documented output.
+
+- Docstring coverage command from ready.md: zero exports without a `/** */` line, zero non-docstring comments across `webhook/*.js` and `webhook/hooks/*.js`.
+- Module docs: `schema.md`, `state.md`, `tail.md`, `liveness.md`, `server.md`, `fake-generator.md` present; `hooks.md` has 19 headed sections; `README.md` indexes them.
+- `handoff/webhook/docs-examples.mjs` run with a scratchpad temp dir (it now holds 50 checks after W7): `passed 48, failed 2`. The two failures are `hook ancestor` and `declare cli`, both asserting the writing session's PID and name (52134, `path-finder-37`), which differ by nature from this session. `hook registry` and `hook main cli` pass because that session's registry entry still exists. Every other example, including the CLI and HTTP ones, matches. The runner touches only its temp dir and leaves no child processes; the real events file was not modified by it.
+- All examples I had already verified by hand in the W1 to W5 reviews still hold.
+
+For V5 I will move the runner's checks into `tests/docs-examples/` and parameterize the session-specific values from the running session instead of literals.
+
 # Review: W5 2026-10-05
 
 PASS

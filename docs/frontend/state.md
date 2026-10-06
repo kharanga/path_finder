@@ -107,7 +107,7 @@ state.threads.map(t => `${t.id}:${t.to}:${t.status}`) // ["1:path-finder-e5:wait
 state.threads.map(t => `${t.id}:${t.to}:${t.status}`) // ["1:path-finder-e5:snapped"]
 // after all 10 events (the tenth is a message with from: null, no thread)
 state.threads.map(t => `${t.id}:${t.to}:${t.status}`) // ["1:path-finder-e5:snapped", "4:nobody-99:waiting", "5:listings-bc:dropped"]
-state.messages.length // 8
+state.messages.length // 7 (1 from the snapshot, 6 from events)
 state.messages.at(-1).from // null
 ```
 
@@ -170,6 +170,8 @@ What it does: guesses the start folder of a display name by stripping a trailing
 Inputs: `name` (string).
 
 Output: string.
+
+Errors: throws `TypeError` if `name` is not a string.
 
 Example:
 

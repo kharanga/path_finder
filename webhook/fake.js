@@ -10,6 +10,8 @@ import { createState, applyEvent, snapshot } from "./state.js";
 export const REAL_EVENTS_PATH = join(homedir(), ".claude", "dashboard", "events.jsonl");
 /** Recipient name used for the message whose session never appears on the ring. */
 export const GHOST_RECIPIENT = "ghost-session-00";
+/** Name a session takes mid-stream in the rename scenario, same PID, mirroring Claude Code's auto-rename. */
+export const RENAMED_NAME = "manager-drives-feature-work";
 /** Virtual seconds between a silent death and its liveness entry in fixture mode. */
 export const DEFAULT_LIVENESS_DELAY_SECONDS = 5;
 
@@ -157,6 +159,12 @@ export function createGenerator(options, deps = {}) {
     sessionEvent(session, session.state);
   };
 
+  const renameSession = (session, newName) => {
+    session.name = newName;
+    sessionEvent(session, session.state);
+    return session;
+  };
+
   const endSession = (session) => {
     setState(session, "ended");
     if (session.child) session.child.kill("SIGTERM");
@@ -195,7 +203,7 @@ export function createGenerator(options, deps = {}) {
     }
   };
 
-  return { random, sessions, entries, live, advance, startSession, setState, nameSession, endSession, killSilently, emitLiveness, sendMessage, shutdown, emit };
+  return { random, sessions, entries, live, advance, startSession, setState, nameSession, renameSession, endSession, killSilently, emitLiveness, sendMessage, shutdown, emit };
 }
 
 /** Plays the scripted scenario, then random activity until the duration ends or SIGINT; resolves when done. */
@@ -267,6 +275,21 @@ export async function runScenario(generator, options, sleepFn) {
     generator.nameSession(anonymous);
     await wait(1);
     generator.setState(anonymous, "idle");
+  }
+
+  if (population.length >= 2) {
+    const renaming = population[1];
+    const partner = population[0];
+    generator.sendMessage(renaming, partner, false);
+    await wait(1);
+    await busyThenIdle(partner, 1);
+    generator.renameSession(renaming, RENAMED_NAME);
+    await wait(1);
+    generator.sendMessage(partner, renaming, true);
+    await wait(1);
+    await busyThenIdle(renaming, 2);
+    generator.sendMessage(renaming, partner, false);
+    await wait(1);
   }
 
   if (population.length >= 4) {

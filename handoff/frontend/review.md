@@ -1,3 +1,16 @@
+# Review: F7 2026-10-05
+
+PASS
+
+## What was checked
+
+Acceptance: `prefers-reduced-motion` disables pulse and particles become instant markers; works at phone width.
+
+- Reduced motion, CSS (read): the media block turns off body, halo, particle, and thread transitions and stops the busy halo animation with a static opacity. JavaScript: `createRenderer` defaults from `matchMedia` and `watchReducedMotion` updates the option on change; with a stubbed `matchMedia` reporting `matches: true` and no override, a new message's particle is created already `arrived` and its thread has `stroke-dashoffset` 0. `app.js` maps `?motion=reduce` to `true` and `?motion=full` to `false` (read).
+- Keyboard and screen readers: bodies carry `tabindex="0"`, `role="img"`, and the documented `aria-label` (`tag-analyzer-63, busy, validator, folder tag-analyzer`; role segment omitted when null). Particles keep `role="button"` and `tabindex="0"` from F6.
+- Timeline ticks: `timeline.messages()` returns 7 entries with the last sender `null`; `mountTimelineStrip` renders 7 `button` ticks, the first `aria-label` starts with `Message from path-finder-0d to path-finder-18 at`, the null-sender tick says `unknown sender`; clicking the second tick calls `onTick` with that message and its timestamp. `app.js` routes `onTick` to `panel.show` (read).
+- Phone width (read): `overflow-x: hidden` on the page, `.stage` clips, two `max-width: 600px` blocks dock the panel to the bottom, keep 16 px gutters, and enlarge ring labels. The 390 px measurement in ready.md is browser-only and not reproduced here.
+
 # Review: F4 (round 2), F6 2026-10-05
 
 1. `docs/frontend/render.md`, "Selection, with ..." example  input: `messages.json` fully replayed, `document.querySelector('.particle[data-message-index="7"]')`  expected (per docs): the null-sender particle, `onSelect` called with `(state.messages[7], 7)`, `draw.select(7)`  actual: no particle has index 7. The fixture has 7 messages (1 in the snapshot, 6 in events), so the null-sender message is `state.messages[6]` and its particle has `data-message-index="6"`.
