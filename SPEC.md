@@ -1,6 +1,6 @@
 # SPEC: live Claude Code sessions dashboard
 
-Status: v2 complete. Circuit visual, removal endpoint and editor, polish, and test rewrite all PASS. 416 tests green including every docs example. Plugin installed. Last updated 2026-10-06.
+Status: v2 complete and v2.1 in progress: distinct trace lanes (F13, V8). Last updated 2026-10-06.
 
 Read `CLAUDE.md` first for architecture, ownership, and team rules. This file holds the current state of each area, known issues, open questions, and the tasks each builder works on next. Every feature to implement is tracked here.
 
@@ -47,6 +47,7 @@ User direction 2026-10-06: not a ring. An electrical circuit that passes message
 
 - Each live session is a capsule, a rounded component on a circuit board. Capsules are grouped by start folder into rows (one row per folder), so a restarted session returns to its folder row. Position inside a row is stable per PID while live.
 - Traces are orthogonal wires (horizontal and vertical runs with rounded corners) connecting capsules. A trace is drawn on demand when a message first travels between two capsules and stays faint afterward, so the board shows who talks to whom.
+- Every pair of capsules has its own trace. Two traces never share a segment: when several capsules route to the same destination, or several traces would run along the same corridor, each takes a distinct parallel lane with a fixed gap, and each enters the destination capsule at its own pin along the capsule edge. User requirement 2026-10-06.
 - A message is a pulse: a bright charge that travels along the trace from sender to recipient. Messages with `notify_on_idle` leave the trace charged (glowing) until the recipient's next `idle` event, then the charge drains back to the sender.
 - Capsule states: busy lit with a soft electrical flicker, waiting amber and steady, idle dim, started dim with a brief power-on flash, ended fades out leaving a faint footprint briefly, removed disappears immediately with no footprint.
 - Each capsule shows its name and, underneath, its role if declared. A capsule for an unknown recipient (name not on the board) is a dashed outline at the end of its folder row, as the placeholder body was.
@@ -170,6 +171,9 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **F12: removal polish.** (1) A message from or to the name of a removed session reinstates that capsule in its last known state instead of creating a placeholder, since any event from a removed session brings it back (§4.1). (2) In portrait, ended footprints must not overlap re-flowed capsules; drop the footprint when its slot is reused. Old `orbit` identifiers in ids and css stay as they are.
   Acceptance: demo server removed scenario shows the chatty removed session returning as a capsule, no placeholder; portrait at 15 sessions with two ended shows no overlap. Docs updated.
 
+- [~] path-finder-18 **F13: distinct trace lanes.** No two traces share a segment. Assign each capsule pair a lane: parallel traces in the same corridor are offset by a fixed gap, and each trace enters its destination at its own pin spread along the capsule edge, so two sources into one destination are visibly separate routes end to end. Lane assignment is a pure function in `layout.js`, deterministic for a given set of pairs, stable when a new pair is added (existing lanes do not shuffle). Pulses and charged threads follow their own lane.
+  Acceptance: W4 output where three sessions all message a fourth shows three separate traces into it with no overlap at any zoom; 15 sessions with dense messaging shows no shared segments; adding a message between a new pair does not move existing traces. Docs updated with the lane rule.
+
 ### 8.3 validator
 
 - [x] **V1: test structure.** `node:test`, `tests/` with `unit/`, `integration/`, `docs-examples/`, `helpers/`. Run with `node --test "tests/**/*.test.js"`. Done 2026-10-05.
@@ -180,6 +184,8 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **V6: review each ready.md** (ongoing duty, exercised on every task) against this file's acceptance criteria. Write `review.md` as PASS or numbered failures with file, line, input, expected, actual. Missing or outdated docs count as failures.
 
 - [x] **V7: v2 verification.** Update V3 layout tests for the board layout, add unit tests for the `removed` state in both reducers, an integration test for the removal endpoint including persistence across restart, and re-run all docs examples.
+
+- [ ] **V8: trace lane tests.** Unit tests for lane assignment: no shared segments for a fan-in of three, stability when a pair is added, deterministic output. Re-run docs examples.
 
 ### 8.4 manager
 
