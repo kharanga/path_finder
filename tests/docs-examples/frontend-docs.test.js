@@ -15,7 +15,8 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 const F = (p) => path.join(root, "frontend", p);
 const fixture = (n) => JSON.parse(fs.readFileSync(F(`fixtures/${n}.json`), "utf8"));
 const { createState, applySnapshot, applyEvent, applySessionEvent, applyMessageEvent, prunePlaceholders, folderFromName, waitingThreads, liveSessions, sessionByName, sessionLabel } = await import(F("state.js"));
-const { boardLayout, tracePath, traceKey, edgeBox, truncateLabel } = await import(F("layout.js"));
+const { boardLayout, tracePath, traceKey, edgeBox, truncateLabel, boardFor } = await import(F("layout.js"));
+const { removeUrl, endedSessions, describeRemoval, createEditor } = await import(F("editor.js"));
 const { createTimeline, mountTimelineStrip, formatClock } = await import(F("timeline.js"));
 const { describeMessage, formatTimestamp, createPanel } = await import(F("panel.js"));
 const { createRenderer } = await import(F("render.js"));
@@ -154,6 +155,15 @@ check("sessionLabel name", sessionLabel({ pid: 30444, session: "scratch-7a" }), 
   let threw = false; try { tracePath(a, undefined); } catch (e) { threw = e instanceof TypeError; } check("trace throws", threw, true);
   check("traceKey", [traceKey(30333, 30222), traceKey(30222, 30333)], ["30222|30333", "30222|30333"]);
   check("edgeBox", [edgeBox(a).cx, edgeBox(a).line, edgeBox(a).width], [194, 1, 0]);
+  check("boardFor", [boardFor(false).width, boardFor(true).width], [1360, 760]);
+  check("many row0 label", [many.rows[0].labelX, many.rows[0].labelY], [60, 98]);
+  const portrait = boardLayout(liveSessions(applySnapshot(createState(), fixture("many").snapshot)), { portrait: true });
+  const pcaps = [...portrait.capsules.values()];
+  check("portrait perLine/lines", [portrait.perLine, portrait.lineCount], [2, 10]);
+  check("portrait board", portrait.board, { width: 760, height: 1100, portrait: true });
+  check("portrait bounds", [Math.max(...pcaps.map((c) => c.x + c.width)) <= 536, Math.max(...pcaps.map((c) => c.y + c.height)) <= 1040], [true, true]);
+  check("portrait row0 label", [portrait.rows[0].labelX, portrait.rows[0].labelY, portrait.rows[0].y], [60, 80, 90]);
+  check("portrait edgeBox", edgeBox(boardLayout(liveSessions(state), { portrait: true }).capsules.get(30222)).cx, 24);
 }
 check("truncate long", truncateLabel("add-semantic-similarity-scores-4a", 21), "add-semantic-similar…");
 check("truncate short", truncateLabel("listings-bc", 21), "listings-bc");
@@ -310,5 +320,49 @@ check("formatTimestamp null", formatTimestamp(null), "unknown time"); check("for
   const mpath = svg.querySelector("mpath"); const pathId = svg.querySelector(".pulse-path").getAttribute("id");
   check("mpath href", mpath.getAttribute("href"), `#${pathId}`);
   const charge = svg.querySelector(".charge"); check("charge dashoffset 0 after flush", charge.getAttribute("stroke-dashoffset"), "0");
+}
+// ---------- editor.md ----------
+check("removeUrl", removeUrl(29904), "/sessions/29904/remove");
+check("describeRemoval empty", describeRemoval([]), "Nothing to remove.");
+check("describeRemoval one", describeRemoval([{ pid: 29904, session: "listings-bc" }]), "Remove listings-bc from the board?");
+check("describeRemoval many", describeRemoval([{ pid: 1 }, { pid: 2 }]), "Remove 2 ended sessions from the board?");
+{
+  const fx = fixture("removed"); const state = applySnapshot(createState(), fx.snapshot); applyEvent(state, "session", fx.events[0].data);
+  check("endedSessions", endedSessions(state).map((s) => s.session), ["listings-bc"]);
+  const mk = (tag, attrs = {}) => { const e = new Element(tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; };
+  const toggleButton = mk("button"), removeAllButton = mk("button"), hintElement = mk("span"), confirmElement = mk("div");
+  const confirmText = mk("span", { "data-role": "confirm-text" }), confirmYes = mk("button", { "data-role": "confirm-yes" }), confirmNo = mk("button", { "data-role": "confirm-no" });
+  confirmElement.appendChild(confirmText); confirmElement.appendChild(confirmYes); confirmElement.appendChild(confirmNo); confirmElement.hidden = true;
+  globalThis.document.body = globalThis.document.body ?? new Element("body");
+  const editingCalls = []; const draw = { setEditing: (v) => editingCalls.push(v) };
+  const calls = []; let nextResponse = { ok: true, status: 204 };
+  const editor = createEditor({ toggleButton, removeAllButton, hintElement, confirmElement, getState: () => state, draw, request: async (url) => { calls.push(url); return nextResponse; } });
+  check("editor starts disabled", [toggleButton.disabled, hintElement.textContent], [true, "Removal needs the server. Fixture mode has none."]);
+  editor.setAvailable(true); check("editor available", toggleButton.disabled, false);
+  toggleButton.click(); check("editor editing", [editor.isEditing, toggleButton.textContent, removeAllButton.hidden, removeAllButton.disabled, editingCalls.at(-1)], [true, "Done", false, false, true]);
+  editor.requestRemove({ pid: 29904, session: "listings-bc" });
+  check("editor confirm open", [confirmElement.hidden, confirmText.textContent], [false, "Remove listings-bc from the board?"]);
+  confirmYes.click(); await sleep(0);
+  check("editor request", calls, ["/sessions/29904/remove"]);
+  check("editor after remove", [confirmElement.hidden, hintElement.textContent], [true, "Removed listings-bc."]);
+  applyEvent(state, "session", { ...fx.events[0].data, pid: 30111, session: "tag-analyzer-63", folder: "tag-analyzer" }); editor.refresh();
+  removeAllButton.click(); check("editor remove all text", confirmText.textContent, "Remove 2 ended sessions from the board?");
+  confirmNo.click(); check("editor cancel", [editor.pending, confirmElement.hidden], [null, true]);
+  nextResponse = { ok: false, status: 404 }; editor.requestRemove({ pid: 29904, session: "listings-bc" }); confirmYes.click(); await sleep(0);
+  check("editor failure hint", hintElement.textContent, "Removal failed for listings-bc: 404.");
+  toggleButton.click(); check("editor done", [editor.isEditing, editingCalls.at(-1), removeAllButton.hidden], [false, false, true]);
+  toggleButton.click(); editor.setAvailable(false); check("editor unavailable leaves edit", [toggleButton.disabled, editor.isEditing], [true, false]);
+}
+{
+  const svg = new Element("svg"); const state = applySnapshot(createState(), fixture("few").snapshot); const removed = [];
+  const draw = createRenderer(svg, { onRemove: (s) => removed.push(s.pid) }); draw(state);
+  check("remove controls", svg.querySelectorAll(".capsule .remove").length, 5);
+  const ctl = svg.querySelector('.capsule[data-pid="30111"] .remove');
+  check("remove label", ctl.getAttribute("aria-label"), "Remove tag-analyzer-63");
+  check("remove tabindex off", ctl.getAttribute("tabindex"), "-1");
+  draw.setEditing(true); check("editing class", [svg.classList.contains("editing"), ctl.getAttribute("tabindex")], [true, "0"]);
+  ctl.dispatchEvent(new Event("click")); check("onRemove", removed, [30111]);
+  draw.setPortrait(true); check("portrait viewBox", svg.getAttribute("viewBox"), "0 0 760 1100");
+  draw(state); check("portrait row labels", svg.querySelectorAll(".row-label").length, 4);
 }
 const appModule = await import(F("app.js")); check("app import", Object.keys(appModule), ["start"]);

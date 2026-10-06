@@ -1,6 +1,6 @@
 # SPEC: live Claude Code sessions dashboard
 
-Status: v1 complete (every task through V5 PASS, plugin installed, 350 tests green). v2 in progress: circuit visual and session removal editor, tasks W9, F10, F11, V7. Last updated 2026-10-06.
+Status: v2 nearly complete. Circuit visual (F10), removal endpoint (W9), removal editor (F11), and test rewrite (V7) all PASS, 405 tests green. Remaining: F12 polish. Last updated 2026-10-06.
 
 Read `CLAUDE.md` first for architecture, ownership, and team rules. This file holds the current state of each area, known issues, open questions, and the tasks each builder works on next. Every feature to implement is tracked here.
 
@@ -163,7 +163,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 
 - [x] **F10: circuit visual.** Replace the ring with the board layout in §4: folder rows, capsules, orthogonal traces drawn on first message and kept faint, pulses along traces, charged traces for notify threads, capsule states per §4. Timeline, panel, keyboard, reduced motion, and responsiveness keep working. Pure layout functions in `layout.js` so V3 tests can be updated.
   Acceptance: W4 output at 1, 5, and 15 sessions shows readable rows with no overlap; every message produces a visible pulse; a notify thread drains on idle; reduced motion shows no animation. Docs updated, including `docs/frontend/README.md` naming.
-- [~] path-finder-18 (in review) **F11: removal editor.** Edit toggle, per-capsule remove control with one confirmation, "Remove all ended", calls `POST /sessions/<pid>/remove`, drops the capsule on the resulting `removed` event with no footprint. Disabled with a hint in fixture mode where no server exists. Also: portrait board layout under 600 px, rows stack vertically and traces route around them.
+- [x] **F11: removal editor.** Edit toggle, per-capsule remove control with one confirmation, "Remove all ended", calls `POST /sessions/<pid>/remove`, drops the capsule on the resulting `removed` event with no footprint. Disabled with a hint in fixture mode where no server exists. Also: portrait board layout under 600 px, rows stack vertically and traces route around them.
   Acceptance: remove a live and an ended session on the demo server, both vanish, page reload shows them still gone, a new event for the live one brings it back. Docs updated.
 
 - [~] path-finder-18 **F12: removal polish.** (1) A message from or to the name of a removed session reinstates that capsule in its last known state instead of creating a placeholder, since any event from a removed session brings it back (§4.1). (2) In portrait, ended footprints must not overlap re-flowed capsules; drop the footprint when its slot is reused. Old `orbit` identifiers in ids and css stay as they are.
@@ -178,7 +178,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **V5: docs examples.** Every example in `docs/` runs and produces the documented output. Use the runtime's markdown example runner if one exists, otherwise a small script.
 - [x] **V6: review each ready.md** (ongoing duty, exercised on every task) against this file's acceptance criteria. Write `review.md` as PASS or numbered failures with file, line, input, expected, actual. Missing or outdated docs count as failures.
 
-- [~] path-finder-e5 **V7: v2 verification.** Update V3 layout tests for the board layout, add unit tests for the `removed` state in both reducers, an integration test for the removal endpoint including persistence across restart, and re-run all docs examples.
+- [x] **V7: v2 verification.** Update V3 layout tests for the board layout, add unit tests for the `removed` state in both reducers, an integration test for the removal endpoint including persistence across restart, and re-run all docs examples.
 
 ### 8.4 manager
 

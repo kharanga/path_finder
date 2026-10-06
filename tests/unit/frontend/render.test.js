@@ -218,3 +218,51 @@ test("selection toggles the selected class and onSelect fires on click, Enter, a
   draw.select(null);
   assert.equal(pulse.classList.contains("selected"), false);
 });
+
+test("edit mode adds a remove control per real capsule, focusable only while editing, reporting footprints as ended", () => {
+  const removed = [];
+  const { svg, draw, q, qa } = setup({ reducedMotion: true, ghostMs: 2000, lingerMs: 200, onRemove: (session) => removed.push([session.pid, session.state]) });
+  const state = loaded("messages");
+  draw(state);
+  stepThrough(draw, state, "messages", 0, 7);
+  assert.equal(qa(".capsule .remove").length, qa(".capsule").length - 1);
+  assert.equal(q('.capsule[data-pid="placeholder:nobody-99"] .remove'), null);
+  const control = q('.capsule[data-pid="30111"] .remove');
+  assert.equal(control.getAttribute("role"), "button");
+  assert.equal(control.getAttribute("aria-label"), "Remove tag-analyzer-63");
+  assert.equal(svg.classList.contains("editing"), false);
+  assert.notEqual(control.getAttribute("tabindex"), "0");
+  draw.setEditing(true);
+  assert.equal(svg.classList.contains("editing"), true);
+  assert.equal(control.getAttribute("tabindex"), "0");
+  control.dispatchEvent({ type: "click" });
+  control.dispatchEvent({ type: "keydown", key: "Enter" });
+  control.dispatchEvent({ type: "keydown", key: "x" });
+  assert.deepEqual(removed, [[30111, "busy"], [30111, "busy"]]);
+  draw(createState());
+  q('.capsule[data-pid="30111"] .remove').dispatchEvent({ type: "click" });
+  assert.deepEqual(removed.at(-1), [30111, "ended"]);
+  draw.setEditing(false);
+  assert.equal(svg.classList.contains("editing"), false);
+  assert.notEqual(control.getAttribute("tabindex"), "0");
+  draw(createState(), { instant: true });
+});
+
+test("without onRemove no controls are added, and setPortrait switches the board and re-lays out two per line", () => {
+  const { svg, draw, q, qa } = setup({ reducedMotion: true, lingerMs: 200 });
+  const state = loaded("many");
+  draw(state);
+  assert.equal(qa(".remove").length, 0);
+  assert.equal(svg.getAttribute("viewBox"), "0 0 1360 1000");
+  draw.setPortrait(true);
+  draw(state, { instant: true });
+  assert.equal(svg.getAttribute("viewBox"), "0 0 760 1100");
+  const xs = new Set(qa(".capsule").map((c) => c.style.transform.match(/translate\(([\d.]+)px/)[1]));
+  assert.equal(xs.size, 2);
+  assert.equal(qa(".row-label").length, 8);
+  assert.equal(q(".row-label").getAttribute("text-anchor") ?? "start", "start");
+  draw.setPortrait(false);
+  draw(state, { instant: true });
+  assert.equal(svg.getAttribute("viewBox"), "0 0 1360 1000");
+});
+

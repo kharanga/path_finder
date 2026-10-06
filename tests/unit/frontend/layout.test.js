@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { boardLayout, tracePath, traceKey, edgeBox, truncateLabel, BOARD, CAPSULE } from "../../../frontend/layout.js";
+import { boardLayout, boardFor, tracePath, traceKey, edgeBox, truncateLabel, BOARD, BOARD_PORTRAIT, CAPSULE } from "../../../frontend/layout.js";
 import { createState, applySnapshot, applyEvent, liveSessions } from "../../../frontend/state.js";
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`../../../frontend/fixtures/${name}.json`, import.meta.url), "utf8"));
@@ -168,3 +168,47 @@ test("truncateLabel cuts at maxChars with an ellipsis", () => {
   assert.equal(truncateLabel("ab", 1), "a…");
   assert.equal(truncateLabel("", 5), "");
 });
+
+test("boardFor picks the portrait constants and portrait layouts put two per line with labels above rows", () => {
+  assert.equal(boardFor(false), BOARD);
+  assert.equal(boardFor(true), BOARD_PORTRAIT);
+  assert.deepEqual([BOARD_PORTRAIT.width, BOARD_PORTRAIT.height, BOARD_PORTRAIT.labelWidth, BOARD_PORTRAIT.labelAbove], [760, 1100, 0, 30]);
+  const layout = boardLayout(liveFrom("many"), { portrait: true });
+  assert.equal(layout.perLine, 2);
+  assert.equal(layout.board.portrait, true);
+  assert.equal(layout.rows.length, 8);
+  assert.ok(layout.lineCount >= 10);
+  for (const row of layout.rows) {
+    const first = [...layout.capsules.values()].find((box) => box.folder === row.folder && box.index === 0);
+    assert.ok(row.labelY < first.y, "label sits above the row");
+    assert.equal(row.labelX, first.x);
+  }
+  const landscape = boardLayout(liveFrom("many"));
+  assert.ok(landscape.rows.every((row) => row.labelX < BOARD.marginX + BOARD.labelWidth));
+});
+
+test("portrait capsules never overlap, stay inside the portrait board, and traces never cross a capsule", () => {
+  for (const [name, replay] of [["few", false], ["many", false], ["generated-many", true]]) {
+    const layout = boardLayout(liveFrom(name, replay), { portrait: true });
+    const boxes = [...layout.capsules.values()];
+    for (let i = 0; i < boxes.length; i += 1) {
+      const box = boxes[i];
+      assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= BOARD_PORTRAIT.width && box.y + box.height <= BOARD_PORTRAIT.height, `${name}: outside portrait board`);
+      for (let j = i + 1; j < boxes.length; j += 1) assert.ok(!overlaps(box, boxes[j]), `${name}: overlap`);
+    }
+    for (const from of boxes) {
+      for (const to of boxes) {
+        if (from === to) continue;
+        const { points } = tracePath(from, to);
+        for (let k = 1; k < points.length; k += 1) {
+          for (const other of boxes) {
+            if (other === from || other === to) continue;
+            assert.ok(!segmentCrossesBox(points[k - 1], points[k], other), `${name}: portrait trace ${from.pid}->${to.pid} crosses ${other.pid}`);
+          }
+        }
+      }
+    }
+    assert.equal(edgeBox(boxes[0]).cx, boxes[0].columnOrigin - CAPSULE.gapX);
+  }
+});
+

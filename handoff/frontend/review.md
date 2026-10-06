@@ -1,3 +1,21 @@
+# Review: F11 2026-10-06
+
+PASS
+
+## What was checked
+
+Acceptance (SPEC §4.1 and §8.2): edit toggle, per-capsule remove control with one confirmation, "Remove all ended", `POST /sessions/<pid>/remove`, capsule dropped on the server's `removed` event with no footprint, disabled with a hint in fixture mode. Reviewed against the committed F11 (`322bc71`), exported to a scratch directory because the working tree already holds uncommitted F12 edits.
+
+- `editor.js` through the DOM stub with a recording request (new `tests/unit/frontend/editor.test.js`, 9 tests): starts disabled with the fixture hint and ignores `requestRemove`; `setAvailable(true)` enables the toggle; edit mode flips the label to `Done`, `aria-pressed`, `body[data-mode]`, shows "Remove all ended" (disabled while nothing is ended), calls `draw.setEditing(true)`; one capsule removal opens the confirmation with the documented sentence and focuses Remove, posts exactly one `POST /sessions/<pid>/remove` only after confirmation, then reports `Removed <name>.`; Cancel, leaving edit mode, and losing the server all close the bar without a request; "Remove all ended" asks once and posts once per ended session; a 404 or a thrown request reports the failure in the hint and changes nothing; incomplete markup throws. Nothing on the page is changed locally by the editor.
+- `render.js` edit mode: every non-placeholder capsule gets a `.remove` control with `role="button"` and `aria-label="Remove <name>"`, focusable only after `setEditing(true)` (svg class `editing`), firing `onRemove` on click and Enter but not other keys, and a footprint reports state `ended`; without `onRemove` no controls exist. The committed `removed.json` flow still drops the removed capsule at once with no footprint.
+- Portrait: `boardFor`, `BOARD_PORTRAIT` (760×1100, labels above rows), `boardLayout(..., { portrait: true })` gives two per line, 8 labeled rows for `many.json`, label anchored above the first capsule of each row; for `few`, `many`, and `generated-many` in portrait no capsule overlaps, every box is inside the board, no trace crosses a capsule, and `edgeBox` sits at the column origin minus the gap. `draw.setPortrait(true)` switches the viewBox to `0 0 760 1100` and re-lays out to two columns; back to landscape restores 1360×1000. Landscape values are unchanged from F10.
+- Server side of the acceptance (remove a live and an ended session, reload shows them gone, a new event brings the live one back) is covered by `tests/integration/removal-endpoint.test.js` from V7 against a temp events file; the browser click path is the editor flow above with the request stub.
+- Docs: `editor.md` examples match (pure functions and the full `createEditor` flow including the 404 path); `layout.md` documents `labelAbove`, `BOARD_PORTRAIT`, `boardFor`, `columnOrigin`, and the portrait rows; `render.md` edit-mode block; `app.md` and `README.md` describe the editor, the safe demo port, and the kept `orbit` identifiers. Builder's runner against the commit: 194 passed, 0 failed.
+
+## Notes, not failures
+
+1. ready.md's two observations (placeholders for just-removed chatty sessions, footprints overlapping in portrait) are the F12 scope the manager already assigned. The uncommitted F12 edits in the working tree currently break one docs example (`applySessionEvent merge` now carries `stateBeforeRemoval`) and one of my render tests (the `removed.json` comeback changed); both get settled in the F12 review.
+
 # Review: F10 2026-10-06 (round 2)
 
 PASS

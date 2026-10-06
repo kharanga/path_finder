@@ -50,8 +50,15 @@ class StubElement {
     this.listeners.get(type).push(listener);
   }
   dispatchEvent(event) {
+    event.preventDefault ??= () => {};
     for (const listener of this.listeners.get(event.type) ?? []) listener(event);
     return true;
+  }
+  click() {
+    this.dispatchEvent({ type: "click" });
+  }
+  focus() {
+    if (globalThis.document) globalThis.document.activeElement = this;
   }
   get firstChild() {
     return this.children[0] ?? null;
@@ -118,6 +125,8 @@ export function installDomStub({ reducedMotion = false } = {}) {
     createElementNS: (_namespace, tagName) => new StubElement(tagName),
     createElement: (tagName) => new StubElement(tagName),
     addEventListener() {},
+    body: new StubElement("body"),
+    activeElement: null,
   };
   globalThis.requestAnimationFrame = (callback) => setTimeout(callback, 0);
   globalThis.matchMedia = () => ({ matches: reducedMotion, addEventListener() {} });

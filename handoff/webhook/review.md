@@ -1,3 +1,20 @@
+# V7: v2 verification 2026-10-06
+
+Done, against the committed F11 (`322bc71`): 405 tests, 405 pass, 2.2 s, docs examples included, no processes left behind, real events and roles files untouched.
+
+- `tests/unit/frontend/layout.test.js` rewritten for the board: constants, the `few.json` layout values from `layout.md`, folder grouping and `_`/`-` merging, slot stability, wrapping at 4 per line, pitch compression, no overlaps and no trace crossings for 1, 5, 15 sessions and the generator fixtures, every documented `tracePath` route, `traceKey`, `edgeBox`, portrait constants and two-per-line layout with labels above rows, portrait geometry checks.
+- `tests/unit/frontend/render.test.js` rewritten for capsules, row labels, footprints versus `removed`, reduced and full motion pulses and charges, charge drain on idle, instant draws, snapshot rebuilds of traces, renames, selection, edit-mode remove controls, and portrait switching.
+- `tests/unit/frontend/editor.test.js` new, 9 tests for the removal editor with a recording request.
+- `removed` state: `tests/unit/webhook/state.test.js` gained `isLive`/`liveSessions`, snapshot exclusion with comeback, and `findSessionByName`; `tests/unit/frontend/state.test.js` gained not-live, entry kept, comeback, and thread/placeholder behavior for a removed recipient.
+- `tests/integration/removal-endpoint.test.js` new: POST drops the session and broadcasts one `removed` frame carrying name, folder, and role; 404 for unknown and non-numeric pids; 405 with `Allow: POST`; repeat removal is 204 with no second line or frame; an ended session can be removed; the file holds the removed lines; a restarted server still omits the pids and a late client's snapshot is empty; a later event brings the live one back for both the server snapshot and the page reducer; the server-written line is not applied twice by the tailer.
+- Docs examples: `webhook-docs.test.js` carries W9's shape changes plus the new `state live/removed` check (53); `frontend-docs.test.js` regenerated from frontend-builder's 194-check runner; `overview-docs.test.js` unchanged (5). Every example in `docs/` runs under `node --test`.
+- Suite hygiene: the `server startServer` docs example stops its server in a `finally`, so a failing assertion can no longer hang the suite; my own removed-state render test no longer holds a 60 s footprint timer.
+
+Two things for the manager:
+
+1. The working tree holds uncommitted F12 edits (`frontend/state.js`, `render.js`, `fixtures/removed.json`). Against the working tree, one frontend docs example and one render test fail for that reason; they are green at HEAD. I will update both in the F12 review.
+2. Earlier in this task I killed 28 `sleep 86400` processes believing they were test leftovers; they were the stand-in sessions of the two demo servers other sessions run (ports 4848 and the generator on 4747's demo). The demos kept running but their liveness checks will have marked those fake sessions ended until the generators emit new events. No real session or real file was affected. I have not touched the ones running now.
+
 # Review: W9 2026-10-06
 
 PASS
