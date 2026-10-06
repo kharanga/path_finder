@@ -1,3 +1,26 @@
+# Review: F10 2026-10-06
+
+1. Docs naming (acceptance: "Docs updated, including `docs/frontend/README.md` naming")  input: grep for ring-era wording in `docs/frontend/`  expected: capsule and board wording  actual: `README.md:39` "not on the ring (placeholder body)", `README.md:41` "the renamed body goes idle"; `app.md:7` "draws the empty ring", "the ring keeps showing", "particle highlight" (twice); `app.md:10` "the ring target"; `app.md:25` "the ring is dashed", "five bodies appear", "left the ring"; `connect.md:28` "the empty ring"; `state.md:11` "a body for a name", `state.md:256` "live body", `state.md:263` "drawn next to a body". `layout.md` and `render.md` are clean.
+
+## What passed
+
+Acceptance against SPEC §4 and §8.2, with `boardLayout`, `tracePath`, and the renderer through the DOM stub:
+
+- Rows and capsules at 1, 5, 15 sessions (`one`, `few`, `many`) and the generator fixtures (`generated-many` 15 sessions on 11 lines, `generated-mid`): zero overlapping capsule boxes, every box inside the 1360×1000 board, one row per folder with `_` and `-` merged, wrapping at 4 per line (6 sessions in one folder give 2 lines), a capsule keeps its slot when a newer session joins its row, placeholders go last, empty input gives no capsules, rows, or lines.
+- Traces never cross a capsule: every ordered pair of capsules on each fixture (up to 210 routes per fixture) routed with `tracePath`, and no horizontal or vertical segment passes through the interior of any third capsule, including the compressed 11-line layout where the channel gap shrinks to 12 units.
+- Every `layout.md` example matches: the `few.json` layout (5 capsules, 4 rows, pid 30222 at `[230, 412, 340, 440, 1, 0]`), the same-line route `d`, points, and length 290, the straight route of length 64, the two-lines-apart route with 6 points through the bus at x 468, `traceKey` order independence, `edgeBox` at x 194.
+- Every message produces a pulse: `messages.json` yields 6 pulses for 6 message events, each with a route path, hit circle, title, aria-label; the null-sender pulse starts at the row edge (x 194); the unknown recipient appears as a dashed placeholder capsule in its own row; traces are created once per pair and rebuilt from snapshot messages without pulses.
+- Notify charge drains on idle: the charge for thread 1 is drawn after event 1, survives the recipient's busy event, and gets class `draining` with its dashoffset reset to the full length after the idle event.
+- Reduced motion: with the option on, every pulse is created already `arrived`, no `animateMotion` elements exist, charges start at dashoffset 0; the CSS media block turns off the flicker, power-on, and rename animations and all transitions.
+- `removed.json`: after the snapshot one trace (`30111|30222`) and no pulses; `listings-bc` ended becomes a footprint; pid 40707 `removed` disappears at once while the footprint remains (3 capsules); it returns busy (4 capsules) and its message produces a pulse and a second trace.
+- The builder's example runner against the current code: 164 passed, 0 failed.
+- Suite, unit and integration only: 124 tests, 107 pass. The 17 failures are the old ring tests in `tests/unit/frontend/layout.test.js` (import of removed functions) and `render.test.js` (11 tests asserting `.body`, ring viewBox, and particle classes), which V7 replaces, plus 5 webhook tests already broken by W9's in-flight changes (`SESSION_STATES` now has six states, the error message lists `removed`, the hub and the generator scenario changed). Nothing else fails. Timeline, panel, and state tests still pass against the new renderer's inputs.
+
+## Notes, not failures
+
+1. `tests/docs-examples/webhook-docs.test.js` now stalls the full suite: a W9-changed example (`server startServer`) fails its assertion before calling `stop()`, so the listening server keeps the process alive. I will wrap it in try/finally in V7; until then run the suite without `tests/docs-examples/`.
+2. `index.html` keeps `id="orbit"` and the stylesheet keeps its `orbit.css` name. Fine as identifiers, but the README row for `index.html` could say so to avoid confusion.
+
 # Review: F9 2026-10-05 (round 2, post-PASS render fix and regenerated fixtures)
 
 PASS

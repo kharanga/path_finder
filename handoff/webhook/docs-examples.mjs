@@ -169,10 +169,10 @@ check("hook buildEvent", () => {
 check("hook appendEvent", () => assert.equal(hk.appendEvent("/nonexistent-root/e.jsonl", { a: 1 }), false));
 check("hook main cli", () => {
   const ef = `${T}/hook-test/events.jsonl`; rmSync(`${T}/hook-test`, { recursive: true, force: true });
-  const env = { ...process.env, CC_DASHBOARD_EVENTS: ef };
+  const env = { ...process.env, CC_DASHBOARD_EVENTS: ef, CC_DASHBOARD_ROLES: `${T}/hook-test/roles.json` };
   const o1 = execFileSync("node", [`${R}/webhook/hooks/dashboard-hook.js`], { input: '{"session_id":"177234a7-b67a-4a0f-bacc-d346355dfd49","hook_event_name":"Notification","cwd":"/Users/khangnguyen/Documents/path_finder","message":"x","notification_type":"permission_prompt"}', env });
   const o2 = execFileSync("node", [`${R}/webhook/hooks/dashboard-hook.js`], { input: "garbage", env });
-  assert.equal(o1.toString() + o2.toString(), ""); const lines = readFileSync(ef, "utf8").trim().split("\n"); assert.equal(lines.length, 132);
+  assert.equal(o1.toString() + o2.toString(), ""); const lines = readFileSync(ef, "utf8").trim().split("\n"); assert.equal(lines.length, 1);
   const e = JSON.parse(lines[0]); assert.deepEqual([e.type, e.session, e.folder, e.pid, e.state, e.role], ["session", "path-finder-37", "path_finder", 52134, "waiting", null]);
 });
 
