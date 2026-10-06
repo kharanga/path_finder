@@ -1,25 +1,187 @@
 {
   "snapshot": {
     "sessions": [
-      {"ts":"2026-10-05T22:00:00Z","type":"session","session":"path-finder-0d","folder":"path_finder","pid":29248,"state":"idle","role":"manager"},
-      {"ts":"2026-10-05T22:00:01Z","type":"session","session":"path-finder-18","folder":"path_finder","pid":30222,"state":"busy","role":"frontend-builder"},
-      {"ts":"2026-10-05T22:00:02Z","type":"session","session":"path-finder-e5","folder":"path_finder","pid":40707,"state":"idle","role":"validator"},
-      {"ts":"2026-10-05T22:00:03Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"idle","role":null},
-      {"ts":"2026-10-05T22:00:04Z","type":"session","session":"tag-analyzer-63","folder":"tag-analyzer","pid":30111,"state":"waiting","role":null}
+      {
+        "ts": "2026-10-05T22:00:00Z",
+        "type": "session",
+        "session": "path-finder-0d",
+        "folder": "path_finder",
+        "pid": 29248,
+        "state": "idle",
+        "role": "manager"
+      },
+      {
+        "ts": "2026-10-05T22:00:01Z",
+        "type": "session",
+        "session": "path-finder-18",
+        "folder": "path_finder",
+        "pid": 30222,
+        "state": "busy",
+        "role": "frontend-builder"
+      },
+      {
+        "ts": "2026-10-05T22:00:02Z",
+        "type": "session",
+        "session": "path-finder-e5",
+        "folder": "path_finder",
+        "pid": 40707,
+        "state": "idle",
+        "role": "validator"
+      },
+      {
+        "ts": "2026-10-05T22:00:03Z",
+        "type": "session",
+        "session": "listings-bc",
+        "folder": "listings",
+        "pid": 29904,
+        "state": "idle",
+        "role": null
+      },
+      {
+        "ts": "2026-10-05T22:00:04Z",
+        "type": "session",
+        "session": "tag-analyzer-63",
+        "folder": "tag-analyzer",
+        "pid": 30111,
+        "state": "waiting",
+        "role": null
+      }
     ],
     "messages": [
-      {"ts":"2026-10-05T21:59:00Z","type":"message","from":"path-finder-0d","to":"path-finder-18","text":"F4 assigned, see SPEC.md §8.2","notify_on_idle":false}
+      {
+        "ts": "2026-10-05T21:59:00Z",
+        "type": "message",
+        "from": "path-finder-0d",
+        "to": "path-finder-18",
+        "text": "F4 assigned, see SPEC.md §8.2",
+        "notify_on_idle": false
+      }
     ]
   },
   "events": [
-    {"delayMs": 1000, "event": "message", "data": {"ts":"2026-10-05T22:00:10Z","type":"message","from":"path-finder-18","to":"path-finder-e5","text":"F4 ready for review, see handoff/frontend/ready.md","notify_on_idle":true}},
-    {"delayMs": 1500, "event": "session", "data": {"ts":"2026-10-05T22:00:12Z","type":"session","session":"path-finder-e5","folder":"path_finder","pid":40707,"state":"busy","role":"validator"}},
-    {"delayMs": 1000, "event": "message", "data": {"ts":"2026-10-05T22:00:13Z","type":"message","from":"listings-bc","to":"tag-analyzer-63","text":"plain message, no thread","notify_on_idle":false}},
-    {"delayMs": 1500, "event": "session", "data": {"ts":"2026-10-05T22:00:15Z","type":"session","session":"tag-analyzer-63","folder":"tag-analyzer","pid":30111,"state":"busy","role":null}},
-    {"delayMs": 2500, "event": "session", "data": {"ts":"2026-10-05T22:00:18Z","type":"session","session":"path-finder-e5","folder":"path_finder","pid":40707,"state":"idle","role":"validator"}},
-    {"delayMs": 1500, "event": "message", "data": {"ts":"2026-10-05T22:00:20Z","type":"message","from":"path-finder-e5","to":"path-finder-18","text":"F4 PASS","notify_on_idle":false}},
-    {"delayMs": 1500, "event": "message", "data": {"ts":"2026-10-05T22:00:22Z","type":"message","from":"path-finder-0d","to":"nobody-99","text":"to a session that is not on the ring","notify_on_idle":true}},
-    {"delayMs": 1500, "event": "message", "data": {"ts":"2026-10-05T22:00:24Z","type":"message","from":"path-finder-0d","to":"listings-bc","text":"thread dropped when the recipient ends","notify_on_idle":true}},
-    {"delayMs": 2500, "event": "liveness", "data": {"ts":"2026-10-05T22:00:27Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"ended","role":null}}
+    {
+      "delayMs": 1000,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T22:00:10Z",
+        "type": "message",
+        "from": "path-finder-18",
+        "to": "path-finder-e5",
+        "text": "F4 ready for review, see handoff/frontend/ready.md",
+        "notify_on_idle": true
+      }
+    },
+    {
+      "delayMs": 1500,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T22:00:12Z",
+        "type": "session",
+        "session": "path-finder-e5",
+        "folder": "path_finder",
+        "pid": 40707,
+        "state": "busy",
+        "role": "validator"
+      }
+    },
+    {
+      "delayMs": 1000,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T22:00:13Z",
+        "type": "message",
+        "from": "listings-bc",
+        "to": "tag-analyzer-63",
+        "text": "plain message, no thread",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 1500,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T22:00:15Z",
+        "type": "session",
+        "session": "tag-analyzer-63",
+        "folder": "tag-analyzer",
+        "pid": 30111,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 2500,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T22:00:18Z",
+        "type": "session",
+        "session": "path-finder-e5",
+        "folder": "path_finder",
+        "pid": 40707,
+        "state": "idle",
+        "role": "validator"
+      }
+    },
+    {
+      "delayMs": 1500,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T22:00:20Z",
+        "type": "message",
+        "from": "path-finder-e5",
+        "to": "path-finder-18",
+        "text": "F4 PASS",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 1500,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T22:00:22Z",
+        "type": "message",
+        "from": "path-finder-0d",
+        "to": "nobody-99",
+        "text": "to a session that is not on the ring",
+        "notify_on_idle": true
+      }
+    },
+    {
+      "delayMs": 1500,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T22:00:24Z",
+        "type": "message",
+        "from": "path-finder-0d",
+        "to": "listings-bc",
+        "text": "thread dropped when the recipient ends",
+        "notify_on_idle": true
+      }
+    },
+    {
+      "delayMs": 2500,
+      "event": "liveness",
+      "data": {
+        "ts": "2026-10-05T22:00:27Z",
+        "type": "session",
+        "session": "listings-bc",
+        "folder": "listings",
+        "pid": 29904,
+        "state": "ended",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 1500,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T22:00:29Z",
+        "type": "message",
+        "from": null,
+        "to": "path-finder-18",
+        "text": "sender unknown: hook could not resolve the session name",
+        "notify_on_idle": false
+      }
+    }
   ]
 }

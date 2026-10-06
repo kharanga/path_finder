@@ -30,7 +30,7 @@ Fewer sessions skip the steps that need more participants: step 3 needs 2, step 
 |---|---|---|
 | `--out <path>` | | write raw events.jsonl |
 | `--fixture <path>` | | write the page fixture instead |
-| `--speed <x>` | 1 | live mode only, divide every wait by x |
+| `--speed <x>` | 1 | divide every wait by x: live mode sleeps less, fixture mode writes smaller `delayMs` (timestamps stay at real pace) |
 | `--sessions <n>` | 15 | how many of `FOLDERS` to start, 0 to 15 |
 | `--seed <n>` | 42 | PRNG seed, same seed gives the same names, texts, and timing |
 | `--instant` | off | raw mode without waits or processes |
@@ -45,6 +45,12 @@ Regenerate the page fixtures:
 ```
 node webhook/fake.js --fixture frontend/fixtures/generated-many.json --start-time 2026-10-05T21:40:00Z
 node webhook/fake.js --fixture frontend/fixtures/generated-mid.json --sessions 8 --snapshot-until 40 --start-time 2026-10-05T21:40:00Z
+```
+
+A fast variant for test runs, every `delayMs` divided by 10 so the 160 second stream plays in 16:
+
+```
+node webhook/fake.js --fixture /tmp/generated-fast.json --speed 10 --start-time 2026-10-05T21:40:00Z
 ```
 
 Live against the real server, one command: `node webhook/server.js --demo` (lands with W5). Until then, two terminals:
@@ -64,7 +70,7 @@ Output: `{next(), int(min, max), pick(items), hex2()}`.
 
 Errors: none.
 
-Example: `createRandom(42).hex2()` is `"72"`, and the first `FOLDERS` session is therefore always `listings-72`.
+Example: `createRandom(42).hex2()` is `"99"`. In the scenario the first draw goes to the PID allocator (`int(1, 40)` gives `25`), so the first session name uses the second draw and is always `listings-72`.
 
 ## parseArgs(argv)
 
@@ -118,11 +124,11 @@ Errors: none expected.
 
 Example: `await runScenario(createGenerator(opts, {write}), opts)` with `opts = parseArgs(["--fixture", "/tmp/x.json", "--sessions", "0"])` records zero entries.
 
-## buildFixture(entries, snapshotUntilSeconds = 0)
+## buildFixture(entries, snapshotUntilSeconds = 0, speed = 1)
 
-What it does: converts recorded entries into the page fixture, reducing entries up to the cutoff into `snapshot` through `state.js` and turning the rest into timed events with `delayMs` relative to the previous one (the first relative to the cutoff).
+What it does: converts recorded entries into the page fixture, reducing entries up to the cutoff into `snapshot` through `state.js` and turning the rest into timed events with `delayMs` relative to the previous one (the first relative to the cutoff), divided by `speed` and rounded.
 
-Inputs: `entries` (`{atMs, event, data}[]`); `snapshotUntilSeconds` (number).
+Inputs: `entries` (`{atMs, event, data}[]`); `snapshotUntilSeconds` (number); `speed` (positive number).
 
 Output: `{snapshot: {sessions, messages}, events: [{delayMs, event, data}]}`.
 
@@ -137,6 +143,8 @@ buildFixture([
 ], 4)
 // { snapshot: { sessions: [{ ...state: "started" }], messages: [] }, events: [{ delayMs: 1000, event: "session", data: { ...state: "busy" } }] }
 ```
+
+With the same entries and `speed = 4` the single event has `delayMs: 250`.
 
 ## Command examples
 

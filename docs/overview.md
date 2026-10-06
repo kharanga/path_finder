@@ -63,6 +63,7 @@ Confirmed in W1: `SendMessage` exposes `to`, `message`, and `notify_when_idle`, 
 ## Server to page contract
 
 - `GET /` serves `frontend/index.html`. Every other path that is not `/events` is served as a static file from `frontend/` with the correct content type for `.html`, `.js`, `.css`, `.json`, and `.svg`. Paths that escape `frontend/` return 404.
+- `GET /snapshot` returns the current snapshot as plain JSON, the same object the SSE stream sends first. For tests and curl.
 - `GET /events` is a Server-Sent Events stream.
   - First event: `event: snapshot`, data `{"sessions":[...],"messages":[...]}` where each session object is the latest `session` event for that PID and `messages` holds recent message events, oldest first.
   - Then `event: session` and `event: message` with the schema above, as they arrive.
@@ -82,4 +83,4 @@ For driving the page without the server, `webhook/fake.js --fixture <path>` writ
 
 ## Liveness
 
-Sessions can die without `SessionEnd`. The server checks each known PID on an interval. A missing process produces a synthetic `ended` event. The socket directory `/tmp/cc-socks/` may be consulted as a secondary signal but is an undocumented Claude Code internal.
+Sessions can die without `SessionEnd`. The server checks each known PID on an interval. A missing process produces a synthetic `ended` event. On the same interval the server reads `status` from `~/.claude/sessions/<pid>.json`, the registry Claude Code keeps per running session, and emits a corrective `session` event when hook state disagrees (for example a missed `Stop` after a user interrupt). Both the hook and the server depend on that registry for names and status. It is an undocumented Claude Code internal; if it changes, the hook falls back to the process tree and the server falls back to PID checks only. The socket directory `/tmp/cc-socks/` may be consulted as a secondary signal but is an undocumented Claude Code internal.

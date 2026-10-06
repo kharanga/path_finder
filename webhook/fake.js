@@ -325,8 +325,8 @@ export async function runScenario(generator, options, sleepFn) {
   }
 }
 
-/** Converts recorded entries into the page fixture {snapshot, events}, folding entries up to snapshotUntilSeconds into the snapshot. */
-export function buildFixture(entries, snapshotUntilSeconds = 0) {
+/** Converts recorded entries into the page fixture {snapshot, events}, folding entries up to snapshotUntilSeconds into the snapshot and dividing delays by speed. */
+export function buildFixture(entries, snapshotUntilSeconds = 0, speed = 1) {
   const cutoffMs = snapshotUntilSeconds * 1000;
   const state = createState();
   const events = [];
@@ -336,7 +336,7 @@ export function buildFixture(entries, snapshotUntilSeconds = 0) {
       applyEvent(state, entry.data);
       continue;
     }
-    events.push({ delayMs: entry.atMs - previousMs, event: entry.event, data: entry.data });
+    events.push({ delayMs: Math.round((entry.atMs - previousMs) / speed), event: entry.event, data: entry.data });
     previousMs = entry.atMs;
   }
   return { snapshot: snapshot(state), events };
@@ -359,7 +359,7 @@ async function main() {
   process.on("exit", () => generator.shutdown());
   await runScenario(generator, options, sleep);
   if (options.fixture) {
-    writeFileSync(options.fixture, `${JSON.stringify(buildFixture(generator.entries, options.snapshotUntilSeconds), null, 2)}\n`);
+    writeFileSync(options.fixture, `${JSON.stringify(buildFixture(generator.entries, options.snapshotUntilSeconds, options.speed), null, 2)}\n`);
   }
   generator.shutdown();
 }
