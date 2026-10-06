@@ -68,145 +68,21 @@ body {
   overflow: visible;
 }
 
-.body { outline: none; }
-
-.body:focus-visible .core {
-  stroke: var(--particle);
-  stroke-width: 4;
-}
-
-.body:focus-visible .name { fill: var(--particle); }
-
-.body {
-  opacity: 1;
-  transition: transform 600ms ease, opacity 700ms ease;
-}
-
-.body.entering { opacity: 0; }
-
-.body.leaving {
-  opacity: 0.3;
-  transition: opacity 1500ms ease;
-}
-
-.body .halo {
-  fill: var(--busy);
-  opacity: 0;
-  transform-box: fill-box;
-  transform-origin: center;
-  transition: opacity 500ms ease;
-}
-
-.body[data-state="busy"] .halo {
-  opacity: 0.35;
-  animation: pulse 2.4s ease-in-out infinite;
-}
-
-.body[data-state="busy"] .core {
-  filter: drop-shadow(0 0 10px var(--busy));
-}
-
-.body[data-state="waiting"] .core { fill: var(--waiting); }
-.body[data-state="waiting"] .halo { fill: var(--waiting); opacity: 0.2; }
-
-.body[data-state="placeholder"] .core {
-  fill: none;
-  stroke: var(--muted);
-  stroke-width: 2;
-  stroke-dasharray: 4 4;
-  opacity: 0.6;
-}
-.body[data-state="placeholder"] .name { fill: var(--muted); font-style: italic; }
-
-.body[data-state="idle"] .core { opacity: 0.7; }
-.body[data-state="idle"] .name { fill: var(--muted); }
-
-.body[data-state="ended"] .core { fill: var(--ring); }
-.body[data-state="ended"] .name,
-.body[data-state="ended"] .role { fill: var(--muted); }
-
-.body.renamed .name {
-  animation: rename-flash 1.8s ease-out;
-}
-
-@keyframes rename-flash {
-  0% { fill: var(--busy); }
-  60% { fill: var(--busy); }
-  100% { fill: var(--text); }
-}
-
-@keyframes pulse {
-  0%, 100% { transform: scale(1); opacity: 0.35; }
-  50% { transform: scale(1.35); opacity: 0.1; }
-}
-
-.particle-path {
-  fill: none;
-  stroke: none;
-}
-
-.particle-dot {
-  fill: var(--particle);
-  filter: drop-shadow(0 0 6px var(--particle));
-  transition: opacity 1500ms ease, r 400ms ease;
-}
-
-.particle { cursor: pointer; outline: none; }
-
-.particle-hit {
-  fill: transparent;
-  stroke: none;
-}
-
-.particle.arrived .particle-dot { pointer-events: none; }
-
-.particle:focus-visible .particle-hit,
-.particle.selected .particle-hit {
-  fill: var(--particle);
-  fill-opacity: 0.2;
-  stroke: var(--particle);
-  stroke-width: 2.5;
-}
-
-.particle.selected .particle-dot { opacity: 1; r: 6; }
-
-.particle.notify .particle-dot { fill: var(--thread); filter: drop-shadow(0 0 6px var(--thread)); }
-
-.particle.arrived .particle-dot {
-  opacity: 0.45;
-  r: 4;
-  filter: none;
-}
-
-.thread {
-  fill: none;
-  stroke: var(--thread);
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  opacity: 0.7;
-  transition: stroke-dashoffset var(--draw-ms, 1200ms) ease-out, opacity 500ms ease;
-}
-
-.thread.snapping {
-  transition: stroke-dashoffset 500ms cubic-bezier(0.6, 0, 0.9, 0.5);
-}
-
-.thread.dropping { opacity: 0; }
-
-@media (prefers-reduced-motion: reduce) {
-  .body, .body.leaving, .body .halo, .particle-dot, .thread, .thread.snapping { transition: none; }
-  .body[data-state="busy"] .halo { animation: none; opacity: 0.3; }
-  .body.renamed .name { animation: none; fill: var(--busy); }
-}
-
-.ring {
-  fill: none;
+.board {
+  fill: #0d101a;
   stroke: var(--ring);
   stroke-width: 2;
+  rx: 18;
 }
 
-.ring.empty {
-  stroke-dasharray: 6 10;
+.board.empty { stroke-dasharray: 8 10; }
+
+.row-label {
+  fill: var(--muted);
+  font-size: 18px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: transform 600ms ease;
 }
 
 .empty-label {
@@ -214,24 +90,155 @@ body {
   font-size: 28px;
 }
 
-.body .core {
-  fill: var(--idle);
-  stroke: var(--bg);
-  stroke-width: 3;
-  transition: fill 500ms ease, opacity 500ms ease;
+.capsule {
+  opacity: 1;
+  outline: none;
+  transition: transform 600ms ease, opacity 700ms ease;
 }
 
-.body[data-state="busy"] .core { fill: var(--busy); }
-.body[data-state="started"] .core { fill: var(--started); }
+.capsule.entering { opacity: 0; }
 
-.body .name {
+.capsule.leaving {
+  opacity: 0.25;
+  transition: opacity 1500ms ease;
+}
+
+.capsule .shell {
+  fill: #161a2a;
+  stroke: var(--idle);
+  stroke-width: 2.5;
+  transition: fill 500ms ease, stroke 500ms ease, filter 500ms ease;
+}
+
+.capsule .name {
   fill: var(--text);
-  font-size: 22px;
+  font-size: 19px;
 }
 
-.body .role {
+.capsule .role {
   fill: var(--muted);
-  font-size: 17px;
+  font-size: 15px;
+}
+
+.capsule[data-state="busy"] .shell {
+  stroke: var(--busy);
+  fill: #2a2412;
+  filter: drop-shadow(0 0 10px var(--busy));
+  animation: flicker 2.6s steps(1, end) infinite;
+}
+
+.capsule[data-state="waiting"] .shell {
+  stroke: var(--waiting);
+  fill: #2a1b12;
+  filter: drop-shadow(0 0 6px var(--waiting));
+}
+
+.capsule[data-state="idle"] .shell { stroke: var(--idle); }
+.capsule[data-state="idle"] .name { fill: var(--muted); }
+
+.capsule[data-state="started"] .shell { stroke: var(--started); }
+.capsule[data-state="started"] .name { fill: var(--muted); }
+.capsule.powering .shell { animation: power-on 1s ease-out; }
+
+.capsule[data-state="ended"] .shell { stroke: var(--ring); fill: transparent; filter: none; animation: none; }
+.capsule[data-state="ended"] .name,
+.capsule[data-state="ended"] .role { fill: var(--muted); }
+
+.capsule[data-state="placeholder"] .shell {
+  fill: transparent;
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-dasharray: 6 6;
+  opacity: 0.7;
+}
+.capsule[data-state="placeholder"] .name { fill: var(--muted); font-style: italic; }
+
+.capsule:focus-visible .shell {
+  stroke: var(--particle);
+  stroke-width: 4;
+}
+.capsule:focus-visible .name { fill: var(--particle); }
+
+.capsule.renamed .name { animation: rename-flash 1.8s ease-out; }
+
+@keyframes rename-flash {
+  0% { fill: var(--busy); }
+  60% { fill: var(--busy); }
+  100% { fill: var(--text); }
+}
+
+@keyframes flicker {
+  0%, 100% { filter: drop-shadow(0 0 10px var(--busy)); }
+  7% { filter: drop-shadow(0 0 4px var(--busy)); }
+  9% { filter: drop-shadow(0 0 12px var(--busy)); }
+  41% { filter: drop-shadow(0 0 9px var(--busy)); }
+  43% { filter: drop-shadow(0 0 3px var(--busy)); }
+  44% { filter: drop-shadow(0 0 12px var(--busy)); }
+  78% { filter: drop-shadow(0 0 11px var(--busy)); }
+  80% { filter: drop-shadow(0 0 5px var(--busy)); }
+}
+
+@keyframes power-on {
+  0% { stroke: var(--particle); filter: drop-shadow(0 0 14px var(--particle)); }
+  100% { stroke: var(--started); filter: none; }
+}
+
+.trace {
+  fill: none;
+  stroke: var(--thread);
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0.22;
+}
+
+.charge {
+  fill: none;
+  stroke: var(--thread);
+  stroke-width: 3;
+  stroke-linecap: round;
+  opacity: 0.9;
+  filter: drop-shadow(0 0 6px var(--thread));
+  transition: stroke-dashoffset var(--draw-ms, 1200ms) ease-out, opacity 500ms ease;
+}
+
+.charge.draining { transition: stroke-dashoffset 500ms cubic-bezier(0.6, 0, 0.9, 0.5); }
+.charge.dropping { opacity: 0; }
+
+.pulse { cursor: pointer; outline: none; }
+
+.pulse-path { fill: none; stroke: none; }
+
+.pulse-hit { fill: transparent; stroke: none; }
+
+.pulse-dot {
+  fill: var(--particle);
+  filter: drop-shadow(0 0 8px var(--particle));
+  transition: opacity 1500ms ease, r 400ms ease;
+}
+
+.pulse.notify .pulse-dot { fill: var(--thread); filter: drop-shadow(0 0 8px var(--thread)); }
+
+.pulse.arrived .pulse-dot {
+  opacity: 0.5;
+  r: 4;
+  filter: none;
+  pointer-events: none;
+}
+
+.pulse:focus-visible .pulse-hit,
+.pulse.selected .pulse-hit {
+  fill: var(--particle);
+  fill-opacity: 0.2;
+  stroke: var(--particle);
+  stroke-width: 2.5;
+}
+
+.pulse.selected .pulse-dot { opacity: 1; r: 6; }
+
+@media (prefers-reduced-motion: reduce) {
+  .capsule, .capsule.leaving, .capsule .shell, .row-label, .pulse-dot, .charge, .charge.draining { transition: none; }
+  .capsule[data-state="busy"] .shell, .capsule.powering .shell, .capsule.renamed .name { animation: none; }
+  .capsule.renamed .name { fill: var(--busy); }
 }
 
 .stage { position: relative; }
@@ -425,8 +432,9 @@ body {
   .topbar { padding: 10px 16px; }
   .stage { padding: 0 16px 8px; }
   .orbit { width: 100%; }
-  .body .name { font-size: 30px; }
-  .body .role { font-size: 23px; }
+  .capsule .name { font-size: 22px; }
+  .capsule .role { font-size: 17px; }
+  .row-label { font-size: 20px; }
   .empty-label { font-size: 40px; }
   .timeline { padding: 8px 16px 12px; gap: 8px; }
   .time { min-width: 0; }

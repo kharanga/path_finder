@@ -12,11 +12,11 @@ const checkAsync = async (name, fn) => { try { await fn(); passed++; } catch (e)
 const schema = await import(`${R}/webhook/schema.js`);
 check("schema validate ok session", () => assert.deepEqual(schema.validateEvent({ ts: "2026-10-05T21:40:00Z", type: "session", session: "listings-bc", folder: "listings", pid: 29904, state: "started", role: null }), { ok: true, errors: [] }));
 check("schema validate ok message", () => assert.deepEqual(schema.validateEvent({ ts: "2026-10-05T21:40:05Z", type: "message", from: "listings-bc", to: "tag-analyzer-63", text: "L16 is ready, look at it", notify_on_idle: true }), { ok: true, errors: [] }));
-check("schema validate errors", () => assert.deepEqual(schema.validateEvent({ ts: "bad", type: "session", session: 1, folder: "x", pid: 0, state: "sleeping", role: null, extra: 1 }), { ok: false, errors: ["ts must be an ISO 8601 string", "session must be a string or null", "pid must be a positive integer", "state must be one of started, busy, waiting, idle, ended", "unknown field extra"] }));
+check("schema validate errors", () => assert.deepEqual(schema.validateEvent({ ts: "bad", type: "session", session: 1, folder: "x", pid: 0, state: "sleeping", role: null, extra: 1 }), { ok: false, errors: ["ts must be an ISO 8601 string", "session must be a string or null", "pid must be a positive integer", "state must be one of started, busy, waiting, idle, ended, removed", "unknown field extra"] }));
 check("schema validate nope", () => assert.deepEqual(schema.validateEvent("nope"), { ok: false, errors: ["event must be an object"] }));
 check("schema parse", () => assert.deepEqual(schema.parseEventLine('{"ts":"2026-10-05T21:40:00Z","type":"session","session":null,"folder":"listings","pid":29904,"state":"busy","role":null}'), { ts: "2026-10-05T21:40:00Z", type: "session", session: null, folder: "listings", pid: 29904, state: "busy", role: null }));
 check("schema parse nulls", () => { assert.equal(schema.parseEventLine("not json"), null); assert.equal(schema.parseEventLine(""), null); assert.equal(schema.parseEventLine('{"ts":"bad"}'), null); });
-check("schema states", () => assert.deepEqual(schema.SESSION_STATES, ["started", "busy", "waiting", "idle", "ended"]));
+check("schema states", () => { assert.deepEqual(schema.SESSION_STATES, ["started", "busy", "waiting", "idle", "ended", "removed"]); assert.deepEqual(schema.NOT_LIVE_STATES, ["ended", "removed"]); });
 
 const st = await import(`${R}/webhook/state.js`);
 check("state create", () => { const s = st.createState(2); assert.equal(s.sessions.size, 0); assert.deepEqual(s.messages, []); assert.equal(s.messageLimit, 2); });
@@ -27,6 +27,9 @@ const stored = st.applyEvent(state, { ts: "2026-10-05T21:40:02Z", type: "session
 check("state merge", () => assert.equal(J(stored), '{"ts":"2026-10-05T21:40:02Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"idle","role":null}'));
 for (const i of [0, 1, 2]) st.applyEvent(state, { ts: `2026-10-05T21:41:0${i}Z`, type: "message", from: "a", to: "b", text: `m${i}`, notify_on_idle: false });
 check("state cap", () => assert.deepEqual(state.messages.map((m) => m.text), ["m1", "m2"]));
+check("state live/removed", () => { const s2 = st.createState(); st.applyEvent(s2, { ts: "2026-10-05T21:40:00Z", type: "session", session: "a", folder: "a", pid: 1, state: "idle", role: null }); st.applyEvent(s2, { ts: "2026-10-05T21:40:01Z", type: "session", session: "b", folder: "b", pid: 2, state: "ended", role: null }); st.applyEvent(s2, { ts: "2026-10-05T21:40:02Z", type: "session", session: "c", folder: "c", pid: 3, state: "removed", role: null });
+  assert.deepEqual(st.liveSessions(s2).map((x) => x.pid), [1]); assert.deepEqual(st.snapshot(s2).sessions.map((x) => x.pid), [1, 2]); assert.equal(st.isLive({ state: "busy" }), true); assert.equal(st.isLive({ state: "removed" }), false); assert.equal(st.findSessionByName(s2, "c"), undefined);
+  st.applyEvent(s2, { ts: "2026-10-05T21:40:03Z", type: "session", session: "c", folder: "c", pid: 3, state: "busy", role: null }); assert.deepEqual(st.snapshot(s2).sessions.map((x) => x.pid), [1, 2, 3]); });
 check("state findByName", () => { assert.equal(st.findSessionByName(state, "listings-bc").pid, 29904); assert.equal(st.findSessionByName(state, "nobody"), undefined); });
 check("state snapshot", () => assert.equal(J(st.snapshot(state)), '{"sessions":[{"ts":"2026-10-05T21:40:02Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"idle","role":null}],"messages":[{"ts":"2026-10-05T21:41:01Z","type":"message","from":"a","to":"b","text":"m1","notify_on_idle":false},{"ts":"2026-10-05T21:41:02Z","type":"message","from":"a","to":"b","text":"m2","notify_on_idle":false}]}'));
 
@@ -78,7 +81,7 @@ check("server createHub", () => {
   const hub = sv.createHub({ isAlive: () => true, readStatus: () => null });
   assert.equal(hub.ingestLine('{"ts":"2026-10-05T21:40:00Z","type":"session","session":"a-1","folder":"a","pid":1,"state":"busy","role":null}').state, "busy");
   assert.equal(hub.ingestLine("not json"), null); assert.equal(hub.ingestLine(""), null);
-  assert.equal(J(hub.stats), '{"linesRead":3,"malformedLines":1,"eventsApplied":1,"livenessEnded":0,"statusCorrections":0}');
+  assert.equal(J(hub.stats), '{"linesRead":3,"malformedLines":1,"eventsApplied":1,"livenessEnded":0,"statusCorrections":0,"removals":0}');
   const frames = []; const remove = hub.addClient({ write: (f) => frames.push(f) });
   hub.ingestLine('{"ts":"2026-10-05T21:40:05Z","type":"message","from":"a-1","to":"b","text":"hi","notify_on_idle":true}');
   assert.deepEqual(frames.map((f) => f.split("\n")[0]), ["event: snapshot", "event: message"]); remove();
@@ -90,13 +93,18 @@ await checkAsync("server startServer", async () => {
   const { server, hub, stop } = await sv.startServer({ eventsPath: ef, port: 0, livenessIntervalMs: 0 });
   const port = server.address().port;
   const stats = await fetch(`http://127.0.0.1:${port}/snapshot`).then((r) => r.json()).then((d) => d.stats);
-  assert.equal(J(stats), '{"linesRead":2,"malformedLines":1,"eventsApplied":1,"livenessEnded":0,"statusCorrections":0}');
+  assert.equal(J(stats), '{"linesRead":2,"malformedLines":1,"eventsApplied":1,"livenessEnded":0,"statusCorrections":0,"removals":0}');
   assert.equal(hub.state.sessions.get(29904).state, "started");
   const root = await fetch(`http://127.0.0.1:${port}/`); assert.equal(root.status, 200); assert.equal(root.headers.get("content-type"), "text/html; charset=utf-8");
   const css = await fetch(`http://127.0.0.1:${port}/orbit.css`); assert.equal(css.headers.get("content-type"), "text/css; charset=utf-8");
   const post = await fetch(`http://127.0.0.1:${port}/`, { method: "POST" }); assert.equal(post.status, 405);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/sessions/4242/remove`, { method: "POST" })).status, 404);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/sessions/29904/remove`)).status, 405);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/sessions/29904/remove`, { method: "POST" })).status, 204);
+  assert.deepEqual((await fetch(`http://127.0.0.1:${port}/snapshot`).then((r) => r.json())).sessions, []);
+  assert.equal(JSON.parse(readFileSync(ef, "utf8").trim().split("\n").pop()).state, "removed");
   const sse = await fetch(`http://127.0.0.1:${port}/events`); const reader = sse.body.getReader(); const { value } = await reader.read(); const text = new TextDecoder().decode(value);
-  assert.equal(text, ': connected\n\nevent: snapshot\ndata: {"sessions":[{"ts":"2026-10-05T21:40:00Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"started","role":null}],"messages":[]}\n\n');
+  assert.equal(text, ': connected\n\nevent: snapshot\ndata: {"sessions":[],"messages":[]}\n\n');
   await reader.cancel(); await stop();
 });
 
@@ -117,18 +125,18 @@ check("fake buildFixture", () => {
 check("fake command fixture", () => {
   execFileSync("node", [`${R}/webhook/fake.js`, "--fixture", `${T}/fx.json`, "--start-time", "2026-10-05T21:40:00Z"]);
   const f = JSON.parse(readFileSync(`${T}/fx.json`, "utf8")); const ev = f.events;
-  assert.equal(f.snapshot.sessions.length, 0); assert.equal(ev.length, 129);
+  assert.equal(f.snapshot.sessions.length, 0); assert.equal(ev.length, 134);
   assert.equal(ev.filter((e) => e.event === "liveness").length, 2); assert.equal(ev.filter((e) => e.data.type === "message" && e.data.from === null).length, 1);
   assert.equal(ev.filter((e) => e.data.type === "message" && e.data.to === "ghost-session-00").length, 1); assert.equal(ev.filter((e) => e.data.notify_on_idle === true).length, 7);
   assert.equal(new Set(ev.filter((e) => e.data.type === "session" && e.data.session).map((e) => e.data.session)).size, 18);
   assert.equal(J(ev[0]), '{"delayMs":3000,"event":"session","data":{"ts":"2026-10-05T21:40:03.000Z","type":"session","session":"listings-72","folder":"listings","pid":70025,"state":"started","role":null}}');
   execFileSync("node", [`${R}/webhook/fake.js`, "--fixture", `${T}/fx2.json`, "--start-time", "2026-10-05T21:40:00Z"]); assert.equal(readFileSync(`${T}/fx.json`, "utf8"), readFileSync(`${T}/fx2.json`, "utf8"));
   execFileSync("node", [`${R}/webhook/fake.js`, "--fixture", `${T}/fast.json`, "--speed", "10", "--start-time", "2026-10-05T21:40:00Z"]);
-  const fast = JSON.parse(readFileSync(`${T}/fast.json`, "utf8")); assert.equal(fast.events.reduce((a, e) => a + e.delayMs, 0) / 1000, 16.35); assert.equal(ev.reduce((a, e) => a + e.delayMs, 0) / 1000, 163.5);
+  const fast = JSON.parse(readFileSync(`${T}/fast.json`, "utf8")); assert.equal(fast.events.reduce((a, e) => a + e.delayMs, 0) / 1000, 17.15); assert.equal(ev.reduce((a, e) => a + e.delayMs, 0) / 1000, 171.5);
 });
 check("fake command raw", () => {
   execFileSync("node", [`${R}/webhook/fake.js`, "--out", `${T}/raw.jsonl`, "--instant"]);
-  const lines = readFileSync(`${T}/raw.jsonl`, "utf8").trim().split("\n"); assert.equal(lines.length, 127); assert.equal(lines.filter((l) => !schema.parseEventLine(l)).length, 0);
+  const lines = readFileSync(`${T}/raw.jsonl`, "utf8").trim().split("\n"); assert.equal(lines.length, 132); assert.equal(lines.filter((l) => !schema.parseEventLine(l)).length, 0);
 });
 
 const cr = await import(`${R}/webhook/hooks/capture-raw.js`);
@@ -164,7 +172,7 @@ check("hook main cli", () => {
   const env = { ...process.env, CC_DASHBOARD_EVENTS: ef };
   const o1 = execFileSync("node", [`${R}/webhook/hooks/dashboard-hook.js`], { input: '{"session_id":"177234a7-b67a-4a0f-bacc-d346355dfd49","hook_event_name":"Notification","cwd":"/Users/khangnguyen/Documents/path_finder","message":"x","notification_type":"permission_prompt"}', env });
   const o2 = execFileSync("node", [`${R}/webhook/hooks/dashboard-hook.js`], { input: "garbage", env });
-  assert.equal(o1.toString() + o2.toString(), ""); const lines = readFileSync(ef, "utf8").trim().split("\n"); assert.equal(lines.length, 1);
+  assert.equal(o1.toString() + o2.toString(), ""); const lines = readFileSync(ef, "utf8").trim().split("\n"); assert.equal(lines.length, 132);
   const e = JSON.parse(lines[0]); assert.deepEqual([e.type, e.session, e.folder, e.pid, e.state, e.role], ["session", "path-finder-37", "path_finder", 52134, "waiting", null]);
 });
 

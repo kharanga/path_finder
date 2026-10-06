@@ -68,17 +68,37 @@ event: snapshot
 data: {"sessions":[{"ts":"2026-10-05T21:40:00Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"started","role":null}],"messages":[]}
 ```
 
+### POST /sessions/<pid>/remove
+
+What it does: removes a session from the board. Appends a `session` event with state `removed` carrying the PID's current name, folder, and role to the events file, applies it, and broadcasts it as `event: session` exactly once (the tailer recognizes the line it just wrote and does not broadcast it again).
+
+Inputs: `pid` in the path, decimal integer.
+
+Output: 204 with no body.
+
+Errors: 404 `unknown pid` when no event for that PID has been seen; 405 with `Allow: POST` for other methods on this path.
+
+Example, with PID 29904 known:
+
+```
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:4747/sessions/29904/remove   # 204
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:4747/sessions/4242/remove    # 404
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4747/sessions/29904/remove           # 405
+```
+
+After the first call `/snapshot` no longer lists 29904, the last line of the events file is the `removed` event, and a server restarted on that file still omits it. Any later event for 29904 (a hook writing `busy`, say) brings it back.
+
 ### GET /snapshot
 
 What it does: debug view of the current state. In the contract since W5.
 
 Inputs: none.
 
-Output: 200 JSON `{sessions, messages, stats}` where `stats` is `{linesRead, malformedLines, eventsApplied, livenessEnded, statusCorrections}`.
+Output: 200 JSON `{sessions, messages, stats}` where `stats` is `{linesRead, malformedLines, eventsApplied, livenessEnded, statusCorrections, removals}`.
 
 Errors: none.
 
-Example: right after starting on a file with two valid lines and two malformed ones, `curl -s http://127.0.0.1:4747/snapshot | python3 -c "import json,sys; print(json.load(sys.stdin)['stats'])"` prints `{'linesRead': 4, 'malformedLines': 2, 'eventsApplied': 2, 'livenessEnded': 0, 'statusCorrections': 0}` (with the liveness interval disabled or both PIDs alive).
+Example: right after starting on a file with two valid lines and two malformed ones, `curl -s http://127.0.0.1:4747/snapshot | python3 -c "import json,sys; print(json.load(sys.stdin)['stats'])"` prints `{'linesRead': 4, 'malformedLines': 2, 'eventsApplied': 2, 'livenessEnded': 0, 'statusCorrections': 0, 'removals': 0}` (with the liveness interval disabled or both PIDs alive).
 
 ## DEFAULTS
 
@@ -155,11 +175,12 @@ Inputs: `options` (object): `messageLimit` (number), `sessionsDir` (string), and
 
 Output: `{state, clients, stats, ingestLine, runLivenessCheck, addClient, broadcast}`.
 
-- `ingestLine(line, {replaying = false})`: parses and applies one line, returns the applied event or `null` when malformed, broadcasts unless replaying.
+- `ingestLine(line, {replaying = false})`: parses and applies one line, returns the applied event or `null` when malformed, broadcasts unless replaying. A line that `removeSession` wrote moments ago is recognized and returns the stored session without applying or broadcasting again.
+- `removeSession(pid, now = new Date())`: appends, applies, and broadcasts a `removed` event for a known PID and returns it; returns `null` for an unknown PID and writes nothing.
 - `runLivenessCheck(now = new Date())`: applies and broadcasts dead-PID `ended` events as `liveness` and registry corrections as `session`; returns `{ended, corrections}`.
 - `addClient(response)`: registers an object with `write(string)`, writes the snapshot frame immediately, returns a function that removes the client.
 - `broadcast(eventName, payload)`: writes one frame to every client.
-- `stats`: `{linesRead, malformedLines, eventsApplied, livenessEnded, statusCorrections}`.
+- `stats`: `{linesRead, malformedLines, eventsApplied, livenessEnded, statusCorrections, removals}`.
 
 Errors: none thrown.
 
@@ -171,7 +192,8 @@ const hub = createHub({ isAlive: () => true, readStatus: () => null });
 hub.ingestLine('{"ts":"2026-10-05T21:40:00Z","type":"session","session":"a-1","folder":"a","pid":1,"state":"busy","role":null}').state // "busy"
 hub.ingestLine("not json") // null
 hub.ingestLine("")         // null, blank lines are not counted as malformed
-hub.stats                  // {"linesRead":3,"malformedLines":1,"eventsApplied":1,"livenessEnded":0,"statusCorrections":0}
+hub.stats                  // {"linesRead":3,"malformedLines":1,"eventsApplied":1,"livenessEnded":0,"statusCorrections":0,"removals":0}
+hub.removeSession(99)      // null, unknown pid
 const frames = [];
 const remove = hub.addClient({ write: (frame) => frames.push(frame) });
 hub.ingestLine('{"ts":"2026-10-05T21:40:05Z","type":"message","from":"a-1","to":"b","text":"hi","notify_on_idle":true}');
@@ -223,7 +245,7 @@ writeFileSync("/tmp/server-example.jsonl", '{"ts":"2026-10-05T21:40:00Z","type":
 const { server, hub, stop } = await startServer({ eventsPath: "/tmp/server-example.jsonl", port: 0, livenessIntervalMs: 0 });
 const port = server.address().port;
 const stats = await fetch(`http://127.0.0.1:${port}/snapshot`).then((r) => r.json()).then((d) => d.stats);
-// stats {"linesRead":2,"malformedLines":1,"eventsApplied":1,"livenessEnded":0,"statusCorrections":0}
+// stats {"linesRead":2,"malformedLines":1,"eventsApplied":1,"livenessEnded":0,"statusCorrections":0,"removals":0}
 // hub.state.sessions.get(29904).state "started"
 await stop();
 ```

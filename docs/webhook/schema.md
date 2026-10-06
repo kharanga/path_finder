@@ -4,7 +4,11 @@ Validation for the §3 event schema. Used by the server to drop malformed lines 
 
 ## SESSION_STATES
 
-Constant array `["started", "busy", "waiting", "idle", "ended"]`, the only legal values of `state`.
+Constant array `["started", "busy", "waiting", "idle", "ended", "removed"]`, the only legal values of `state`. `removed` is written by the server on `POST /sessions/<pid>/remove`, never by hooks.
+
+## NOT_LIVE_STATES
+
+Constant array `["ended", "removed"]`, the states that take a session off the board. Used by `state.js` and `liveness.js`.
 
 ## validateEvent(event)
 
@@ -26,7 +30,7 @@ validateEvent({ ts: "2026-10-05T21:40:05Z", type: "message", from: "listings-bc"
 // { ok: true, errors: [] }
 
 validateEvent({ ts: "bad", type: "session", session: 1, folder: "x", pid: 0, state: "sleeping", role: null, extra: 1 })
-// { ok: false, errors: ["ts must be an ISO 8601 string", "session must be a string or null", "pid must be a positive integer", "state must be one of started, busy, waiting, idle, ended", "unknown field extra"] }
+// { ok: false, errors: ["ts must be an ISO 8601 string", "session must be a string or null", "pid must be a positive integer", "state must be one of started, busy, waiting, idle, ended, removed", "unknown field extra"] }
 
 validateEvent("nope")
 // { ok: false, errors: ["event must be an object"] }

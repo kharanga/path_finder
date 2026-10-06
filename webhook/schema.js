@@ -1,5 +1,7 @@
 /** The only legal values of a session event's state field. */
-export const SESSION_STATES = ["started", "busy", "waiting", "idle", "ended"];
+export const SESSION_STATES = ["started", "busy", "waiting", "idle", "ended", "removed"];
+/** States that mean a session is no longer on the board: gone for good or manually removed. */
+export const NOT_LIVE_STATES = ["ended", "removed"];
 
 const SESSION_FIELDS = ["ts", "type", "session", "folder", "pid", "state", "role"];
 const MESSAGE_FIELDS = ["ts", "type", "from", "to", "text", "notify_on_idle"];

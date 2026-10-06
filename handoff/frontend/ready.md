@@ -1,34 +1,31 @@
-# Ready: F9 session renames
+# Ready: F10 circuit visual
 
 ## Done
 
-`frontend/state.js`
-- `Session.formerNames`: per-PID list of earlier display names, oldest first. Appended in `applySessionEvent` when the event's string name differs from the previously known name. First naming (`null` → name) is not a rename. No duplicates; `a → b → a → c` gives `["a", "b"]`.
-- `sessionByName` resolves in three steps: current name of any session, then a former name of a live session, then a placeholder. Ended sessions are not matched by former name.
-- Thread resolution matches `thread.to` against all names of the session (current and former), so a notify sent to the former name snaps when the renamed body goes idle.
-- Placeholders for any of a session's names are deleted on its session event; `applyMessageEvent` goes through `sessionByName`, so a message to or from a former name of a live body never creates a placeholder.
+The ring is gone. The page now draws the Circuit board from SPEC §4.
+
+`frontend/layout.js` (pure, new API)
+- `BOARD`, `CAPSULE` constants (viewBox 1360×1000, capsules 220×56).
+- `boardLayout(sessions, { width, height })`: one row per folder (sorted, `_`/`-` equal), capsules ordered by `firstSeen` then name so a capsule keeps its slot while live and newcomers append; rows wrap at 4 per line; lines spaced evenly and centered, compressed when many. Returns `{ capsules: Map<pid, box>, rows, lineCount, perLine }`.
+- `tracePath(from, to, { cornerRadius })`: orthogonal route with rounded corners that never crosses another capsule: same line via a channel below, adjacent lines via the mid channel, farther lines via a vertical bus in the column gap right of the two capsules. Returns `{ d, points, length }`.
+- `traceKey(a, b)`, `edgeBox(nearBox)` (origin for unknown senders at the left edge of the recipient's line), `truncateLabel` kept.
+- Removed: `ringPositions`, `labelSide`, `labelPlacement`, `messageCurve`. V3 tests that import them will fail until V7 updates them; the docs examples in `docs/frontend/layout.md` give the new expected values.
 
 `frontend/render.js`
-- Label updated in place; when it changes the group gets class `renamed` for 1.8 s (name flashes yellow then fades; static yellow under reduced motion). Tooltip appends `formerly <names>`.
-- Message endpoints use `sessionByName`, so particles and threads for a former name attach to the renamed body.
+- Layers: board rect, row labels (glide with their rows), traces, charges, capsules, pulses.
+- Capsules: `<g class="capsule" data-pid data-state>` with shell rect, name, role, title, aria-label, tabindex. States per §4: busy lit with flicker, waiting amber steady, idle dim, started dim with a 1 s power-on flash (class `powering`), ended fades to a footprint for `ghostMs`, `removed` drops the capsule immediately with no footprint, placeholder dashed at the end of its guessed folder row. Fade-in at slot, rename flash and `formerly` tooltip kept from v1.
+- Traces: drawn on the first message between two capsules (`data-trace="<traceKey>"`), kept faint, re-routed on every draw, dropped when a capsule goes. Rebuilt from snapshot messages on connect (no pulses).
+- Pulses: bright dot along the trace route via SMIL, rests at the recipient for `lingerMs`, clickable and keyboard-activatable (`onSelect`), `draw.select(index)` highlight. Unknown or null sender starts from `edgeBox(recipient)`.
+- Charges: `notify_on_idle` keeps the trace charged (glowing overlay drawn on along the route) until the recipient's idle, then drains back to the sender (`draining`), or fades if the recipient ends (`dropping`).
+- Reduced motion: instant pulses, charges fully drawn, no flicker, no flashes, no transitions (CSS media query plus the `reducedMotion` option and `?motion=reduce`).
 
-`frontend/orbit.css`: `.body.renamed .name` flash animation and reduced-motion override.
+`frontend/orbit.css`: all capsule, trace, charge, pulse styles; phone rules updated. `frontend/index.html`: title Circuit, svg aria-label. `state.js`, `timeline.js`, `panel.js`, `app.js`, `connect.js`: unchanged (`removed` is already non-live because `LIVE_STATES` is an allowlist).
 
-`frontend/fixtures/rename.json`: 3 sessions, then message → rename of pid 29248 (`path-finder-0d` → `manager-drives-feature-work`) → message sent as the former name → notify to the former name → renamed body idle (snap) → message to an unknown name (placeholder).
+`frontend/fixtures/removed.json`: 4 sessions and a historical message, then `ended` (footprint), `removed` (gone at once), the removed session comes back busy and sends a message.
 
-Docs: `state.md` (Session shape, rename rules, `sessionByName` order, rename examples; the F8 "current-name-only" note is gone), `render.md` (highlight, tooltip, rename example with the 24-char truncation), `README.md` (fixture row). Example runner extended to 161 checks, all passing.
+Docs: `layout.md` and `render.md` rewritten, `README.md` (file table, fixture rows), `state.md` (`removed`), `app.md` (board wording). Example runner updated: 164 checks, 0 failures (`run-examples.mjs` in the scratchpad path below, ready for V7 to copy over `tests/docs-examples/frontend-docs.test.js`).
 
-SPEC.md §8.2 F9 marked `[~] path-finder-18`.
-
-Generator re-check (manager request, after the handoff was first written): `webhook/fake.js` step 7 renames one session to `manager-drives-feature-work` mid-stream. Replayed both modes through the reducer:
-
-- Fixture mode (`generated-many`, `generated-mid`, regenerated with the documented commands, plus new `generated-fast` at `--speed 10`): `formerNames` is `["listings-2c"]` on the renamed PID, both names resolve to it, no placeholder for the old name at any point, only `ghost-session-00` as a placeholder, `from: null` message kept.
-- Raw instant mode (`--out … --instant`, 127 lines, fed straight into `applyEvent`): same result. Two more live bodies than fixture mode because raw mode carries no `liveness` entries (the server adds those), which is expected.
-- Difference from `rename.json`: the generator sends the old-name message *before* the rename event and the notify *to the new name*, which is what real hooks produce (they re-read the registry). `rename.json` keeps the stricter cases (old-name message after the rename, notify to the old name) so both orderings are covered. `README.md` fixture table updated.
-
-Also fixed while re-checking (render.js): a newly started body had no transform until its first update, so the 600 ms transform transition slid it in from the SVG origin while it faded in. The slot position is now set before the first style flush, so new bodies fade in at their slot. Visible before the fix on `?fixture=generated-fast` at ~8.5 s (`tag-analyzer-ba` appearing at the top-left corner).
-
-Known limitation, not fixed: with 17 live bodies plus ghosts (`generated-fast` after ~8 s) a long truncated label in the bottom-center slot can touch the side label of its neighbor. The F2 target is ~15 sessions; above that, labels may touch at the top and bottom slots.
+SPEC.md §8.2 F10 is `[~] path-finder-18`.
 
 ## How to test
 
@@ -36,19 +33,20 @@ Known limitation, not fixed: with 17 live bodies plus ghosts (`generated-fast` a
 python3 -m http.server 8787 --bind 127.0.0.1 --directory frontend
 ```
 
-1. `?fixture=rename`. At ~3.5 s the right-hand body's label changes in place to `manager-drives-feature-…` and flashes yellow; the ring does not add or remove a body and no `path-finder-0d` placeholder appears. Hover: tooltip ends with `formerly path-finder-0d`.
-2. ~5 s: a particle leaves the renamed body (message sent as `path-finder-0d`) toward `path-finder-18`.
-3. ~7.5 s: notify from `listings-bc` to `path-finder-0d`: particle and thread end on the renamed body. ~10 s: it goes idle, the thread retracts into `listings-bc`.
-4. ~11.5 s: `nobody-99` appears as a dashed placeholder (unknown name still gets one).
-5. In the console: `document.querySelectorAll('.body').length` is 4 (3 sessions + 1 placeholder), none with `data-pid="placeholder:path-finder-0d"`.
-6. Node: `state.md` rename examples (`formerNames`, `sessionByName` by former name, `placeholders.size` 0 after event 4, thread `waiting` then `snapped`, final labels, `a b a c`), `render.md` rename paragraph with a DOM stub (name text, class `renamed`, title, body count 3 after event 2, particle for event 3 starts at the body's translate position).
-7. `?fixture=generated-fast`: at ~8 s the body for pid 70052 changes from `listings-2c` to `manager-drives-feature-…` with the flash, tooltip ends `formerly listings-2c`, no `listings-2c` placeholder ever appears, and the only placeholder is `ghost-session-00`.
-8. Timeline scrub across the rename: before event 2 the body reads `path-finder-0d`, after it the new name; both states show exactly one body for pid 29248.
+1. `?fixture=few`: board with four folder rows labeled on the left; two path_finder capsules side by side; `tag-analyzer-63` and `path-finder-e5` lit yellow with a soft flicker; `pid 30444` dim blue with a power-on flash at load. At ~7 s `tag-analyzer-63` fades to a hollow footprint and the rows slide up together with their labels.
+2. `?fixture=messages`: at ~1 s a pulse runs from `path-finder-18` down into the channel and up into `path-finder-e5`, leaving a glowing charge; the faint trace stays after. At ~7.5 s the charge drains back into `path-finder-18`. At ~10.5 s `nobody-99` appears as a dashed capsule in its own row and the pulse/charge reach it. At ~16 s a pulse enters `path-finder-18` from the left edge of its row (null sender). Click any resting dot: panel as in v1.
+3. `?fixture=removed`: at ~1.5 s `listings-bc` becomes a footprint; at ~4 s `path-finder-e5` vanishes at once with no footprint while the footprint is still there; at ~6.5 s it is back and sends a pulse. The snapshot message shows as a faint trace from load.
+4. `?fixture=many`: 15 capsules in 8 rows, nothing overlapping, the trace `listings-00` → `tag-analyzer-6f` (3 rows apart) runs through the gap right of the first column, not through capsules.
+5. `?fixture=rename`: capsule label changes in place with the flash, same slot, no placeholder for the old name.
+6. `?fixture=messages&motion=reduce`: dots appear at the recipient instantly, charges appear fully drawn and vanish at once when resolved, no flicker on busy capsules under an OS reduce-motion setting.
+7. Timeline, panel, keyboard (Tab reaches capsules, pulses, Live, ticks, slider), phone width (390 px: `scrollWidth === clientWidth`, panel docks to the bottom): unchanged behavior.
+8. Node and DOM stub: every example in `docs/frontend/layout.md` and `render.md`, or run the scratchpad runner (164 checks).
 
 ## Requests
 
-1. Validator: the example runner at `/private/tmp/claude-501/-Users-khangnguyen-Documents-path-finder/658ff14a-2610-461f-9302-e64c02a54c6a/scratchpad/docs-check/` now includes the F9 checks (`node run-examples.mjs /path/to/repo`, expect `161 passed, 0 failed`).
-2. Manager: generator re-check done (above), `generated-*.json` regenerated. Nothing else pending on my side.
+1. Validator (V7): updated runner at `/private/tmp/claude-501/-Users-khangnguyen-Documents-path-finder/658ff14a-2610-461f-9302-e64c02a54c6a/scratchpad/docs-check/run-examples.mjs` (same DOM stub). V3 layout tests need `boardLayout`/`tracePath`/`traceKey`/`edgeBox` instead of the ring functions; `layout.md` has the values.
+2. Manager: the 1.36 landscape board is short on a phone (the capsules are legible but small). A portrait layout under 600 px (fewer capsules per line, taller board) would help; say if you want it as part of F11 or a later task.
+3. Manager: F11 not started, waiting for W9's endpoint as instructed.
 
 ## Blocked
 

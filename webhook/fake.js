@@ -170,6 +170,11 @@ export function createGenerator(options, deps = {}) {
     if (session.child) session.child.kill("SIGTERM");
   };
 
+  const removeSession = (session) => {
+    session.state = "removed";
+    sessionEvent(session, "removed");
+  };
+
   const killSilently = (session) => {
     session.state = "dead";
     if (session.child) session.child.kill("SIGKILL");
@@ -191,7 +196,7 @@ export function createGenerator(options, deps = {}) {
       notify_on_idle: notifyOnIdle,
     });
 
-  const live = () => sessions.filter((session) => session.state !== "ended" && session.state !== "dead" && session.name !== null);
+  const live = () => sessions.filter((session) => !["ended", "dead", "removed"].includes(session.state) && session.name !== null);
 
   const shutdown = () => {
     for (const child of children) {
@@ -203,7 +208,7 @@ export function createGenerator(options, deps = {}) {
     }
   };
 
-  return { random, sessions, entries, live, advance, startSession, setState, nameSession, renameSession, endSession, killSilently, emitLiveness, sendMessage, shutdown, emit };
+  return { random, sessions, entries, live, advance, startSession, setState, nameSession, renameSession, endSession, removeSession, killSilently, emitLiveness, sendMessage, shutdown, emit };
 }
 
 /** Plays the scripted scenario, then random activity until the duration ends or SIGINT; resolves when done. */
@@ -307,6 +312,18 @@ export async function runScenario(generator, options, sleepFn) {
     generator.killSilently(dying);
     await wait(DEFAULT_LIVENESS_DELAY_SECONDS);
     generator.emitLiveness(dying);
+  }
+
+  if (population.length >= 7) {
+    const removedForGood = population[6];
+    generator.setState(removedForGood, "ended");
+    await wait(1);
+    generator.removeSession(removedForGood);
+    await wait(2);
+    const removedByMistake = population[0];
+    generator.removeSession(removedByMistake);
+    await wait(3);
+    await busyThenIdle(removedByMistake, 2);
   }
 
   if (population.length >= 8) {

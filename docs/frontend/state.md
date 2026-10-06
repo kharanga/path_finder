@@ -10,7 +10,7 @@ The state object:
 
 `Placeholder` is `{ name, folder, createdAtMs }`: a body for a name that appeared in a message but has no session event yet. `folder` is guessed by `folderFromName`. Placeholders are merged away when a session event with that name arrives and pruned by `prunePlaceholders` after 60 s.
 
-`Session` is `{ pid, session, folder, role, state, ts, firstSeen, formerNames }`. `state` is one of `started`, `busy`, `waiting`, `idle`, `ended`. `formerNames` lists earlier display names of the same PID, oldest first, because Claude Code can rename a session mid-run (SPEC §6). `Message` is `{ ts, from, to, text, notify_on_idle }`; `from` is a string or `null` (the hook could not resolve the sender's name). `Thread` is `{ id, from, to, ts, status, resolvedTs }` where `id` is the index of the message in `messages` and `status` is `waiting`, `snapped`, or `dropped`. `snapshotSeq` counts snapshots so the renderer can tell a rebuild from incremental growth.
+`Session` is `{ pid, session, folder, role, state, ts, firstSeen, formerNames }`. `state` is one of `started`, `busy`, `waiting`, `idle`, `ended`, `removed`. `removed` is written by the server on a manual removal; the reducer treats it like `ended` (not live), the renderer drops the capsule with no footprint, and any later event for the PID makes it live again. `formerNames` lists earlier display names of the same PID, oldest first, because Claude Code can rename a session mid-run (SPEC §6). `Message` is `{ ts, from, to, text, notify_on_idle }`; `from` is a string or `null` (the hook could not resolve the sender's name). `Thread` is `{ id, from, to, ts, status, resolvedTs }` where `id` is the index of the message in `messages` and `status` is `waiting`, `snapped`, or `dropped`. `snapshotSeq` counts snapshots so the renderer can tell a rebuild from incremental growth.
 
 ## createState()
 
@@ -75,6 +75,9 @@ Example:
 ```js
 applyEvent(state, "liveness", { ts: "2026-10-05T21:46:00Z", type: "session", session: "listings-bc", folder: "listings", pid: 29904, state: "ended", role: null });
 state.sessions.get(29904).state // "ended"
+applyEvent(state, "session", { ts: "2026-10-05T21:47:00Z", type: "session", session: "listings-bc", folder: "listings", pid: 29904, state: "removed", role: null });
+state.sessions.get(29904).state // "removed"
+liveSessions(state).some(s => s.pid === 29904) // false
 ```
 
 ## applySessionEvent(state, event)
@@ -219,7 +222,7 @@ waitingThreads(state).map(t => t.to) // ["nobody-99"]
 
 ## liveSessions(state)
 
-What it does: returns sessions in state `started`, `busy`, `waiting`, or `idle`, plus every placeholder as a pseudo-session `{ pid: "placeholder:<name>", session: name, folder, role: null, state: "placeholder", formerNames: [] }`, sorted by folder then label. Ended sessions are excluded.
+What it does: returns sessions in state `started`, `busy`, `waiting`, or `idle` (never `ended` or `removed`), plus every placeholder as a pseudo-session `{ pid: "placeholder:<name>", session: name, folder, role: null, state: "placeholder", formerNames: [] }`, sorted by folder then label. Ended sessions are excluded.
 
 Inputs: `state` (object).
 
