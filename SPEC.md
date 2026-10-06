@@ -129,8 +129,8 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **F2: ring layout.** Decision 2026-10-05: folder-group stability is sufficient, slot order inside a folder follows name order. Sessions placed on a ring keyed by start folder. Same-folder sessions adjacent. Stable position across restart. Handles 1 to ~15 without label overlap.
   Acceptance: checked against W4 output at 1, 5, and 15 sessions.
 - [x] **F3: state visuals.** Busy glow and pulse, idle dim, fade in on start, fade out with brief faint mark on end. Name label, role underneath only when declared.
-- [~] path-finder-18 **F4: message particles.** Curved path from sender to recipient. `notify_on_idle` thread that snaps back to the sender when the recipient's next state is idle.
-- [ ] **F5: timeline strip.** Scrub through history. Scrubbing replays state at that moment without losing the live stream.
+- [~] path-finder-18 (in review) **F4: message particles.** Curved path from sender to recipient. `notify_on_idle` thread that snaps back to the sender when the recipient's next state is idle. Decision 2026-10-05: a message to a name not yet on the ring creates a faint placeholder body at the folder slot derived from the name prefix (strip the trailing `-<id>`), labeled with the name; it merges when a real session event arrives and fades after 60 s without one.
+- [~] path-finder-18 **F5: timeline strip.** Scrub through history. Scrubbing replays state at that moment without losing the live stream.
 - [ ] **F6: side panel.** Click a particle to show from, to, time, and full text.
 - [ ] **F7: accessibility and responsiveness.** `prefers-reduced-motion` disables pulse, particles become instant markers. Works at phone width.
 - [ ] **F8: documentation standard.** One-line docstring on each public function. `docs/frontend/` has one file per module with what, inputs, output, errors, example.
