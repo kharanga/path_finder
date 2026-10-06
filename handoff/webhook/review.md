@@ -1,3 +1,24 @@
+# V4: integration tests 2026-10-06
+
+Done. `tests/integration/server-pipeline.test.js`, 5 tests, each on its own temp directory with `startServer` on port 0, a short poll interval, and a real SSE client (`tests/helpers/sse-client.js`). Never the real events file: the test role string does not appear in `~/.claude/dashboard/events.jsonl` after a run.
+
+1. Generator output (instant mode, 6 sessions) replayed by the server; a connected client's `snapshot` frame rebuilt through `frontend/state.js` matches the server's state; ten more generator events appended to the file arrive as `session` and `message` frames in order, and the page state after applying them equals `GET /snapshot`.
+2. Mid-run connect: malformed lines are skipped and counted (`linesRead`, `malformedLines`, `eventsApplied`), `GET /snapshot` reflects the state so far, a late client's snapshot frame carries the same sessions and messages, and a further append reaches it live.
+3. Liveness with a mocked pid check and a mocked registry read, injected through `startServer` overrides on a 30 ms interval: a pid removed from the alive set produces a `liveness` frame with `ended` within one interval; a newer registry status produces a `session` correction frame with the registry name and state; `/snapshot` stats count both; the page state ends with only the live pid.
+4. The generator's rename scenario split at the rename: the snapshot shows the old name, the streamed remainder renames the pid, and the page keeps `formerNames`, resolves the former name to the body, creates no placeholder for it; the server snapshot shows the new name.
+5. `declare-role.js` run as a child process with `CC_DASHBOARD_EVENTS` and `CC_DASHBOARD_ROLES` on the temp dir: silent exit, the server broadcasts the role event to the connected client, `/snapshot` shows the role, the roles file holds it. Skipped automatically when not run under a Claude Code session.
+
+## Suite timing, per the manager's question
+
+The slow file was `tests/unit/frontend/render.test.js`: 60 s on its own, which was the whole suite's duration. Cause: `createRenderer` schedules real `setTimeout`s for particle removal (`lingerMs`, default 15 s) and ghost removal (`ghostMs`, default 8 s), and one test passed `lingerMs: 60000`; the renderer is browser code and does not unref its timers, so the Node process stayed alive until they fired. Fixed by giving every render test `ghostMs: 100` and `lingerMs: 200` defaults. No test spawns long-lived processes; `dashboard-hook.test.js` and the declare-role integration test spawn short `node` children (about 300 ms total), and `tail.test.js` uses mocked timers.
+
+| Run | Before | After |
+|---|---|---|
+| `render.test.js` | 60.2 s | 2.1 s |
+| whole suite | 60.2 s | 2.2 s |
+
+The remaining 2 s is the renamed-label flash timer (1.8 s) in the render tests; harmless.
+
 # Review: W8 2026-10-06
 
 PASS

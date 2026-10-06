@@ -15,9 +15,9 @@ test.before(async () => {
 });
 test.after(() => uninstallDomStub());
 
-const setup = (options) => {
-  const svg = installDomStub(options?.media);
-  const draw = createRenderer(svg, options);
+const setup = (options = {}) => {
+  const svg = installDomStub(options.media);
+  const draw = createRenderer(svg, { ghostMs: 100, lingerMs: 200, ...options });
   return { svg, draw, q: (s) => svg.querySelector(s), qa: (s) => svg.querySelectorAll(s) };
 };
 const replay = (draw, name, state = createState()) => {
@@ -63,7 +63,7 @@ test("bodies carry state, folder, labels, roles, tooltips, and accessibility att
 });
 
 test("reduced motion: particles appear arrived at the recipient and threads appear fully drawn, then vanish at once", async () => {
-  const { draw, q, qa } = setup({ reducedMotion: true, lingerMs: 60000 });
+  const { draw, q, qa } = setup({ reducedMotion: true, lingerMs: 200 });
   const state = createState();
   const fx = fixture("messages");
   applySnapshot(state, fx.snapshot, NOW);
@@ -86,7 +86,7 @@ test("reduced motion: particles appear arrived at the recipient and threads appe
 });
 
 test("full motion: particles animate along their own path and threads draw on from the sender", async () => {
-  const { draw, q } = setup({ reducedMotion: false, travelMs: 5, lingerMs: 60000 });
+  const { draw, q } = setup({ reducedMotion: false, travelMs: 5, lingerMs: 200 });
   const state = createState();
   const fx = fixture("messages");
   applySnapshot(state, fx.snapshot, NOW);
@@ -107,7 +107,7 @@ test("full motion: particles animate along their own path and threads draw on fr
 });
 
 test("reduced motion defaults from matchMedia when no override is given", () => {
-  const { draw, q } = setup({ media: { reducedMotion: true }, lingerMs: 60000 });
+  const { draw, q } = setup({ media: { reducedMotion: true }, lingerMs: 200 });
   const state = createState();
   applySnapshot(state, fixture("messages").snapshot, NOW);
   draw(state);
@@ -138,7 +138,7 @@ test("ghosts linger for ghostMs, are revived when the pid returns, and vanish im
 });
 
 test("instant draws skip fade-in and never spawn particles for replayed states", () => {
-  const { draw, qa } = setup({ reducedMotion: true, lingerMs: 60000 });
+  const { draw, qa } = setup({ reducedMotion: true, lingerMs: 200 });
   const state = replay(draw, "messages");
   const live = qa(".particle").length;
   assert.ok(live > 0);
@@ -151,7 +151,7 @@ test("instant draws skip fade-in and never spawn particles for replayed states",
 });
 
 test("a new snapshot clears particles and threads and redraws waiting threads from it", () => {
-  const { draw, qa } = setup({ reducedMotion: true, lingerMs: 60000 });
+  const { draw, qa } = setup({ reducedMotion: true, lingerMs: 200 });
   const state = replay(draw, "messages");
   applySnapshot(state, { sessions: fixture("messages").snapshot.sessions, messages: [fixture("messages").events[0].data] }, NOW);
   draw(state);
@@ -160,7 +160,7 @@ test("a new snapshot clears particles and threads and redraws waiting threads fr
 });
 
 test("placeholders render as placeholder bodies and messages route to them; null senders start at the center", () => {
-  const { draw, q, qa } = setup({ reducedMotion: true, lingerMs: 60000 });
+  const { draw, q, qa } = setup({ reducedMotion: true, lingerMs: 200 });
   const state = createState();
   applySnapshot(state, { sessions: [{ ts: "2026-10-05T22:00:00Z", type: "session", session: "a-1", folder: "a", pid: 1, state: "idle", role: null }], messages: [] }, NOW);
   draw(state);
@@ -180,7 +180,7 @@ test("placeholders render as placeholder bodies and messages route to them; null
 });
 
 test("renames update the label in place with a flash and a tooltip, and route former names to the body", () => {
-  const { draw, q, qa } = setup({ reducedMotion: true, lingerMs: 60000 });
+  const { draw, q, qa } = setup({ reducedMotion: true, lingerMs: 200 });
   const state = createState();
   const fx = fixture("rename");
   applySnapshot(state, fx.snapshot, NOW);
@@ -204,7 +204,7 @@ test("renames update the label in place with a flash and a tooltip, and route fo
 
 test("selection toggles the selected class and onSelect fires on click, Enter, and Space only", () => {
   const selected = [];
-  const { draw, q } = setup({ reducedMotion: true, lingerMs: 60000, onSelect: (message, index) => selected.push([index, message.text]) });
+  const { draw, q } = setup({ reducedMotion: true, lingerMs: 200, onSelect: (message, index) => selected.push([index, message.text]) });
   const state = createState();
   applySnapshot(state, { sessions: [], messages: [] }, NOW);
   draw(state);
