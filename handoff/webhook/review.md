@@ -1,3 +1,21 @@
+# Review: W8 2026-10-06
+
+PASS
+
+## What was checked
+
+- `claude plugin validate .` and on a fresh `git clone`: passes with the one intended `CLAUDE.md` warning. `hooks/hooks.json` has six entries, every command through `${CLAUDE_PLUGIN_ROOT}` (12 occurrences on 6 lines); `commands/dashboard.md` 3, `skills/declare-role/SKILL.md` 1. No repo path anywhere in the plugin files. The only `.nvm` hit is the search glob in `run-node.sh`, which is the documented fallback, not a hard-coded install.
+- `run-node.sh`: with `PATH=/usr/bin:/bin` it finds the nvm Node and the hook writes its event; with `PATH=/nonexistent HOME=/nonexistent` it exits 0 with no output and writes nothing. Both silent.
+- Roles on temp files: `declare-role.js` writes `roles.json` keyed by the session's start folder; the hook then stamps that role on a later event for the same `cwd` and leaves other folders at `null`; an unwritable roles path exits 1 with one line. New unit tests in `tests/unit/webhook/roles.test.js` cover `saveRole` (create, merge, replace, malformed or array file, missing cwd, unwritable), `readSavedRole` (exact match only, wrong type, missing or bad file), and `buildEvent` carrying the role.
+- Clean-checkout acceptance, headless, `CC_DASHBOARD_EVENTS` and `CC_DASHBOARD_ROLES` on scratch files: run 1 replied `ok` and logged `started`, `busy`, `idle`, `ended` for its new session, each twice (settings snippet plus plugin hook). Run 2 replied `done`, the skill ran `declare-role.js` from the plugin root, and the file shows one `busy` with `role: "plugin-test"` (written by the script, so once) followed by `idle` and `ended` carrying the role, each twice. Two PIDs, two names. `roles.json` maps the session's start folder (the directory the headless session was launched from) to `plugin-test`. Real `events.jsonl` and `roles.json` untouched.
+- `handoff/webhook/docs-examples.mjs`: 50 of 52, the same two session-literal checks as before.
+- Suite: 129 tests, 127 pass, 2 todo, with the `cwd` field added to the two `resolveCallingSession` assertions as requested.
+
+## Notes, not failures
+
+1. ready.md expects the `('busy', 'plugin-test')` count to be even; it is 1 because that line comes from `declare-role.js`, not from a hook. The docs in `plugin.md` describe it correctly.
+2. `roles.json` is keyed by the session's start folder, so running the acceptance from the repo root maps the repo path, not the clone path. `plugin.md` says start folder, which is right; ready.md's expected `/tmp/path_finder-clean` assumes the command is run from inside the clone.
+
 # Review: W7 2026-10-05
 
 PASS

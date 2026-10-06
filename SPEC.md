@@ -1,6 +1,6 @@
 # SPEC: live Claude Code sessions dashboard
 
-Status: scaffolding only, no code written. Last updated 2026-10-05.
+Status: all builder tasks PASS, plugin installed. Integration tests (V4) and docs examples (V5) remaining. Last updated 2026-10-06.
 
 Read `CLAUDE.md` first for architecture, ownership, and team rules. This file holds the current state of each area, known issues, open questions, and the tasks each builder works on next. Every feature to implement is tracked here.
 
@@ -55,7 +55,7 @@ Liveness fallback: the server periodically checks whether each known PID is aliv
 
 ### 5.1 webhook (hooks, server, fake generator)
 
-Real hook installed in `~/.claude/settings.json`, writing to `~/.claude/dashboard/events.jsonl`. Fake generator and server written, in review. Server smoke-tested by the manager: static files, traversal blocked, snapshot, SSE with demo data.
+W1 to W8 all PASS. Hooks run from the installed plugin `cc-dashboard@path-finder`, writing to `~/.claude/dashboard/events.jsonl`. Server, fake generator, role declaration, and plugin bundle complete.
 
 ### 5.2 frontend (HTML visualization)
 
@@ -127,7 +127,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 
 - [x] **W7: role declaration.** `webhook/declare-role.js <role>` appends a `session` event for the calling session with `role` set, resolving PID and name like the hook. Prints nothing on success, exits 0, exits 1 with one line on stderr if the session cannot be resolved.
   Acceptance: run from a live session, the ring shows the role under that body within one tail interval. Docs: `docs/webhook/declare-role.md`.
-- [~] path-finder-37 (in review) **W8: plugin bundle.** Package hooks, server, the `declare-role` skill, and a `/dashboard` command as a Claude Code plugin so another machine can install it without editing `settings.json` by hand. Hook commands must not hard-code this repo's path or the nvm node path. Research the current plugin manifest format first and put the proposed layout under Requests before building. The bundled skill re-declares the role on SessionStart so roles survive log truncation. Approved 2026-10-05: repo root is the plugin root; webhook-builder owns `.claude-plugin/`, `hooks/`, `commands/`, `skills/`; roles persist in `~/.claude/dashboard/roles.json` keyed by cwd (two sessions in one folder share a role, accepted); the W3 settings snippet stays until the validator verifies the plugin, then the manager removes it.
+- [x] **W8: plugin bundle.** Package hooks, server, the `declare-role` skill, and a `/dashboard` command as a Claude Code plugin so another machine can install it without editing `settings.json` by hand. Hook commands must not hard-code this repo's path or the nvm node path. Research the current plugin manifest format first and put the proposed layout under Requests before building. The bundled skill re-declares the role on SessionStart so roles survive log truncation. Approved 2026-10-05: repo root is the plugin root; webhook-builder owns `.claude-plugin/`, `hooks/`, `commands/`, `skills/`; roles persist in `~/.claude/dashboard/roles.json` keyed by cwd (two sessions in one folder share a role, accepted); the W3 settings snippet stays until the validator verifies the plugin, then the manager removes it.
   Acceptance: documented install steps on a clean checkout produce working hooks and a running dashboard. Docs: `docs/webhook/plugin.md`.
 
 ### 8.2 frontend-builder
@@ -152,13 +152,13 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **V1: test structure.** `node:test`, `tests/` with `unit/`, `integration/`, `docs-examples/`, `helpers/`. Run with `node --test "tests/**/*.test.js"`. Done 2026-10-05.
 - [x] **V2: unit tests for webhook.** Hook event formatting, state reduction from events, PID liveness with a mocked process check, malformed line handling. Mock the filesystem and process calls.
 - [x] **V3: unit tests for frontend.** Ring position function, state reducer, reduced-motion branch. Use a DOM test environment, no real browser needed.
-- [ ] **V4: integration tests.** W4 output through the server into a connected SSE client, using a temp `events.jsonl`. Never the real file. Include the rename scenario (§6) and a role declaration via `declare-role.js` against the temp file.
+- [~] path-finder-e5 **V4: integration tests.** W4 output through the server into a connected SSE client, using a temp `events.jsonl`. Never the real file. Include the rename scenario (§6) and a role declaration via `declare-role.js` against the temp file.
 - [ ] **V5: docs examples.** Every example in `docs/` runs and produces the documented output. Use the runtime's markdown example runner if one exists, otherwise a small script.
 - [ ] **V6: review each ready.md** against this file's acceptance criteria. Write `review.md` as PASS or numbered failures with file, line, input, expected, actual. Missing or outdated docs count as failures.
 
 ### 8.4 manager
 
-- [x] M1: install hook snippets into `~/.claude/settings.json`. Real W3 hook installed 2026-10-05, catch-all removed, raw log deleted.
+- [x] M1: hooks now come from the installed plugin `cc-dashboard@path-finder` (user scope, installed 2026-10-06). Hand-written snippet removed from `~/.claude/settings.json`. Verified with a throwaway headless session: four events, each logged once.
 - [x] M2: update `CLAUDE.md` setup commands after W2.
 - [x] M3: design questions in §6 decided 2026-10-05: waiting state plus status poll, role declaration via W7, timeline depth equals snapshot, no rotation in v1.
-- [~] M4: packaging, assigned to webhook-builder as W7 and W8. Reference model: Graphify.
+- [x] M4: packaging done as W7 and W8. Plugin installed on this machine from the local checkout.
