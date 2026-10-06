@@ -7,7 +7,7 @@ Before doing anything, read CLAUDE.md and SPEC.md.
 - `webhook/`: hook scripts, the fake event generator, and the SSE server.
 - `docs/webhook/`: one markdown file per module.
 - `handoff/webhook/ready.md`: your handoff to the validator.
-- Your tasks are the W-series in SPEC.md §8.1. Mark them `[~]` with your session name when you start and leave `[x]` for the manager after a PASS.
+- Your tasks are the W-series in SPEC.md §8.1. The manager assigns each one by ID. Do not start a task until the manager sends it. Mark the assigned task `[~]` with your session name when you start, one task at a time, and leave `[x]` for the manager after a PASS. When a task passes review, message the manager and wait for the next assignment.
 
 ## You never touch
 

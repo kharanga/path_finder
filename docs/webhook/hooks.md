@@ -1,0 +1,146 @@
+# hooks
+
+Scripts in `webhook/hooks/` that Claude Code runs from `~/.claude/settings.json`. Every script reads one JSON object from stdin, writes nothing to stdout or stderr, and exits 0 no matter what happens.
+
+## Raw hook input shape
+
+Claude Code pipes one JSON object to every hook command. Fields common to every event:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `session_id` | string | UUID of the session, same as the transcript file name |
+| `transcript_path` | string | path of the session transcript |
+| `cwd` | string | folder the session started in |
+| `hook_event_name` | string | `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `Stop`, `SessionEnd`, ... |
+| `permission_mode` | string | current permission mode |
+
+Event-specific fields:
+
+| Event | Extra fields |
+|---|---|
+| `SessionStart` | `source`: `startup`, `resume`, `clear`, or `compact` |
+| `UserPromptSubmit` | `prompt`: the submitted text |
+| `PostToolUse` | `tool_name`, `tool_input`, `tool_response`, `tool_use_id` |
+| `Stop` | `stop_hook_active`: boolean |
+| `SessionEnd` | `reason`: why the session ended |
+
+For `tool_name` `SendMessage`, `tool_input` mirrors the tool's parameters: `to` (string), `message` (string), `notify_when_idle` (boolean, optional), `summary` (string, optional). This is confirmed from the tool's own schema. The rest of the table is being confirmed in task W1 from the raw log; the raw log is the source of truth if they differ.
+
+## Mapping a hook to its session
+
+The hook process is a child of `sh`, which is a child of the `claude` process. Walking `ps -o ppid=,comm=` upward finds the session PID. Separately, Claude Code keeps `~/.claude/sessions/<pid>.json` with `sessionId`, `name` (the display name such as `listings-bc`), `cwd`, and `status`. Matching `session_id` against `sessionId` gives both the PID and the display name without a process walk. Both are undocumented internals; the process walk is the fallback.
+
+## capture-raw.js
+
+Catch-all used in task W1 only. Appends one redacted record per hook invocation so the real hook can be written from observed shapes.
+
+Run as: `node webhook/hooks/capture-raw.js [log-path]`. The log path defaults to `$CC_DASHBOARD_RAW_LOG`, then `/tmp/cc-dashboard-raw.jsonl`.
+
+Privacy: prompt text, message text, tool responses, and every other value are replaced by their type and length. Only `session_id`, `hook_event_name`, `cwd`, `tool_name`, `source`, `reason`, `stop_hook_active`, `permission_mode`, and for `SendMessage` the `to` and `notify_when_idle` inputs are kept verbatim.
+
+### ancestorChain(startPid = process.ppid, maxDepth = 6)
+
+What it does: walks the process tree upward and returns the ancestors of the hook process.
+
+Inputs: `startPid` (integer) first PID to inspect; `maxDepth` (integer) how many levels to climb.
+
+Output: array of `{pid, ppid, command}` nearest first. Stops early at PID 1 or when `ps` fails.
+
+Errors: none thrown. A failing `ps` ends the chain.
+
+Example: run from a hook under session PID 52134.
+
+```js
+ancestorChain(54887)
+// [{pid: 54887, ppid: 52134, command: "/bin/zsh"}, {pid: 52134, ppid: 51897, command: "claude"}, ...]
+```
+
+### readStdin()
+
+What it does: reads all of stdin synchronously.
+
+Inputs: none.
+
+Output: string, `""` when stdin is a TTY or unreadable.
+
+Errors: none thrown.
+
+Example: `echo '{"a":1}' | node -e '...'` gives `'{"a":1}\n'`.
+
+### describeShape(value)
+
+What it does: replaces every value with a type description.
+
+Inputs: `value` (any JSON value).
+
+Output: `"null"`, `"boolean"`, `"number"`, `"string(<length>)"`, `["array(<length>)"]`, or an object with the same keys and described values.
+
+Errors: none.
+
+Example:
+
+```js
+describeShape({ prompt: "hello", tool_input: { to: "x", notify_when_idle: true } })
+// { prompt: "string(5)", tool_input: { to: "string(1)", notify_when_idle: "boolean" } }
+```
+
+### redactHookInput(input)
+
+What it does: keeps the identifying fields verbatim and the shape of everything else.
+
+Inputs: `input` (parsed hook JSON).
+
+Output: `{kept, shape}`. `kept` holds the whitelisted fields; `shape` is `describeShape(input)`. A non-object input gives `{shape}` only.
+
+Errors: none.
+
+Example:
+
+```js
+redactHookInput({ session_id: "test-123", hook_event_name: "PostToolUse", cwd: "/tmp/x", tool_name: "SendMessage", tool_input: { to: "listings-bc", message: "hello there", notify_when_idle: true }, tool_response: { ok: true } })
+// kept:  { session_id: "test-123", hook_event_name: "PostToolUse", cwd: "/tmp/x", tool_name: "SendMessage", tool_input: { to: "listings-bc", notify_when_idle: true } }
+// shape: { session_id: "string(8)", hook_event_name: "string(11)", cwd: "string(6)", tool_name: "string(11)", tool_input: { to: "string(11)", message: "string(11)", notify_when_idle: "boolean" }, tool_response: { ok: "boolean" } }
+```
+
+### buildRawRecord(stdinText, argv, now = new Date())
+
+What it does: assembles the record that is appended to the raw log.
+
+Inputs: `stdinText` (string) the hook's stdin; `argv` (string[]) the script arguments; `now` (Date).
+
+Output: `{captured_at, hook_pid, ancestors, argv, cwd, input}` where `input` is `redactHookInput(parsed stdin)`, or `{unparseable: true, length}` when stdin is not JSON.
+
+Errors: none.
+
+Example: `buildRawRecord('not json', [], new Date("2026-10-05T21:40:00Z")).input` is `{ unparseable: true, length: 8 }`.
+
+### appendRaw(logPath, record)
+
+What it does: appends `JSON.stringify(record)` plus a newline to `logPath`, creating the parent directory.
+
+Inputs: `logPath` (string); `record` (object).
+
+Output: `true` on success, `false` when the write fails.
+
+Errors: none thrown.
+
+Example: `appendRaw("/nonexistent-root/raw.jsonl", {a: 1})` returns `false`.
+
+### main(argv = process.argv.slice(2))
+
+What it does: reads stdin, builds the record, appends it to the chosen log, swallows every error.
+
+Inputs: `argv[0]` optional log path.
+
+Output: none. Exit code is always 0.
+
+Errors: none thrown.
+
+Example:
+
+```
+echo '{"session_id":"test-123","hook_event_name":"Stop","cwd":"/tmp/x","stop_hook_active":false}' | node webhook/hooks/capture-raw.js /tmp/raw-test.jsonl; echo $?
+0
+```
+
+The appended line has `input.kept` equal to `{"session_id":"test-123","hook_event_name":"Stop","cwd":"/tmp/x","stop_hook_active":false}`.

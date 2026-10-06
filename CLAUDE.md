@@ -25,17 +25,20 @@ Event schema and the contract between server and page live in `docs/overview.md`
 
 ## Setup, run, test
 
-Runtime is Node 24, the only runtime installed on this machine. No code exists yet. webhook-builder adds the manifest in task W2 and the manager fills in the exact commands here.
+Runtime is Node 24, the only runtime installed on this machine. The manifest is `webhook/package.json`. The page has no build step.
 
 ```
-# install
+# install (no dependencies, checks the manifest only)
 cd webhook && npm install
 
-# run server
-(to be filled after W5, target: one command that starts the server and prints the dashboard URL)
+# run server (after W5), prints the dashboard URL, default http://127.0.0.1:4747
+node webhook/server.js
 
-# run tests
-(to be filled after V1, proposed: node:test)
+# demo with fake data (after W4 and W5)
+node webhook/server.js --demo
+
+# run tests (after V1 is approved, proposed)
+node --test tests/
 ```
 
 ## Coding conventions
@@ -68,6 +71,7 @@ Never read out their contents or write to them from tests.
 ## How the team works
 
 - Roles are in `.claude/roles/`. Each agent reads its own role file after this file and `SPEC.md`.
+- The manager assigns every task. A builder starts a task only when the manager sends it by ID (for example `W3`). Builders never pick the next task from `SPEC.md` on their own. After a PASS, the builder reports to the manager and waits for the next assignment.
 - Builders work only inside their own folder and docs folder. A change needed elsewhere goes under Requests in their `ready.md`.
 - When a builder finishes a task it writes `handoff/<area>/ready.md` with sections Done, How to test, Requests, Blocked. The validator tests it and writes `handoff/<area>/review.md` with PASS or numbered failures.
 - After 3 failed rounds on the same issue, the agent stops and writes under Blocked. The manager resolves it.

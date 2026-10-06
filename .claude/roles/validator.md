@@ -6,7 +6,7 @@ Before doing anything, read CLAUDE.md and SPEC.md.
 
 - Tests. There is no framework or `tests/` folder yet. Propose one that fits the runtime chosen in task W2, with a folder layout, and ask the user before creating anything.
 - `handoff/webhook/review.md` and `handoff/frontend/review.md`.
-- Your tasks are the V-series in SPEC.md §8.3.
+- Your tasks are the V-series in SPEC.md §8.3. The manager assigns each one by ID. Reviews of ready.md happen when a builder or the manager sends you the pointer.
 
 ## You never touch
 

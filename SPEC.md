@@ -79,10 +79,10 @@ Unverified assumptions that block real hook code. webhook-builder resolves them 
 
 Findings:
 
-- W-U1:
-- W-U2:
-- W-U3:
-- W-U4:
+- W-U1 (preliminary, from the tool's own schema; raw log to confirm): the tool is named `SendMessage`. Its parameters are `to` (string, recipient name from ListAgents), `message` (string), `notify_when_idle` (boolean, optional), `summary` (string, optional, not transmitted). `PostToolUse` receives these under `tool_input`. Mapping to §3: `to` -> `to`, `message` -> `text`, `notify_when_idle` -> `notify_on_idle` (default false). The sender's name is not in `tool_input`; the hook resolves it per W-U2.
+- W-U2 (confirmed by reading the files on this machine): Claude Code writes `~/.claude/sessions/<pid>.json` with `{"pid":52134,"sessionId":"177234a7-...","cwd":"/Users/khangnguyen/Documents/path_finder","name":"path-finder-37","nameSource":"derived","status":"busy","messagingSocketPath":"/tmp/cc-socks/52134.sock",...}`. A hook matches its `session_id` to `sessionId` and gets both the PID and the display name. The name is not derivable from `session_id` alone (`path-finder-37` vs session id ending `...fd49`). Fallback when the file is missing: walk `ps -o ppid=,comm=` from the hook's parent to the `claude` process, observed as `hook -> /bin/zsh -> claude (52134)`. Both are undocumented internals; names may be renamed later (`formerNames` field exists), so the hook re-reads the file on every event.
+- W-U3: pending raw log.
+- W-U4: pending raw log.
 
 Open design questions, manager decides:
 
@@ -102,7 +102,7 @@ Changes to this contract go through the manager. Either builder requests a chang
 
 ## 8. Tasks
 
-Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]` done and reviewed PASS. Update before messaging anyone.
+Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]` done and reviewed PASS. The manager assigns tasks by ID. Builders do not start unassigned tasks. Update before messaging anyone.
 
 ### 8.1 webhook-builder
 
@@ -110,13 +110,13 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
   Acceptance: all four W-U findings filled in with evidence quoted from the raw log. Docs: `docs/webhook/hooks.md` describes the raw hook input shape.
 - [~] path-finder-37 **W2: choose runtime.** Runtime is Node 24 (only runtime installed, decided by manager 2026-10-05). Add `webhook/package.json` and write run commands under Requests so the manager updates `CLAUDE.md`.
   Acceptance: a fresh clone can install and run `webhook/` with the documented commands.
-- [~] path-finder-37 **W3: real hooks.** Hook script that appends `session` events for `started`, `busy`, `idle`, `ended` and `message` events for `SendMessage`, following §3. Creates `~/.claude/dashboard/` if missing. Never blocks or fails a turn. Snippet under Requests.
+- [ ] **W3: real hooks.** Hook script that appends `session` events for `started`, `busy`, `idle`, `ended` and `message` events for `SendMessage`, following §3. Creates `~/.claude/dashboard/` if missing. Never blocks or fails a turn. Snippet under Requests.
   Acceptance: two live sessions produce correct events for start, busy, idle, one message, end. Hook exits 0 and logs nothing to the terminal even when the log dir is unwritable. Docs: `docs/webhook/hooks.md` covers each exported function.
-- [~] path-finder-37 **W4: fake event generator.** Script that writes a realistic stream to a chosen path. Covers zero sessions, ~15 sessions, same-folder siblings, a restarted session with a new ID, a session dying without `ended`, and `notify_on_idle` followed by the recipient going idle. Configurable speed.
+- [ ] **W4: fake event generator.** Script that writes a realistic stream to a chosen path. Covers zero sessions, ~15 sessions, same-folder siblings, a restarted session with a new ID, a session dying without `ended`, and `notify_on_idle` followed by the recipient going idle. Configurable speed.
   Acceptance: output validates against §3 schema. frontend-builder can run it against the page with one command. Docs: `docs/webhook/fake-generator.md`.
-- [~] path-finder-37 **W5: server.** Tails `events.jsonl` (path configurable), replays the file on startup, keeps in-memory state, runs the PID liveness check on an interval, serves `GET /` and `GET /events` per §7.
+- [ ] **W5: server.** Tails `events.jsonl` (path configurable), replays the file on startup, keeps in-memory state, runs the PID liveness check on an interval, serves `GET /` and `GET /events` per §7.
   Acceptance: browser connecting mid-run receives a correct snapshot. Killing a session process marks it ended within one interval. Server survives malformed lines. Docs: `docs/webhook/server.md`, one entry per public function and endpoint.
-- [~] path-finder-37 **W6: documentation standard.** Every public function has a one-line docstring. Every module has a file in `docs/webhook/` with what, inputs, output, errors, example.
+- [ ] **W6: documentation standard.** Every public function has a one-line docstring. Every module has a file in `docs/webhook/` with what, inputs, output, errors, example.
   Acceptance: validator confirms every documented example produces the documented output.
 
 ### 8.2 frontend-builder

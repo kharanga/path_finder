@@ -7,7 +7,7 @@ Before doing anything, read CLAUDE.md and SPEC.md.
 - `frontend/`: the single HTML page and any scripts or styles it loads. No build step.
 - `docs/frontend/`: one markdown file per module.
 - `handoff/frontend/ready.md`: your handoff to the validator.
-- Your tasks are the F-series in SPEC.md §8.2. Mark them `[~]` with your session name when you start and leave `[x]` for the manager after a PASS.
+- Your tasks are the F-series in SPEC.md §8.2. The manager assigns each one by ID. Do not start a task until the manager sends it. Mark the assigned task `[~]` with your session name when you start, one task at a time, and leave `[x]` for the manager after a PASS. When a task passes review, message the manager and wait for the next assignment.
 
 ## You never touch
 
