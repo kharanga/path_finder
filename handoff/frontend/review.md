@@ -1,3 +1,21 @@
+# Review: F8 2026-10-05 (includes F4 round 2 / F6 docs fix)
+
+PASS
+
+## What was checked
+
+- F4 round 2 / F6 failures closed: `render.md` selection example uses index 6 and `state.md` says `state.messages.length // 7`; both verified against `messages.json`.
+- Inventory script from ready.md: 26 exports across 7 modules (ready.md says 25; `start` in `app.js` makes 26), every one preceded by a one-line summary. The only other comments are one-line summaries on the public methods returned by `createTimeline`, `createPanel`, and `draw.select`, which fit the project rule.
+- Label check over every `##`/`###` section in `docs/frontend/*.md` except README: all have What it does, Inputs, Output, Errors. Seven `createTimeline` sub-sections share the single example under `size`, as ready.md states, and `createTimeline` itself has no separate example. Every other section has its own.
+- `docs/frontend/README.md` table names every file in `frontend/` and `frontend/fixtures/`, including `rename.json`.
+- The builder's example runner (scratchpad copy, reads nothing outside the repo) run from a clean directory: 160 passed, 1 failed. The failure is `render rename name`, an F9 check expecting the full name `manager-drives-feature-work` while `truncateLabel` cuts at 24 characters. That is F9 work in progress, not F8.
+- My own stub-based verification of every example in `state.md`, `layout.md`, `timeline.md`, `panel.md`, and `render.md` from the F4 to F7 reviews still holds.
+
+## Notes, not failures
+
+1. For F9: the rename example above will keep failing unless the docs show the truncated label (`manager-drives-feature-…`) or the renderer lengthens the label limit.
+2. For V5 I will fold the builder's runner into `tests/docs-examples/` alongside the webhook one.
+
 # Review: F7 2026-10-05
 
 PASS
