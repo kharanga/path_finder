@@ -1,28 +1,25 @@
-# Ready: F4 message particles (plus `waiting` state)
+# Ready: F5 timeline strip (plus placeholder bodies from the F4 decision)
 
 ## Done
 
-`frontend/state.js`
-- `waiting` added to the live states.
-- Threads: a `notify_on_idle` message appends `{ id, from, to, ts, status: "waiting", resolvedTs }` to `state.threads` (`id` = message index). A session event resolves threads addressed to that session's name: `idle` → `snapped`, `ended` → `dropped`, anything else leaves them waiting. At most 50 finished threads are kept. `waitingThreads(state)` exported. `snapshotSeq` increments on every `applySnapshot` so the renderer can tell a rebuild from incremental growth.
+`frontend/timeline.js` (new)
+- `createTimeline()`: records every snapshot entry and incremental event with its event timestamp and arrival time, sorted by time. `range()`, `messageTimes()`, `stateAt(tsMs)` (rebuilds a state from scratch by replaying entries at or before `tsMs`, with a unique negative `snapshotSeq` so the renderer never animates a replay), `size`.
+- `mountTimelineStrip(container, timeline, { onScrub, onLive })`: binds the footer in `index.html` (Live button, range input, tick marks per message, clock label). Slider input leaves live mode and calls `onScrub`; Live calls `onLive`. `refresh()` grows the range as events arrive; in live mode the knob follows the end, in scrub mode it stays put. Disabled with fewer than two distinct timestamps.
+- `formatClock(tsMs)`.
 
-`frontend/layout.js`
-- `messageCurve(from, to, center, { bow, sideOffset })` returns `{ d, control, length }` for a quadratic curve bowed toward the ring center with a perpendicular offset so opposite bodies do not cross the exact center and A→B / B→A arcs mirror.
+`frontend/app.js`: keeps the live state and the timeline in step. Live mode draws the live state on every event; scrub mode draws `timeline.stateAt(ts)` with `instant: true` and keeps recording, so nothing is lost; Live redraws the live state instantly and resumes. Prunes placeholders every 5 s.
 
-`frontend/render.js`
-- New layers: `threads` under the bodies, `particles` above. Remembers the last drawn position of every PID (ghosts included) to route messages.
-- Particles: one per message added since the last draw; snapshot history is never animated. `<g class="particle" data-message-index>` with a hidden path, a dot moved by SMIL `animateMotion` over `travelMs` (1200 ms), then class `arrived`, shrunk and dimmed at the recipient for `lingerMs` (6 s) so F6 can make it clickable. `<title>` has from → to: text. Unknown names route to the ring center.
-- Threads: `<path class="thread" data-thread-id>` for every waiting thread, drawn on with stroke-dash over `travelMs`, re-routed each draw. `snapped` → class `snapping`, dashoffset back to full length (retracts into the sender over 500 ms), removed. `dropped` → fades out.
-- `waiting`: orange core (`--waiting`), faint static halo, no pulse.
-- Options: `{ ghostMs, travelMs, lingerMs, reducedMotion }`. `reducedMotion` defaults to the media query; when true particles appear at the recipient as arrived markers and threads appear fully drawn and are removed at once when resolved (F7 groundwork).
+`frontend/render.js`: `draw(state, { instant })`. Instant removes non-live bodies at once (no ghosts), skips fade-in, shows threads fully drawn. Fade-in and thread draw-on now use a synchronous style flush instead of `requestAnimationFrame`, which Chrome pauses in background tabs (bodies were stuck invisible when the tab was not in front). Placeholder bodies: hollow dashed circle, italic label, explanatory title.
 
-`frontend/orbit.css`: particle, thread, waiting styles, reduced-motion block extended.
+`frontend/state.js` (F4 decision, manager 2026-10-05): a message `from` or `to` a name with no session creates a placeholder `{ name, folder: folderFromName(name), createdAtMs }`. Placeholders appear in `liveSessions` as pseudo-sessions `{ pid: "placeholder:<name>", state: "placeholder" }` at the folder slot guessed by stripping the trailing `-<id>`, are found by `sessionByName` so particles and threads route to them, are merged (deleted) when a session event with that name arrives, and are removed by `prunePlaceholders(state, nowMs, maxAgeMs = 60000)`. `applySnapshot`, `applyEvent`, `applyMessageEvent` take an optional `receivedAtMs` (default `Date.now()`) so tests control the clock. Folder sorting treats `_` and `-` as equal so a guessed `path-finder` sits beside `path_finder`.
 
-`frontend/fixtures/messages.json`: 5 sessions (one `waiting`), then 9 timed events covering notify → busy → idle (snap), plain message, reply, notify to a name not on the ring, notify whose recipient ends (drop).
+`frontend/index.html`, `frontend/orbit.css`: footer strip markup and styles; placeholder style.
 
-Docs: `docs/frontend/state.md` (state shape, threads, `waitingThreads`, `snapshotSeq`, `waiting`), `layout.md` (`messageCurve`), `render.md` (particles, threads, reduced motion, new options, `waiting` color, examples), `README.md` (fixture table).
+Fixtures: `generated-many.json` and `generated-mid.json` written from W4 with the commands in `docs/webhook/fake-generator.md`; both load and run in the page (see test 6). `messages.json` unchanged, its `nobody-99` message now produces a placeholder body instead of routing to the center.
 
-SPEC.md §8.2 F4 marked `[~] path-finder-18`.
+Docs: `docs/frontend/timeline.md` (new), `state.md`, `render.md`, `app.md`, `README.md` updated.
+
+SPEC.md §8.2 F5 marked `[~] path-finder-18`.
 
 ## How to test
 
@@ -30,20 +27,18 @@ SPEC.md §8.2 F4 marked `[~] path-finder-18`.
 python3 -m http.server 8787 --bind 127.0.0.1 --directory frontend
 ```
 
-1. `http://127.0.0.1:8787/?fixture=messages`. At load: `tag-analyzer-63` is orange with a faint halo and no pulse (waiting). No particle for the snapshot message.
-2. ~1 s: a blue-tinted dot flies from `path-finder-18` to `path-finder-e5` along an inward arc while a thin thread draws on behind it. The dot lingers at `path-finder-e5` as a small dim dot.
-3. ~2.5 s: `path-finder-e5` turns busy, thread stays. ~3.5 s: a plain particle `listings-bc` → `tag-analyzer-63`, no thread. ~5 s: `tag-analyzer-63` turns yellow (busy).
-4. ~7.5 s: `path-finder-e5` goes idle and the thread retracts into `path-finder-18` and disappears.
-5. ~9 s: reply particle `path-finder-e5` → `path-finder-18`. ~10.5 s: notify to `nobody-99`: particle and thread go from `path-finder-0d` to the ring center and the thread stays (no recipient to go idle).
-6. ~12 s: notify `path-finder-0d` → `listings-bc`; ~14.5 s `listings-bc` ends, its thread fades out and the body becomes a ghost.
-7. Console: no errors.
-8. Node, pure modules: replay `messages.json` through `applyEvent` and compare `state.threads` to the sequence in `docs/frontend/state.md` (ends `["1:path-finder-e5:snapped", "4:nobody-99:waiting", "5:listings-bc:dropped"]`); `messageCurve` example in `layout.md`.
-9. DOM stub: the `render.md` example with `createRenderer(svg, { reducedMotion: true, lingerMs: 60000 })` (particle count, `data-message-index`, `notify`, `arrived`, thread count and `data-thread-id`, `snapping` after the idle event, pid 30111 `waiting` then `busy`).
+1. `?fixture=messages`, wait 15 s. Strip at the bottom: Live button (disabled, green), slider knob at the right, 6 ticks, label `Live`. `nobody-99` is a dashed hollow body at the top of the ring with an italic label and the thread from `path-finder-0d` ends on it, not at the center. After 60 s from its message it disappears.
+2. Drag the knob left. Label shows a clock time, border above the strip turns yellow, Live button enables, the ring shows that instant's state with no fades or particles. Early in this fixture (before 22:00:00Z event time) only the snapshot message exists, so the ring shows two placeholders, `path-finder-0d` and `path-finder-18`, which is the faithful state at that moment.
+3. While scrubbed, events keep arriving: the range grows (knob proportionally moves left) but the ring does not change. Click Live: current state appears at once, label `Live`.
+4. Reload while the tab is in the background (open it, switch tabs, come back after 10 s): bodies are fully visible, not stuck faded.
+5. Node, `docs/frontend/timeline.md` example: `size` 15, range, 6 message times, `stateAt` at 22:00:13Z and at the end, `stateAt(0)` empty. `docs/frontend/state.md` placeholder examples: create, merge, prune at +59 s (0) and +60 s (1), `folderFromName` cases.
+6. `?fixture=generated-mid` (8 sessions, snapshot) and `?fixture=generated-many` (15 sessions from empty, ~160 s): bodies appear, messages fly, strip fills with ticks, scrubbing works. One generated message has `from: null`; the reducer drops it per the §3 schema (see Requests 2).
 
 ## Requests
 
-1. W4 fake generator: please include the `messages.json` scenario shape (notify → recipient busy → recipient idle, and notify → recipient ended) and a `waiting` session, so F4 can be re-checked against real generator output. The earlier request for the `{snapshot, events}` fixture format or a converter still stands.
-2. Manager: a thread to a recipient that never appears (e.g. `nobody-99`) stays waiting forever and is drawn to the ring center. If that is wrong, say whether to drop threads to unknown names after a timeout or hide them.
+1. Validator: `docs/frontend/timeline.md` `formatClock` example is timezone dependent; compare against `new Date(ts).getHours()` etc. in the test's own zone.
+2. webhook-builder (via manager): the generator emits one message with `from: null`. §3 says `from` is a string, so the page drops it. If a sender can really be unknown, the contract should say so and I will render it from a placeholder or the center; otherwise the generator should not emit it.
+3. Manager: the generator's 15-session run takes 160 s real time; a `--speed` for `--fixture` output would make validator checks faster if W4 does not already support it.
 
 ## Blocked
 

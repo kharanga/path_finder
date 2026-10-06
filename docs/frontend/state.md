@@ -5,8 +5,10 @@ Pure reducer. Holds every session keyed by PID and the message history. No DOM a
 The state object:
 
 ```js
-{ sessions: Map<number, Session>, messages: Message[], threads: Thread[], lastEventTs: string | null, snapshotSeq: number }
+{ sessions: Map<number, Session>, placeholders: Map<string, Placeholder>, messages: Message[], threads: Thread[], lastEventTs: string | null, snapshotSeq: number }
 ```
+
+`Placeholder` is `{ name, folder, createdAtMs }`: a body for a name that appeared in a message but has no session event yet. `folder` is guessed by `folderFromName`. Placeholders are merged away when a session event with that name arrives and pruned by `prunePlaceholders` after 60 s.
 
 `Session` is `{ pid, session, folder, role, state, ts, firstSeen }`. `state` is one of `started`, `busy`, `waiting`, `idle`, `ended`. `Message` is `{ ts, from, to, text, notify_on_idle }`. `Thread` is `{ id, from, to, ts, status, resolvedTs }` where `id` is the index of the message in `messages` and `status` is `waiting`, `snapped`, or `dropped`. `snapshotSeq` counts snapshots so the renderer can tell a rebuild from incremental growth.
 
@@ -16,7 +18,7 @@ What it does: returns an empty state.
 
 Inputs: none.
 
-Output: `{ sessions: new Map(), messages: [], threads: [], lastEventTs: null, snapshotSeq: 0 }`.
+Output: `{ sessions: new Map(), placeholders: new Map(), messages: [], threads: [], lastEventTs: null, snapshotSeq: 0 }`.
 
 Errors: none.
 
@@ -26,13 +28,14 @@ Example:
 createState().sessions.size // 0
 ```
 
-## applySnapshot(state, snapshot)
+## applySnapshot(state, snapshot, receivedAtMs)
 
-What it does: discards current sessions, messages, and threads, increments `snapshotSeq`, and rebuilds from a server snapshot. Snapshot messages with `notify_on_idle` create threads too, so a page that connects mid-wait still shows the thread.
+What it does: discards current sessions, placeholders, messages, and threads, increments `snapshotSeq`, and rebuilds from a server snapshot. Snapshot messages with `notify_on_idle` create threads too, so a page that connects mid-wait still shows the thread.
 
 Inputs:
 - `state` (object): the state to overwrite in place.
 - `snapshot` (object): `{ sessions: [...], messages: [...] }` per `docs/overview.md`. Missing arrays are treated as empty. `null` snapshot is treated as empty.
+- `receivedAtMs` (number, default `Date.now()`): arrival time stamped on any placeholders the snapshot's messages create.
 
 Output: the same `state` object, mutated.
 
@@ -53,7 +56,7 @@ state.snapshotSeq               // 1
 state.lastEventTs               // "2026-10-05T21:40:05Z"
 ```
 
-## applyEvent(state, eventName, data)
+## applyEvent(state, eventName, data, receivedAtMs)
 
 What it does: routes one incremental SSE event to the matching reducer.
 
@@ -61,6 +64,7 @@ Inputs:
 - `state` (object).
 - `eventName` (string): `"session"`, `"liveness"` (both handled as session events), or `"message"`. Anything else is ignored.
 - `data` (object): the parsed event payload.
+- `receivedAtMs` (number, default `Date.now()`): passed through to `applyMessageEvent`.
 
 Output: the same `state`, mutated.
 
@@ -75,7 +79,7 @@ state.sessions.get(29904).state // "ended"
 
 ## applySessionEvent(state, event)
 
-What it does: upserts the session with `event.pid`. Fields that are `null` or missing in the event keep the previously known value, so a later event with `session: null` does not erase a known name. `firstSeen` is the `ts` of the first event for that PID. Before storing, it resolves threads addressed to this session's name: an `idle` event marks every waiting thread to that name `snapped`, an `ended` event marks them `dropped`, and `busy`, `waiting`, or `started` leave them waiting. At most 50 finished threads are kept; older finished ones are pruned.
+What it does: upserts the session with `event.pid`. Fields that are `null` or missing in the event keep the previously known value, so a later event with `session: null` does not erase a known name. `firstSeen` is the `ts` of the first event for that PID. Before storing, it resolves threads addressed to this session's name: an `idle` event marks every waiting thread to that name `snapped`, an `ended` event marks them `dropped`, and `busy`, `waiting`, or `started` leave them waiting. At most 50 finished threads are kept; older finished ones are pruned. A placeholder with the same name is deleted (merged into the real session).
 
 Inputs:
 - `state` (object).
@@ -105,13 +109,14 @@ state.threads.map(t => `${t.id}:${t.to}:${t.status}`) // ["1:path-finder-e5:snap
 state.threads.map(t => `${t.id}:${t.to}:${t.status}`) // ["1:path-finder-e5:snapped", "4:nobody-99:waiting", "5:listings-bc:dropped"]
 ```
 
-## applyMessageEvent(state, event)
+## applyMessageEvent(state, event, receivedAtMs)
 
-What it does: appends a message to `state.messages`, oldest first. When `notify_on_idle` is true it also appends a `waiting` thread whose `id` is the message index.
+What it does: appends a message to `state.messages`, oldest first. When `notify_on_idle` is true it also appends a `waiting` thread whose `id` is the message index. For `from` and `to` names that match neither a session nor an existing placeholder, it creates a placeholder stamped with `receivedAtMs`.
 
 Inputs:
 - `state` (object).
 - `event` (object): a `message` event. Requires string `from` and `to`; otherwise ignored. Missing `text` becomes `""`, missing `notify_on_idle` becomes `false`.
+- `receivedAtMs` (number, default `Date.now()`): wall-clock arrival time used for placeholder expiry.
 
 Output: the same `state`.
 
@@ -123,6 +128,53 @@ Example:
 applyMessageEvent(state, { ts: "2026-10-05T21:44:05Z", type: "message", from: "path-finder-e5", to: "path-finder-18", text: "F1 spec updated" });
 state.messages.at(-1) // { ts: "2026-10-05T21:44:05Z", from: "path-finder-e5", to: "path-finder-18", text: "F1 spec updated", notify_on_idle: false }
 ```
+
+Placeholders:
+
+```js
+const now = Date.parse("2026-10-05T22:01:00Z");
+const state = applySnapshot(createState(), { sessions: [], messages: [{ ts: "2026-10-05T22:00:00Z", type: "message", from: "a-11", to: "b-22", text: "x", notify_on_idle: false }] }, now);
+[...state.placeholders.keys()]              // ["a-11", "b-22"]
+applyEvent(state, "session", { ts: "2026-10-05T22:00:01Z", type: "session", session: "b-22", folder: "b", pid: 1, state: "started", role: null }, now);
+[...state.placeholders.keys()]              // ["a-11"]
+liveSessions(state).map(s => s.pid)         // ["placeholder:a-11", 1]
+```
+
+## prunePlaceholders(state, nowMs, maxAgeMs)
+
+What it does: deletes placeholders whose `createdAtMs` is at least `maxAgeMs` before `nowMs`.
+
+Inputs: `state` (object), `nowMs` (number, default `Date.now()`), `maxAgeMs` (number, default 60000).
+
+Output: number of placeholders removed.
+
+Errors: none.
+
+Example, continuing from the placeholder example above:
+
+```js
+prunePlaceholders(state, now + 59000) // 0
+prunePlaceholders(state, now + 60000) // 1
+state.placeholders.size               // 0
+```
+
+## folderFromName(name)
+
+What it does: guesses the start folder of a display name by stripping a trailing `-` plus two hex characters, which is how Claude Code derives names (`listings-bc` from `listings`). Names without that suffix are returned unchanged.
+
+Inputs: `name` (string).
+
+Output: string.
+
+Example:
+
+```js
+folderFromName("path-finder-18")                 // "path-finder"
+folderFromName("listings-bc")                    // "listings"
+folderFromName("add-semantic-similarity-scores") // "add-semantic-similarity-scores"
+```
+
+Sorting treats `_` and `-` in folders as equal, so a placeholder guessed as `path-finder` sits next to real `path_finder` sessions.
 
 ## waitingThreads(state)
 
@@ -142,7 +194,7 @@ waitingThreads(state).map(t => t.to) // ["nobody-99"]
 
 ## liveSessions(state)
 
-What it does: returns sessions in state `started`, `busy`, `waiting`, or `idle`, sorted by folder then label. Ended sessions are excluded.
+What it does: returns sessions in state `started`, `busy`, `waiting`, or `idle`, plus every placeholder as a pseudo-session `{ pid: "placeholder:<name>", session: name, folder, role: null, state: "placeholder" }`, sorted by folder then label. Ended sessions are excluded.
 
 Inputs: `state` (object).
 
@@ -159,11 +211,11 @@ liveSessions(state).map(sessionLabel)
 
 ## sessionByName(state, name)
 
-What it does: finds the session whose display name equals `name`.
+What it does: finds the session whose display name equals `name`, or the placeholder pseudo-session with that name.
 
 Inputs: `state` (object), `name` (string).
 
-Output: the `Session`, or `undefined`.
+Output: the `Session` or placeholder pseudo-session, or `undefined`.
 
 Errors: none.
 

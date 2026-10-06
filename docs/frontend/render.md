@@ -8,13 +8,13 @@ What it does: sets the viewBox, adds the ring circle, the "No sessions running" 
 
 State visuals (F3) are all CSS keyed on classes and `data-state`:
 
-- A new body is created with class `entering` (opacity 0) and loses it on the next animation frame, so it fades in.
+- A new body is created with class `entering` (opacity 0); styles are flushed synchronously and the class removed, so it fades in even when the tab is in the background (where `requestAnimationFrame` is paused).
 - When a session stops being live, its node is not removed. It gets `data-state="ended"` and class `leaving`, fades to a faint mark at its last position, and is removed after `ghostMs`. If the same PID becomes live again before then, the timer is cancelled and the node is reused.
-- `busy`: yellow core with a drop-shadow glow and a pulsing halo. `waiting` (permission prompt): orange core with a faint static halo, no pulse. `idle`: dim core and muted label. `started`: light blue core. `ended`: ring-colored core.
+- `busy`: yellow core with a drop-shadow glow and a pulsing halo. `waiting` (permission prompt): orange core with a faint static halo, no pulse. `idle`: dim core and muted label. `started`: light blue core. `ended`: ring-colored core. `placeholder` (a name seen only in messages): hollow dashed circle, italic muted label, title "`<name>`, no session event yet (folder guessed: `<folder>`)".
 
 The empty label is shown and the ring becomes dashed when there are no live sessions. Ghosts do not count as live.
 
-Messages (F4). The renderer remembers how many messages it has drawn. On each `draw`, every message added since the last draw gets a particle; when `state.snapshotSeq` changes the counter resets and the particle and thread layers are cleared, so snapshot history is never animated. A particle is `<g class="particle" data-message-index>` holding an invisible `<path class="particle-path">` from `messageCurve`, a `<circle class="particle-dot">` that travels along it with SMIL `animateMotion` over `travelMs`, and a `<title>` with sender, recipient, and text. After arriving it gets class `arrived`, shrinks to a dim dot at the recipient for `lingerMs`, and is removed. Positions come from the last drawn position of the named session; a name not on the ring (unknown, or ghost already removed) uses the ring center. Particles for `notify_on_idle` messages carry class `notify` and are tinted like threads.
+Messages (F4). The renderer remembers how many messages it has drawn. On each `draw`, every message added since the last draw gets a particle; when `state.snapshotSeq` changes the counter resets and the particle and thread layers are cleared, so snapshot history is never animated. A particle is `<g class="particle" data-message-index>` holding an invisible `<path class="particle-path">` from `messageCurve`, a `<circle class="particle-dot">` that travels along it with SMIL `animateMotion` over `travelMs`, and a `<title>` with sender, recipient, and text. After arriving it gets class `arrived`, shrinks to a dim dot at the recipient for `lingerMs`, and is removed. Positions come from the last drawn position of the named session or placeholder; only a name with no body at all (a ghost already removed) falls back to the ring center. Particles for `notify_on_idle` messages carry class `notify` and are tinted like threads.
 
 Threads. For each `state.threads` entry with status `waiting`, a `<path class="thread" data-thread-id>` is drawn along the same curve and re-routed on every draw so it follows bodies that move. It draws on from the sender using `stroke-dasharray` equal to the curve length and `stroke-dashoffset` animated from the length to 0 over `travelMs`. When the thread's status becomes `snapped` (recipient went idle) the path gets class `snapping` and its dashoffset returns to the full length, which retracts the line back into the sender over 500 ms before removal. Status `dropped` (recipient ended) fades the path out instead.
 
@@ -27,7 +27,7 @@ Inputs:
 - `lingerMs` (number, optional, default 6000): how long an arrived particle stays clickable at the recipient.
 - `reducedMotion` (boolean, optional): overrides the media query, useful in tests.
 
-Output: `draw(state)`, a function taking the state from `state.js` and returning nothing.
+Output: `draw(state, { instant })`, a function taking the state from `state.js` and returning nothing. With `instant: true` (used by the timeline when scrubbing and when returning to live) bodies that are no longer live are removed at once instead of becoming ghosts, new bodies appear without the fade-in, and threads appear fully drawn. Particles are never spawned for a state whose `snapshotSeq` differs from the previous draw, which is always the case for replayed states.
 
 Errors: throws if `svg` is not an element (DOM calls fail). `draw` never throws on valid state.
 
@@ -77,4 +77,4 @@ Without `reducedMotion`, the dot has an `animateMotion` child whose `mpath` refe
 
 With `frontend/fixtures/many.json` the body for pid 41008 shows the name `add-semantic-similarity…` and its title holds `add-semantic-similarity-scores-28 in add-semantic-similarity-scores`.
 
-Styling hooks in `orbit.css`: `.body[data-state="busy"|"waiting"|"idle"|"started"|"ended"]`, `.body.entering`, `.body.leaving`, `.body .halo`, `.body .core`, `.particle`, `.particle.notify`, `.particle.arrived`, `.particle-dot`, `.thread`, `.thread.drawing`, `.thread.snapping`, `.thread.dropping`, `.ring.empty`, `.empty-label`, `.hidden`. Under `prefers-reduced-motion: reduce` all transitions are off and the busy halo is a static glow with no pulse.
+Styling hooks in `orbit.css`: `.body[data-state="busy"|"waiting"|"idle"|"started"|"ended"|"placeholder"]`, `.body.entering`, `.body.leaving`, `.body .halo`, `.body .core`, `.particle`, `.particle.notify`, `.particle.arrived`, `.particle-dot`, `.thread`, `.thread.drawing`, `.thread.snapping`, `.thread.dropping`, `.ring.empty`, `.empty-label`, `.hidden`. Under `prefers-reduced-motion: reduce` all transitions are off and the busy halo is a static glow with no pulse.

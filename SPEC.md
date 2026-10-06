@@ -37,7 +37,7 @@ Event schema:
 {"ts":"2026-10-05T21:40:05Z","type":"message","from":"listings-bc","to":"tag-analyzer-63","text":"L16 is ready, look at it","notify_on_idle":true}
 ```
 
-`state` is one of `started`, `busy`, `waiting`, `idle`, `ended`. `waiting` means the session is blocked on a permission prompt, emitted from the `Notification` hook when `notification_type` is `permission_prompt`. `role` is `null` unless declared.
+`message.from` is a string or null; null means the sender's hook could not resolve its own name, and the page must keep the message and draw it from the ring center. `state` is one of `started`, `busy`, `waiting`, `idle`, `ended`. `waiting` means the session is blocked on a permission prompt, emitted from the `Notification` hook when `notification_type` is `permission_prompt`. `role` is `null` unless declared.
 
 Liveness fallback: the server periodically checks whether each known PID is alive and marks dead sessions `ended`. On the same interval it reads `status` from `~/.claude/sessions/<pid>.json` and, when it disagrees with hook state (missed `Stop` after an interrupt), emits a corrective `session` event. Decided 2026-10-05. The socket filename in `/tmp/cc-socks/` appears to be the PID. Treat it as an undocumented internal.
 
@@ -131,8 +131,8 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
   Acceptance: checked against W4 output at 1, 5, and 15 sessions.
 - [x] **F3: state visuals.** Busy glow and pulse, idle dim, fade in on start, fade out with brief faint mark on end. Name label, role underneath only when declared.
 - [~] path-finder-18 (in review) **F4: message particles.** Curved path from sender to recipient. `notify_on_idle` thread that snaps back to the sender when the recipient's next state is idle. Decision 2026-10-05: a message to a name not yet on the ring creates a faint placeholder body at the folder slot derived from the name prefix (strip the trailing `-<id>`), labeled with the name; it merges when a real session event arrives and fades after 60 s without one.
-- [~] path-finder-18 **F5: timeline strip.** Scrub through history. Scrubbing replays state at that moment without losing the live stream.
-- [ ] **F6: side panel.** Click a particle to show from, to, time, and full text.
+- [~] path-finder-18 (in review) **F5: timeline strip.** Scrub through history. Scrubbing replays state at that moment without losing the live stream.
+- [~] path-finder-18 **F6: side panel.** Click a particle to show from, to, time, and full text.
 - [ ] **F7: accessibility and responsiveness.** `prefers-reduced-motion` disables pulse, particles become instant markers. Works at phone width.
 - [ ] **F8: documentation standard.** One-line docstring on each public function. `docs/frontend/` has one file per module with what, inputs, output, errors, example.
   Acceptance for F3 to F8: validator confirms against W4 output and the docs examples.
