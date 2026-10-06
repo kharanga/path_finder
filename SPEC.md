@@ -1,6 +1,6 @@
 # SPEC: live Claude Code sessions dashboard
 
-Status: complete. Every task in §8 is PASS, the plugin is installed, and the suite is green with 350 tests including every docs example. Last updated 2026-10-06.
+Status: v1 complete (every task through V5 PASS, plugin installed, 350 tests green). v2 in progress: circuit visual and session removal editor, tasks W9, F10, F11, V7. Last updated 2026-10-06.
 
 Read `CLAUDE.md` first for architecture, ownership, and team rules. This file holds the current state of each area, known issues, open questions, and the tasks each builder works on next. Every feature to implement is tracked here.
 
@@ -37,19 +37,29 @@ Event schema:
 {"ts":"2026-10-05T21:40:05Z","type":"message","from":"listings-bc","to":"tag-analyzer-63","text":"L16 is ready, look at it","notify_on_idle":true}
 ```
 
-`message.from` is a string or null; null means the sender's hook could not resolve its own name, and the page must keep the message and draw it from the ring center. `state` is one of `started`, `busy`, `waiting`, `idle`, `ended`. `waiting` means the session is blocked on a permission prompt, emitted from the `Notification` hook when `notification_type` is `permission_prompt`. `role` is `null` unless declared.
+`message.from` is a string or null; null means the sender's hook could not resolve its own name, and the page must keep the message and draw it from the ring center. `state` is one of `started`, `busy`, `waiting`, `idle`, `ended`, `removed`. `removed` is written only by the server on a manual removal (§4.1). `waiting` means the session is blocked on a permission prompt, emitted from the `Notification` hook when `notification_type` is `permission_prompt`. `role` is `null` unless declared.
 
 Liveness fallback: the server periodically checks whether each known PID is alive and marks dead sessions `ended`. On the same interval it reads `status` from `~/.claude/sessions/<pid>.json` and, when it disagrees with hook state (missed `Stop` after an interrupt), emits a corrective `session` event. Decided 2026-10-05. The socket filename in `/tmp/cc-socks/` appears to be the PID. Treat it as an undocumented internal.
 
-## 4. Visual direction: "Orbit"
+## 4. Visual direction: "Circuit" (v2, replaces Orbit)
 
-- Each live session is a body on a ring. Position is keyed by start folder, so a restarted session returns to the same spot. Same-folder sessions sit next to each other.
-- Busy sessions glow and pulse gently. Idle sessions dim. New sessions fade in. Ended sessions fade out, leaving a faint mark briefly.
-- Messages are particles on curved paths between sessions. Messages with `notify_on_idle` trail a thin thread that snaps back to the sender when the recipient goes idle.
-- Each body is labeled with its name. Role appears underneath only if declared.
-- Timeline strip for scrubbing history. Side panel shows full message text when a particle is clicked.
-- Handles 1 to ~15 sessions, including zero (empty ring with "No sessions running").
-- Respects `prefers-reduced-motion`. Responsive.
+User direction 2026-10-06: not a ring. An electrical circuit that passes messages from capsule to capsule.
+
+- Each live session is a capsule, a rounded component on a circuit board. Capsules are grouped by start folder into rows (one row per folder), so a restarted session returns to its folder row. Position inside a row is stable per PID while live.
+- Traces are orthogonal wires (horizontal and vertical runs with rounded corners) connecting capsules. A trace is drawn on demand when a message first travels between two capsules and stays faint afterward, so the board shows who talks to whom.
+- A message is a pulse: a bright charge that travels along the trace from sender to recipient. Messages with `notify_on_idle` leave the trace charged (glowing) until the recipient's next `idle` event, then the charge drains back to the sender.
+- Capsule states: busy lit with a soft electrical flicker, waiting amber and steady, idle dim, started dim with a brief power-on flash, ended fades out leaving a faint footprint briefly, removed disappears immediately with no footprint.
+- Each capsule shows its name and, underneath, its role if declared. A capsule for an unknown recipient (name not on the board) is a dashed outline at the end of its folder row, as the placeholder body was.
+- Timeline strip, side panel, keyboard access, reduced motion (pulses become instant markers, no flicker), responsive layout: all carried over from v1 unchanged in behavior.
+- Empty state: an empty board with "No sessions running".
+- Handles 1 to ~15 sessions without overlap. Rows wrap when a folder has many sessions.
+
+### 4.1 Session removal editor
+
+- An "Edit" toggle on the page. In edit mode each capsule shows a remove control. Removing asks for one confirmation, then calls the server.
+- `POST /sessions/<pid>/remove` appends a `session` event with state `removed` for that PID (current name, folder, role) to `events.jsonl` and broadcasts it. Returns 204, or 404 when the PID is unknown.
+- `removed` is a sixth session state. The reducer treats it as not live. The page drops the capsule immediately with no footprint. If the session later emits any event, it reappears, which is the intended way to recover a mistaken removal of a live session.
+- Edit mode also offers "Remove all ended" as one action, which removes every session currently in state `ended`.
 
 ## 5. Current state
 
@@ -101,6 +111,7 @@ Defined in `docs/overview.md`. Summary:
 - `message.from` may be null when the sender's name lookup fails. The page keeps such messages and draws them from the ring center.
 - `GET /` serves `frontend/index.html`. All other non-`/events` paths are static files from `frontend/` (ES modules, css, json fixtures), no path traversal.
 - `GET /snapshot` returns the same snapshot object as JSON, for tests and curl.
+- `POST /sessions/<pid>/remove` appends a `removed` session event and broadcasts it. 204 on success, 404 for an unknown PID. Snapshot excludes removed sessions.
 - `GET /events` is an SSE stream. First event is `snapshot` with the full state. Later events are `session` and `message` with the §3 schema, plus `liveness` when the PID check marks a session ended.
 - Snapshot shape: `{ "sessions": [session objects with current state], "messages": [recent message events] }`.
 
@@ -130,6 +141,9 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **W8: plugin bundle.** Package hooks, server, the `declare-role` skill, and a `/dashboard` command as a Claude Code plugin so another machine can install it without editing `settings.json` by hand. Hook commands must not hard-code this repo's path or the nvm node path. Research the current plugin manifest format first and put the proposed layout under Requests before building. The bundled skill re-declares the role on SessionStart so roles survive log truncation. Approved 2026-10-05: repo root is the plugin root; webhook-builder owns `.claude-plugin/`, `hooks/`, `commands/`, `skills/`; roles persist in `~/.claude/dashboard/roles.json` keyed by cwd (two sessions in one folder share a role, accepted); the W3 settings snippet stays until the validator verifies the plugin, then the manager removes it.
   Acceptance: documented install steps on a clean checkout produce working hooks and a running dashboard. Docs: `docs/webhook/plugin.md`.
 
+- [~] path-finder-37 **W9: session removal endpoint.** Add state `removed` to `schema.js`. `POST /sessions/<pid>/remove` appends a `session` event with state `removed` (current name, folder, role) and broadcasts it; 404 for unknown PID. Snapshot and `liveSessions` exclude removed sessions. Removed sessions reappear on any later event for that PID. Add a `removed` scenario to `fake.js`.
+  Acceptance: curl the endpoint against the demo server, the capsule disappears from the snapshot, restart the server and it stays gone, a new event for the PID brings it back. Docs updated.
+
 ### 8.2 frontend-builder
 
 - [x] **F1: static page skeleton.** `frontend/index.html` with no build step. Connects to `/events`, applies the snapshot, applies incremental events. Falls back to loading a local JSON fixture when the SSE endpoint is absent so it can be developed before W5 exists.
@@ -147,6 +161,11 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **F9: session renames.** A session can be renamed mid-run (see §6). Resolve message endpoints to bodies by PID when the name matches no live body but matches a former name of one; keep a per-PID list of former names from session events; never create a placeholder body for a former name of a live session. Label updates in place with a brief highlight.
   Acceptance: W4 rename scenario shows one body throughout with the label changing, messages before and after the rename attach to it, no placeholder appears. Docs updated.
 
+- [~] path-finder-18 **F10: circuit visual.** Replace the ring with the board layout in §4: folder rows, capsules, orthogonal traces drawn on first message and kept faint, pulses along traces, charged traces for notify threads, capsule states per §4. Timeline, panel, keyboard, reduced motion, and responsiveness keep working. Pure layout functions in `layout.js` so V3 tests can be updated.
+  Acceptance: W4 output at 1, 5, and 15 sessions shows readable rows with no overlap; every message produces a visible pulse; a notify thread drains on idle; reduced motion shows no animation. Docs updated, including `docs/frontend/README.md` naming.
+- [ ] **F11: removal editor.** Edit toggle, per-capsule remove control with one confirmation, "Remove all ended", calls `POST /sessions/<pid>/remove`, drops the capsule on the resulting `removed` event with no footprint. Disabled with a hint in fixture mode where no server exists.
+  Acceptance: remove a live and an ended session on the demo server, both vanish, page reload shows them still gone, a new event for the live one brings it back. Docs updated.
+
 ### 8.3 validator
 
 - [x] **V1: test structure.** `node:test`, `tests/` with `unit/`, `integration/`, `docs-examples/`, `helpers/`. Run with `node --test "tests/**/*.test.js"`. Done 2026-10-05.
@@ -155,6 +174,8 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **V4: integration tests.** W4 output through the server into a connected SSE client, using a temp `events.jsonl`. Never the real file. Include the rename scenario (§6) and a role declaration via `declare-role.js` against the temp file.
 - [x] **V5: docs examples.** Every example in `docs/` runs and produces the documented output. Use the runtime's markdown example runner if one exists, otherwise a small script.
 - [x] **V6: review each ready.md** (ongoing duty, exercised on every task) against this file's acceptance criteria. Write `review.md` as PASS or numbered failures with file, line, input, expected, actual. Missing or outdated docs count as failures.
+
+- [ ] **V7: v2 verification.** Update V3 layout tests for the board layout, add unit tests for the `removed` state in both reducers, an integration test for the removal endpoint including persistence across restart, and re-run all docs examples.
 
 ### 8.4 manager
 

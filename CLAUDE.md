@@ -4,13 +4,13 @@ Every agent reads this file first, then `SPEC.md`.
 
 ## What the app does
 
-A local-only dashboard that shows every Claude Code session running on this machine and the messages they send each other. Sessions appear as bodies on a ring. Busy sessions glow, idle sessions dim, and messages travel as particles between them. Nothing leaves the machine.
+A local-only dashboard that shows every Claude Code session running on this machine and the messages they send each other. Sessions appear as capsules on a circuit board, grouped by folder. Busy capsules are lit, idle ones dim, and messages travel as pulses along traces between them. An edit mode removes stale sessions. Nothing leaves the machine.
 
 ## Architecture and data flow
 
 1. User-level Claude Code hooks (configured in `~/.claude/settings.json`) run on `SessionStart`, `UserPromptSubmit`, `Stop`, `PostToolUse` for `SendMessage`, and `SessionEnd`. Each appends one JSON line to `~/.claude/dashboard/events.jsonl`.
 2. A small server in `webhook/` tails that file, rebuilds state on startup, checks whether each session's PID is still alive, and streams updates to the browser over Server-Sent Events. It sends a full state snapshot when a browser connects.
-3. A single HTML page in `frontend/` renders the "Orbit" visualization from the snapshot plus incremental events.
+3. A single HTML page in `frontend/` renders the "Circuit" visualization from the snapshot plus incremental events.
 
 Event schema and the contract between server and page live in `docs/overview.md`. The full spec is `SPEC.md`.
 
