@@ -1,3 +1,17 @@
+# V5: docs examples 2026-10-06
+
+Done. `tests/docs-examples/` runs every documented example under `node --test`; the todo placeholder is gone.
+
+| Docs folder | Test file | Checks | Source |
+|---|---|---|---|
+| `docs/webhook/` (hooks, schema, state, tail, liveness, server, fake-generator, declare-role, plugin acceptance pieces) | `webhook-docs.test.js` | 52 | webhook-builder's `handoff/webhook/docs-examples.mjs`, converted check by check to `test()`; repo path and temp dir derived at runtime; the five session-specific checks resolve this session's PID, name, session id, and cwd from the registry instead of literals and skip when no Claude Code session is found |
+| `docs/frontend/` (state, layout, timeline, panel, render, app, README fixture table) | `frontend-docs.test.js` + `frontend-dom-stub.js` | 161 | frontend-builder's scratchpad runner, converted the same way; values are captured at the point each example runs, as in the original |
+| `docs/overview.md` | `overview-docs.test.js` | 5 | new: both JSON examples validate against `webhook/schema.js`, the state list matches `SESSION_STATES`, and the SSE contract (snapshot first with `sessions` and `messages`, then `session`, `message`, `liveness` frames) holds through `createHub` |
+
+Whole suite: 350 tests, 350 pass, 0 skipped here, about 2 s. No child processes left, no writes outside temp dirs, real events and roles files untouched.
+
+Two adaptation notes recorded in `tests/README.md`: the frontend docs file unrefs `setTimeout` so the documented 60 s linger does not hold the process open (it was 60 s before), and a root `after` hook must not be used with top-level awaited tests (it fired early and removed the temp dir). That closes the V series.
+
 # V4: integration tests 2026-10-06
 
 Done. `tests/integration/server-pipeline.test.js`, 5 tests, each on its own temp directory with `startServer` on port 0, a short poll interval, and a real SSE client (`tests/helpers/sse-client.js`). Never the real events file: the test role string does not appear in `~/.claude/dashboard/events.jsonl` after a run.

@@ -1,6 +1,6 @@
 # SPEC: live Claude Code sessions dashboard
 
-Status: all builder tasks PASS, plugin installed. Integration tests (V4) and docs examples (V5) remaining. Last updated 2026-10-06.
+Status: complete. Every task in §8 is PASS, the plugin is installed, and the suite is green with 350 tests including every docs example. Last updated 2026-10-06.
 
 Read `CLAUDE.md` first for architecture, ownership, and team rules. This file holds the current state of each area, known issues, open questions, and the tasks each builder works on next. Every feature to implement is tracked here.
 
@@ -63,7 +63,7 @@ F1 to F9 all PASS. Frontend complete.
 
 ### 5.3 tests
 
-`node:test`, suite in `tests/`. Unit coverage for webhook (V2) and frontend (V3) complete. Integration (V4) and docs examples (V5) pending. See `tests/README.md`.
+`node:test`, suite in `tests/`: unit (V2, V3), integration (V4), and docs examples (V5) all complete. 350 tests, about 2 s. See `tests/README.md`.
 
 ### 5.4 docs
 
@@ -153,8 +153,8 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **V2: unit tests for webhook.** Hook event formatting, state reduction from events, PID liveness with a mocked process check, malformed line handling. Mock the filesystem and process calls.
 - [x] **V3: unit tests for frontend.** Ring position function, state reducer, reduced-motion branch. Use a DOM test environment, no real browser needed.
 - [x] **V4: integration tests.** W4 output through the server into a connected SSE client, using a temp `events.jsonl`. Never the real file. Include the rename scenario (§6) and a role declaration via `declare-role.js` against the temp file.
-- [~] path-finder-e5 **V5: docs examples.** Every example in `docs/` runs and produces the documented output. Use the runtime's markdown example runner if one exists, otherwise a small script.
-- [ ] **V6: review each ready.md** against this file's acceptance criteria. Write `review.md` as PASS or numbered failures with file, line, input, expected, actual. Missing or outdated docs count as failures.
+- [x] **V5: docs examples.** Every example in `docs/` runs and produces the documented output. Use the runtime's markdown example runner if one exists, otherwise a small script.
+- [x] **V6: review each ready.md** (ongoing duty, exercised on every task) against this file's acceptance criteria. Write `review.md` as PASS or numbered failures with file, line, input, expected, actual. Missing or outdated docs count as failures.
 
 ### 8.4 manager
 
