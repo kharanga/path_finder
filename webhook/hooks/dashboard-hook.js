@@ -35,25 +35,46 @@ export function readStdin() {
   }
 }
 
-/** Finds the Claude Code session registry entry whose sessionId matches, returning {pid, name} or null. */
-export function lookupSessionRegistry(sessionId, sessionsDir = DEFAULT_SESSIONS_DIR) {
+function normalizeRegistryEntry(entry) {
+  if (!Number.isInteger(entry.pid)) return null;
+  return {
+    pid: entry.pid,
+    sessionId: typeof entry.sessionId === "string" ? entry.sessionId : null,
+    name: typeof entry.name === "string" ? entry.name : null,
+    cwd: typeof entry.cwd === "string" ? entry.cwd : null,
+    status: typeof entry.status === "string" ? entry.status : null,
+  };
+}
+
+/** Reads every <pid>.json in the session registry and returns the parseable entries as {pid, sessionId, name, cwd, status}. */
+export function readSessionRegistry(sessionsDir = DEFAULT_SESSIONS_DIR) {
   let files;
   try {
     files = readdirSync(sessionsDir).filter((file) => file.endsWith(".json"));
   } catch {
-    return null;
+    return [];
   }
+  const entries = [];
   for (const file of files) {
     try {
-      const entry = JSON.parse(readFileSync(join(sessionsDir, file), "utf8"));
-      if (entry.sessionId === sessionId && Number.isInteger(entry.pid)) {
-        return { pid: entry.pid, name: typeof entry.name === "string" ? entry.name : null };
-      }
+      const entry = normalizeRegistryEntry(JSON.parse(readFileSync(join(sessionsDir, file), "utf8")));
+      if (entry) entries.push(entry);
     } catch {
       continue;
     }
   }
-  return null;
+  return entries;
+}
+
+/** Finds the Claude Code session registry entry whose sessionId matches, returning {pid, name} or null. */
+export function lookupSessionRegistry(sessionId, sessionsDir = DEFAULT_SESSIONS_DIR) {
+  const entry = readSessionRegistry(sessionsDir).find((candidate) => candidate.sessionId === sessionId);
+  return entry ? { pid: entry.pid, name: entry.name } : null;
+}
+
+/** Finds the registry entry for a PID, returning {pid, sessionId, name, cwd, status} or null. */
+export function lookupSessionRegistryByPid(pid, sessionsDir = DEFAULT_SESSIONS_DIR) {
+  return readSessionRegistry(sessionsDir).find((candidate) => candidate.pid === pid) ?? null;
 }
 
 /** Walks up the process tree from the hook and returns the PID of the nearest `claude` process, or null. */

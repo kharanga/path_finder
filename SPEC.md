@@ -139,8 +139,8 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [~] path-finder-18 (round 2 fix folded into F6) **F4: message particles.** Curved path from sender to recipient. `notify_on_idle` thread that snaps back to the sender when the recipient's next state is idle. Decision 2026-10-05: a message to a name not yet on the ring creates a faint placeholder body at the folder slot derived from the name prefix (strip the trailing `-<id>`), labeled with the name; it merges when a real session event arrives and fades after 60 s without one.
 - [x] **F5: timeline strip.** Scrub through history. Scrubbing replays state at that moment without losing the live stream.
 - [~] path-finder-18 (in review) **F6: side panel.** Click a particle to show from, to, time, and full text.
-- [~] path-finder-18 **F7: accessibility and responsiveness.** `prefers-reduced-motion` disables pulse, particles become instant markers. Works at phone width. Decision 2026-10-05: message ticks on the timeline open the same side panel, so past messages are reachable while scrubbing.
-- [ ] **F8: documentation standard.** One-line docstring on each public function. `docs/frontend/` has one file per module with what, inputs, output, errors, example.
+- [~] path-finder-18 (in review) **F7: accessibility and responsiveness.** `prefers-reduced-motion` disables pulse, particles become instant markers. Works at phone width. Decision 2026-10-05: message ticks on the timeline open the same side panel, so past messages are reachable while scrubbing.
+- [~] path-finder-18 **F8: documentation standard.** One-line docstring on each public function. `docs/frontend/` has one file per module with what, inputs, output, errors, example.
   Acceptance for F3 to F8: validator confirms against W4 output and the docs examples.
 
 ### 8.3 validator
