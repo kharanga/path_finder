@@ -38,7 +38,7 @@ Then open `http://127.0.0.1:8787/`. Because `/events` returns 404 there, the pag
 | `one` | one busy session that goes idle after 2 s |
 | `few` | 5 sessions across 4 folders, roles, an unnamed session that gets its name, a `liveness` end |
 | `messages` | 5 sessions incl. one `waiting`, then: a `notify_on_idle` message whose recipient goes busy then idle (charge drains back), a plain message, a reply, a notify message to a name not on the board (placeholder capsule), a notify message whose recipient ends (charge dropped), and a message with `from: null` |
-| `removed` | 4 sessions and one historical message (a faint trace); `listings-bc` ends (footprint), `path-finder-e5` is `removed` (gone at once, no footprint), then comes back busy and sends a message |
+| `removed` | 4 sessions and one historical message (a faint trace); `listings-bc` ends (footprint), `path-finder-e5` is `removed` (gone at once, no footprint), a message from it reinstates it as idle, then it turns busy and sends a message |
 | `rename` | 3 sessions; a message, then pid 29248 is renamed `path-finder-0d` → `manager-drives-feature-work`, a message sent under the former name, a notify to the former name whose charge drains when the renamed capsule goes idle, and a message to a truly unknown name (placeholder) |
 | `generated-many` | generator output: 15 sessions built up from an empty snapshot over ~160 s, includes `waiting`, a mid-run rename of one PID to `manager-drives-feature-work`, two deaths via `liveness`, a `from: null` message, a message to a name that never appears. Regenerate with the commands in `docs/webhook/fake-generator.md` |
 | `generated-mid` | generator output: 8 sessions with a populated snapshot (mid-run connect), ~95 s of events, same scenarios |

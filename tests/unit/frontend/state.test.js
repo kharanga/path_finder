@@ -44,7 +44,7 @@ test("applySessionEvent keys by pid, keeps known name, folder, and role, and tra
   applySessionEvent(state, session({ ts: "2026-10-05T21:45:00Z", session: "scratch-7a", folder: "scratch", pid: 30444, state: "idle" }));
   applySessionEvent(state, session({ ts: "2026-10-05T21:46:00Z", session: null, folder: "scratch", pid: 30444, state: "busy", role: "validator" }));
   applySessionEvent(state, session({ ts: "2026-10-05T21:47:00Z", session: null, pid: 30444, state: "waiting", role: null, folder: undefined }));
-  assert.deepEqual(state.sessions.get(30444), { pid: 30444, session: "scratch-7a", folder: "scratch", role: "validator", state: "waiting", ts: "2026-10-05T21:47:00Z", firstSeen: "2026-10-05T21:43:00Z", formerNames: [] });
+  assert.deepEqual(state.sessions.get(30444), { pid: 30444, session: "scratch-7a", folder: "scratch", role: "validator", state: "waiting", ts: "2026-10-05T21:47:00Z", firstSeen: "2026-10-05T21:43:00Z", formerNames: [], stateBeforeRemoval: null });
   assert.equal(applySessionEvent(state, { pid: "nope" }).sessions.size, 1);
   assert.equal(applySessionEvent(state, { pid: 5 }).sessions.get(5).folder, "unknown");
   assert.equal(state.sessions.get(5).state, "started");
@@ -188,14 +188,47 @@ test("removed sessions are not live, keep their entry, and reappear on any later
   assert.deepEqual(liveSessions(state).map((s) => [s.pid, s.session, s.role, s.state]), [[1, "a-1", "validator", "idle"]]);
 });
 
-test("a removed recipient does not resolve a waiting thread and a removed name still gets no placeholder on a later message", () => {
+test("a removed recipient does not resolve a waiting thread, and a later message reinstates it in its pre-removal state", () => {
   const state = createState();
   applySessionEvent(state, session({ pid: 1, session: "r-1", state: "busy" }));
-  applyMessageEvent(state, message({ to: "r-1", notify_on_idle: true }), NOW);
+  applyMessageEvent(state, message({ from: "s-0", to: "r-1", notify_on_idle: true }), NOW);
   applySessionEvent(state, session({ pid: 1, session: "r-1", state: "removed", ts: "2026-10-05T21:41:00Z" }));
+  assert.deepEqual([state.sessions.get(1).state, state.sessions.get(1).stateBeforeRemoval], ["removed", "busy"]);
   assert.deepEqual(waitingThreads(state).map((t) => t.to), ["r-1"]);
-  applyMessageEvent(state, message({ from: "x-9", to: "r-1" }), NOW);
-  assert.deepEqual([...state.placeholders.keys()], ["listings-bc", "x-9"]);
-  assert.equal(state.placeholders.has("r-1"), false);
+  applyMessageEvent(state, message({ from: "x-9", to: "r-1", ts: "2026-10-05T21:42:00Z" }), NOW);
+  assert.deepEqual([...state.placeholders.keys()], ["s-0", "x-9"]);
+  assert.deepEqual([state.sessions.get(1).state, state.sessions.get(1).stateBeforeRemoval, state.sessions.get(1).ts], ["busy", null, "2026-10-05T21:42:00Z"]);
+  assert.deepEqual(liveSessions(state).filter((s) => s.pid === 1).length, 1);
 });
 
+test("stateBeforeRemoval records the state at removal, survives repeated removals, and reinstates to idle when not live-able", () => {
+  const state = createState();
+  applySessionEvent(state, session({ pid: 1, session: "a-1", state: "waiting" }));
+  applySessionEvent(state, session({ pid: 1, session: "a-1", state: "removed" }));
+  applySessionEvent(state, session({ pid: 1, session: "a-1", state: "removed" }));
+  assert.equal(state.sessions.get(1).stateBeforeRemoval, "waiting");
+  applySessionEvent(state, session({ pid: 1, session: "a-1", state: "idle" }));
+  assert.equal(state.sessions.get(1).stateBeforeRemoval, null);
+  applySessionEvent(state, session({ pid: 2, session: "b-2", state: "ended" }));
+  applySessionEvent(state, session({ pid: 2, session: "b-2", state: "removed" }));
+  assert.equal(state.sessions.get(2).stateBeforeRemoval, "ended");
+  applyMessageEvent(state, message({ from: "b-2", to: "a-1" }), NOW);
+  assert.equal(state.sessions.get(2).state, "idle");
+  applySessionEvent(state, session({ pid: 3, session: "c-3", state: "removed" }));
+  assert.equal(state.sessions.get(3).stateBeforeRemoval, null);
+  applyMessageEvent(state, message({ from: "a-1", to: "c-3" }), NOW);
+  assert.equal(state.sessions.get(3).state, "idle");
+  assert.equal(state.placeholders.size, 0);
+});
+
+test("a removed session is found and reinstated by a former name, while a truly unknown name still gets a placeholder", () => {
+  const state = createState();
+  applySessionEvent(state, session({ pid: 1, session: "a-11", state: "busy" }));
+  applySessionEvent(state, session({ pid: 1, session: "b-22", state: "busy" }));
+  applySessionEvent(state, session({ pid: 1, session: "b-22", state: "removed" }));
+  assert.equal(sessionByName(state, "a-11").pid, 1);
+  assert.equal(sessionByName(state, "b-22").state, "removed");
+  applyMessageEvent(state, message({ from: "a-11", to: "x-99" }), NOW);
+  assert.deepEqual([state.sessions.get(1).state, state.sessions.get(1).session], ["busy", "b-22"]);
+  assert.deepEqual([...state.placeholders.keys()], ["x-99"]);
+});

@@ -1,19 +1,117 @@
 {
   "snapshot": {
     "sessions": [
-      {"ts":"2026-10-06T09:00:00Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"idle","role":null},
-      {"ts":"2026-10-06T09:00:01Z","type":"session","session":"path-finder-18","folder":"path_finder","pid":30222,"state":"busy","role":"frontend-builder"},
-      {"ts":"2026-10-06T09:00:02Z","type":"session","session":"path-finder-e5","folder":"path_finder","pid":40707,"state":"idle","role":"validator"},
-      {"ts":"2026-10-06T09:00:03Z","type":"session","session":"tag-analyzer-63","folder":"tag-analyzer","pid":30111,"state":"idle","role":null}
+      {
+        "ts": "2026-10-06T09:00:00Z",
+        "type": "session",
+        "session": "listings-bc",
+        "folder": "listings",
+        "pid": 29904,
+        "state": "idle",
+        "role": null
+      },
+      {
+        "ts": "2026-10-06T09:00:01Z",
+        "type": "session",
+        "session": "path-finder-18",
+        "folder": "path_finder",
+        "pid": 30222,
+        "state": "busy",
+        "role": "frontend-builder"
+      },
+      {
+        "ts": "2026-10-06T09:00:02Z",
+        "type": "session",
+        "session": "path-finder-e5",
+        "folder": "path_finder",
+        "pid": 40707,
+        "state": "idle",
+        "role": "validator"
+      },
+      {
+        "ts": "2026-10-06T09:00:03Z",
+        "type": "session",
+        "session": "tag-analyzer-63",
+        "folder": "tag-analyzer",
+        "pid": 30111,
+        "state": "idle",
+        "role": null
+      }
     ],
     "messages": [
-      {"ts":"2026-10-06T08:59:00Z","type":"message","from":"path-finder-18","to":"tag-analyzer-63","text":"trace from history","notify_on_idle":false}
+      {
+        "ts": "2026-10-06T08:59:00Z",
+        "type": "message",
+        "from": "path-finder-18",
+        "to": "tag-analyzer-63",
+        "text": "trace from history",
+        "notify_on_idle": false
+      }
     ]
   },
   "events": [
-    {"delayMs": 1500, "event": "session", "data": {"ts":"2026-10-06T09:00:10Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"ended","role":null}},
-    {"delayMs": 2500, "event": "session", "data": {"ts":"2026-10-06T09:00:13Z","type":"session","session":"path-finder-e5","folder":"path_finder","pid":40707,"state":"removed","role":"validator"}},
-    {"delayMs": 2500, "event": "session", "data": {"ts":"2026-10-06T09:00:16Z","type":"session","session":"path-finder-e5","folder":"path_finder","pid":40707,"state":"busy","role":"validator"}},
-    {"delayMs": 2000, "event": "message", "data": {"ts":"2026-10-06T09:00:18Z","type":"message","from":"path-finder-e5","to":"path-finder-18","text":"back after a mistaken removal","notify_on_idle":false}}
+    {
+      "delayMs": 1500,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-06T09:00:10Z",
+        "type": "session",
+        "session": "listings-bc",
+        "folder": "listings",
+        "pid": 29904,
+        "state": "ended",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 2500,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-06T09:00:13Z",
+        "type": "session",
+        "session": "path-finder-e5",
+        "folder": "path_finder",
+        "pid": 40707,
+        "state": "removed",
+        "role": "validator"
+      }
+    },
+    {
+      "delayMs": 2000,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-06T09:00:15Z",
+        "type": "message",
+        "from": "path-finder-e5",
+        "to": "path-finder-18",
+        "text": "a message from a removed session reinstates it",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 2000,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-06T09:00:16Z",
+        "type": "session",
+        "session": "path-finder-e5",
+        "folder": "path_finder",
+        "pid": 40707,
+        "state": "busy",
+        "role": "validator"
+      }
+    },
+    {
+      "delayMs": 2000,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-06T09:00:18Z",
+        "type": "message",
+        "from": "path-finder-e5",
+        "to": "path-finder-18",
+        "text": "back after a mistaken removal",
+        "notify_on_idle": false
+      }
+    }
   ]
 }

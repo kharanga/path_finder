@@ -1,6 +1,6 @@
 # V7: v2 verification 2026-10-06
 
-Done, against the committed F11 (`322bc71`): 405 tests, 405 pass, 2.2 s, docs examples included, no processes left behind, real events and roles files untouched.
+Done. After F12: 416 tests, 416 pass, 2.1 s, docs examples included, no processes left behind, real events and roles files untouched. (At the committed F11 it was 405 of 405; F12 added reinstatement and slot-reuse tests and the regenerated 202-check frontend docs copy.)
 
 - `tests/unit/frontend/layout.test.js` rewritten for the board: constants, the `few.json` layout values from `layout.md`, folder grouping and `_`/`-` merging, slot stability, wrapping at 4 per line, pitch compression, no overlaps and no trace crossings for 1, 5, 15 sessions and the generator fixtures, every documented `tracePath` route, `traceKey`, `edgeBox`, portrait constants and two-per-line layout with labels above rows, portrait geometry checks.
 - `tests/unit/frontend/render.test.js` rewritten for capsules, row labels, footprints versus `removed`, reduced and full motion pulses and charges, charge drain on idle, instant draws, snapshot rebuilds of traces, renames, selection, edit-mode remove controls, and portrait switching.

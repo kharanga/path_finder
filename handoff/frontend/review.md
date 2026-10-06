@@ -1,3 +1,15 @@
+# Review: F12 2026-10-06
+
+PASS
+
+## What was checked
+
+- Reinstatement by message (`state.js`): with `removed.json`, after the `removed` event pid 40707 has state `removed` and `stateBeforeRemoval` `idle`; the next message from it reinstates it as `idle` with the message timestamp and `stateBeforeRemoval` null, no placeholder is created, and the later `busy` event proceeds normally. Unit checks: the state at removal is recorded and kept across repeated `removed` events, cleared on any live event; a session removed while `ended` or with no prior state reinstates to `idle`; a removed session is found by a former name and reinstated by a message sent under that name while the unknown recipient of the same message still becomes a placeholder; a waiting thread to a removed recipient stays waiting until a real idle; a message to a removed recipient reinstates it.
+- Footprint slot reuse (`render.js`): on `many.json` the `listings-25` footprint is dropped at once when the row closes up (0 `leaving`, 14 capsules, no two capsules sharing a transform); on `few.json` the lone `tag-analyzer-63` still fades as a footprint since nothing moves into its box. The removed-state flow through the renderer: removed capsule gone with no footprint while the ended footprint stays, reinstated capsule back as `idle` with its pulse and a new trace, then `busy`, 4 capsules and 2 traces at the end.
+- Docs: `state.md` field description, `applyMessageEvent`, four-step `sessionByName`, both reinstatement examples; `render.md` footprint rule and removed paragraph; `README.md` fixture row. Builder's runner: 202 passed, 0 failed; regenerated `tests/docs-examples/frontend-docs.test.js` passes all 202.
+- Request 1 applied: the `applySessionEvent` merge example and my render test carry the new field and the extra fixture event. Whole suite against this working tree: 416 tests, 416 pass, 2.1 s.
+- The late-connect placeholder limitation is documented and accepted per the manager.
+
 # Review: F11 2026-10-06
 
 PASS

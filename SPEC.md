@@ -1,6 +1,6 @@
 # SPEC: live Claude Code sessions dashboard
 
-Status: v2 nearly complete. Circuit visual (F10), removal endpoint (W9), removal editor (F11), and test rewrite (V7) all PASS, 405 tests green. Remaining: F12 polish. Last updated 2026-10-06.
+Status: v2 complete. Circuit visual, removal endpoint and editor, polish, and test rewrite all PASS. 416 tests green including every docs example. Plugin installed. Last updated 2026-10-06.
 
 Read `CLAUDE.md` first for architecture, ownership, and team rules. This file holds the current state of each area, known issues, open questions, and the tasks each builder works on next. Every feature to implement is tracked here.
 
@@ -66,11 +66,11 @@ User direction 2026-10-06: not a ring. An electrical circuit that passes message
 
 ### 5.1 webhook (hooks, server, fake generator)
 
-W1 to W8 all PASS. Hooks run from the installed plugin `cc-dashboard@path-finder`, writing to `~/.claude/dashboard/events.jsonl`. Server, fake generator, role declaration, and plugin bundle complete.
+W1 to W9 all PASS. Hooks run from the installed plugin `cc-dashboard@path-finder`, writing to `~/.claude/dashboard/events.jsonl`. Server, fake generator, role declaration, and plugin bundle complete.
 
 ### 5.2 frontend (HTML visualization)
 
-F1 to F9 all PASS. Frontend complete.
+F1 to F12 all PASS. Circuit visual with removal editor complete.
 
 ### 5.3 tests
 
@@ -167,7 +167,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **F11: removal editor.** Edit toggle, per-capsule remove control with one confirmation, "Remove all ended", calls `POST /sessions/<pid>/remove`, drops the capsule on the resulting `removed` event with no footprint. Disabled with a hint in fixture mode where no server exists. Also: portrait board layout under 600 px, rows stack vertically and traces route around them.
   Acceptance: remove a live and an ended session on the demo server, both vanish, page reload shows them still gone, a new event for the live one brings it back. Docs updated.
 
-- [~] path-finder-18 (in review) **F12: removal polish.** (1) A message from or to the name of a removed session reinstates that capsule in its last known state instead of creating a placeholder, since any event from a removed session brings it back (§4.1). (2) In portrait, ended footprints must not overlap re-flowed capsules; drop the footprint when its slot is reused. Old `orbit` identifiers in ids and css stay as they are.
+- [x] **F12: removal polish.** (1) A message from or to the name of a removed session reinstates that capsule in its last known state instead of creating a placeholder, since any event from a removed session brings it back (§4.1). (2) In portrait, ended footprints must not overlap re-flowed capsules; drop the footprint when its slot is reused. Old `orbit` identifiers in ids and css stay as they are.
   Acceptance: demo server removed scenario shows the chatty removed session returning as a capsule, no placeholder; portrait at 15 sessions with two ended shows no overlap. Docs updated.
 
 ### 8.3 validator

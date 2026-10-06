@@ -1,49 +1,40 @@
-# Ready: F11 removal editor and portrait board
+# Ready: F12 removal polish
 
 ## Done
 
-`frontend/editor.js` (new)
-- Pure: `removeUrl(pid)`, `endedSessions(state)`, `describeRemoval(targets)`.
-- `createEditor({ toggleButton, removeAllButton, hintElement, confirmElement, getState, draw, request })`: Edit/Done toggle (`aria-pressed`, `body[data-mode]`), per-capsule removal through `requestRemove(session)`, "Remove all ended" (disabled when none), one inline confirmation bar (`role="alertdialog"`, Remove/Cancel, focus moves to Remove; no `window.confirm`), `POST /sessions/<pid>/remove` per target via injectable `request` (default `fetch`), success and failure hints, `setAvailable(bool)` which disables everything with the hint "Removal needs the server. Fixture mode has none." Nothing is changed locally on removal: the capsule drops when the server's `removed` event arrives (F10 behavior).
+(1) Reinstatement by message, `frontend/state.js`
+- `Session.stateBeforeRemoval`: set when a `removed` event is applied (the state the session had at that moment; a repeated `removed` keeps the first value), `null` otherwise.
+- `applyMessageEvent`: for each string `from`/`to` name, `sessionByName` is consulted; nothing found → placeholder as before; a `removed` session found (by current name, or by former name through a new fourth lookup step) → reinstated in `stateBeforeRemoval` (`idle` if unknown) with the message `ts`. No placeholder is created for it. The renderer then shows it as an ordinary capsule (fade-in), since it is live again.
+- Limitation, documented: a page that connected after the removal has no record of that session (the server snapshot excludes removed sessions), so a message naming it still produces a placeholder until a session event arrives.
 
-`frontend/render.js`
-- `onRemove` option adds a `<g class="remove" role="button" aria-label="Remove <name>">` × control to every non-placeholder capsule, visible only under `svg.editing`, focusable only in edit mode (`draw.setEditing(bool)`). Footprints keep their control and report state `ended` to `onRemove`.
-- `portrait` option and `draw.setPortrait(bool)`: viewBox 760×1100, two capsules per line, folder labels above rows, row labels anchored by the new `labelX/labelY/anchor` from the layout.
+(2) Footprint slot reuse, `frontend/render.js`
+- Every capsule node remembers its box. On each draw, a footprint whose box overlaps any live capsule's new box is removed at once instead of fading. Since a row closes the gap left by an ended capsule in the same draw, footprints now survive only where nothing moves in (for example the last capsule of a row, or a row that disappears entirely). This removes the portrait overlap and also tidies landscape.
 
-`frontend/layout.js`
-- `BOARD_PORTRAIT`, `boardFor(portrait)`, `boardLayout(sessions, { portrait, width, height })` returning `rows[].labelX/labelY/anchor` and `board`. Boxes carry `columnOrigin` so `tracePath`'s bus columns and `edgeBox` work on both boards. Landscape numbers unchanged (all F10 examples still hold).
+Fixture: `frontend/fixtures/removed.json` gained a message from the removed `path-finder-e5` between its `removed` and `busy` events (it reinstates as idle, then turns busy).
 
-`frontend/app.js`: creates the editor, routes `onRemove` to it, enables it on SSE status `live`/`reconnecting`, follows `matchMedia("(max-width: 600px)")` for the portrait switch and redraws the current view instantly on change. `frontend/index.html`: editor controls in the top bar and the confirmation bar. `frontend/orbit.css`: editor, confirm, remove-control styles, portrait aspect ratio under 600 px.
+Docs: `state.md` (field, `applyMessageEvent`, `sessionByName` four steps, reinstatement examples incl. by former name), `render.md` (footprint rule, removed and slot-reuse paragraphs), `README.md` (fixture row). Example runner: 202 checks, 0 failures.
 
-Verified live against `node webhook/server.js --demo --port 4848` (own temp events file; 4747 is the user's real dashboard and was not touched): Edit enabled on `live`; × on `listings-99` → confirmation text → Remove → `POST /sessions/36024/remove` → capsule gone with no footprint, `/snapshot` no longer lists it, `stats.removals` 1; "Remove all ended" on 15 ended sessions (see test 4 for the numbers); Done hides the controls and restores Tab order. Fixture mode on the static server: Edit disabled with the hint. Portrait in a 390 px frame: viewBox `0 0 760 1100`, 15 capsules on 10 lines in 8 labeled rows, no horizontal scroll.
+Verified in Chrome: `?fixture=removed` shows pid 40707 back as `idle` right after its message with zero placeholders, then `busy`; portrait 390 px frame on `?fixture=many` after the restart event: 15 capsules, no footprints, no two capsules sharing a box. Demo (`--port 4848`): see test 4.
 
-Docs: `docs/frontend/editor.md` (new), `layout.md`, `render.md`, `app.md`, `README.md` (file table, editor row, safe demo port note). Example runner: 194 checks, 0 failures, includes the editor flow with a recording `request` stub and the failure path.
-
-SPEC.md §8.2 F11 is `[~] path-finder-18`.
+SPEC.md §8.2 F12 is `[~] path-finder-18`.
 
 ## How to test
 
-Editor (needs the server; use a sandbox port, never the live 4747):
-
 ```
-node webhook/server.js --demo --port 4848
+node webhook/server.js --demo --port 4848        # never the live 4747
+python3 -m http.server 8787 --bind 127.0.0.1 --directory frontend
 ```
 
-1. Open `http://127.0.0.1:4848/`. Status `live`, Edit enabled. Click Edit: it reads Done, every capsule shows a red × at its top-right, "Remove all ended" appears (disabled until a demo session ends), hint explains the mode.
-2. Click a ×: the bar under the top bar reads "Remove <name> from the board?" with Remove and Cancel, focus on Remove. Cancel closes it. Remove: the capsule disappears at once with no footprint, the hint reads "Removed <name>.", `curl -s http://127.0.0.1:4848/snapshot` no longer lists the PID and `stats.removals` increased. Only the server wrote the event; reload the page and the capsule is still gone.
-3. Keyboard: Tab in edit mode reaches each × (label "Remove <name>"), Enter opens the confirmation, Enter again removes. Outside edit mode Tab skips the controls.
-4. After the demo has ended sessions (about a minute), "Remove all ended" is enabled: it asks "Remove N ended sessions from the board?" and Remove sends one POST per session; `/snapshot` then has zero `ended` sessions.
-5. Fixture mode: `python3 -m http.server 8787 --bind 127.0.0.1 --directory frontend`, open `?fixture=few`: Edit disabled, hint "Removal needs the server. Fixture mode has none."
-6. Portrait: viewport under 600 px (DevTools device toolbar or a 390 px iframe): viewBox `0 0 760 1100`, two capsules per line, folder label above each row, no horizontal scroll; switching the width back and forth re-lays out the board without reload.
-7. Node and DOM stub: `docs/frontend/editor.md` example (recording `request`, 404 path), `layout.md` portrait additions, `render.md` edit-mode block, or the scratchpad runner (194 checks).
-
-Observed, not a failure: right after "Remove all ended" on the demo, a few dashed placeholder capsules appeared for names that had just been removed and then vanished within the 60 s placeholder lifetime. The demo generator keeps sending messages for sessions it has killed; a message naming a session that the page no longer holds creates a placeholder by the F5 rules, and the server's `removed` event is the only thing that drops a capsule. If placeholders for removed names are unwanted, the reducer could skip placeholder creation for names whose last known state is `removed`; say so and I will add it.
+1. `http://127.0.0.1:8787/?fixture=removed` (hard-reload if the static server cached modules): at ~4 s `path-finder-e5` vanishes (removed), at ~6 s a pulse leaves its slot and the capsule is back, dim (idle), no dashed placeholder anywhere; at ~8 s it lights up busy.
+2. Node: `state.md` reinstatement examples (`["removed", "idle"]` → `["idle", null]`, placeholders 0, live labels; former-name case leaves only `x-99` as a placeholder).
+3. Portrait: 390 px wide frame on `?fixture=many`, wait 4 s: no `.capsule.leaving`, no two capsules with the same transform. Landscape `?fixture=few`: `tag-analyzer-63` (alone in its row) still fades as a footprint, `many.json` `listings-25` (middle of its row) leaves no footprint because the row closes up.
+4. Demo on 4848: Edit → remove a live session that is busy or idle (not an ended one) → it disappears; within the random phase it sends or receives a message and comes back as a normal capsule in its previous state, no dashed placeholder. The generator's own `removedByMistake` session comes back through its busy event as before.
+5. DOM stub: `render.md` slot-reuse paragraph (`many.json` event 1: pid 41001 gone, 0 `leaving`), removed paragraph (message reinstates pid 40707 as `idle`, 0 placeholders).
 
 ## Requests
 
-1. Validator (V7): runner at `/private/tmp/claude-501/-Users-khangnguyen-Documents-path-finder/658ff14a-2610-461f-9302-e64c02a54c6a/scratchpad/docs-check/run-examples.mjs` with the same DOM stub. The editor test needs `document.body` on the stub (the runner sets it).
-2. Manager: footprints keep their old position while live capsules re-flow, so in portrait a footprint can briefly sit on top of a live capsule (it fades within 8 s). If that bothers the user, footprints could re-flow with the layout; say so and I will do it.
-3. Manager: `index.html` still uses `id="orbit"` and `orbit.css`; renaming would touch tests and the server's static examples, so I left them.
+1. Validator (V7): runner at `/private/tmp/claude-501/-Users-khangnguyen-Documents-path-finder/658ff14a-2610-461f-9302-e64c02a54c6a/scratchpad/docs-check/run-examples.mjs` (202 checks). Your `removed.json` render test and the `applySessionEvent` merge example need the new `stateBeforeRemoval: null` field and the extra fixture event, as you noted.
+2. Manager: nothing pending.
 
 ## Blocked
 

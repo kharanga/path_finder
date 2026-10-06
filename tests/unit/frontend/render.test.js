@@ -87,7 +87,7 @@ test("footprints linger for ghostMs, revive when the pid returns, and vanish at 
   assert.equal(qa(".capsule").length, 0);
 });
 
-test("removed sessions disappear at once with no footprint and come back on a later event", () => {
+test("removed sessions disappear at once with no footprint, are reinstated by a message, and come back on a later event", () => {
   const { draw, q, qa } = setup({ reducedMotion: true, ghostMs: 2000, lingerMs: 200 });
   const state = loaded("removed");
   draw(state);
@@ -102,13 +102,39 @@ test("removed sessions disappear at once with no footprint and come back on a la
   assert.equal(q('.capsule[data-pid="29904"]').dataset.state, "ended");
   assert.equal(qa(".capsule").length, 3);
   stepThrough(draw, state, "removed", 2, 3);
+  assert.equal(q('.capsule[data-pid="40707"]').dataset.state, "idle");
+  assert.equal(qa(".capsule[data-state=\"placeholder\"]").length, 0);
+  assert.equal(qa(".pulse").length, 1);
+  assert.equal(qa(".trace").length, 2);
+  stepThrough(draw, state, "removed", 3, 4);
   assert.equal(q('.capsule[data-pid="40707"]').dataset.state, "busy");
   assert.equal(qa(".capsule").length, 4);
-  stepThrough(draw, state, "removed", 3, 4);
-  assert.equal(qa(".pulse").length, 1);
+  stepThrough(draw, state, "removed", 4, 5);
+  assert.equal(qa(".pulse").length, 2);
   assert.equal(qa(".trace").length, 2);
   draw(createState(), { instant: true });
   assert.equal(qa(".capsule").length, 0);
+});
+
+test("a footprint is dropped at once when a live capsule moves into its box, and kept when nothing does", () => {
+  const { draw, q, qa } = setup({ reducedMotion: true, ghostMs: 2000, lingerMs: 200 });
+  const many = loaded("many");
+  draw(many);
+  assert.equal(qa(".capsule").length, 15);
+  stepThrough(draw, many, "many", 0, 1);
+  assert.equal(q('.capsule[data-pid="41001"]'), null);
+  assert.equal(qa(".leaving").length, 0);
+  assert.equal(qa(".capsule").length, 14);
+  const boxes = qa(".capsule").map((c) => c.style.transform);
+  assert.equal(new Set(boxes).size, boxes.length);
+  draw(createState(), { instant: true });
+  const few = loaded("few");
+  draw(few);
+  applyEvent(few, "liveness", { ts: "2026-10-05T21:46:00Z", type: "session", session: "tag-analyzer-63", folder: "tag-analyzer", pid: 30111, state: "ended", role: "validator" }, NOW);
+  draw(few);
+  assert.equal(q('.capsule[data-pid="30111"]').classList.contains("leaving"), true);
+  assert.equal(qa(".capsule").length, 5);
+  draw(createState(), { instant: true });
 });
 
 test("reduced motion: pulses rest at the recipient, charges are fully drawn, and a charge drains on idle", async () => {

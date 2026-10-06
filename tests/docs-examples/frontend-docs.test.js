@@ -45,9 +45,11 @@ check("createState shape", Object.keys(createState()), ["sessions", "placeholder
   check("applySnapshot lastTs", state.lastEventTs, "2026-10-05T21:40:05Z");
   applyEvent(state, "liveness", { ts: "2026-10-05T21:46:00Z", type: "session", session: "listings-bc", folder: "listings", pid: 29904, state: "ended", role: null });
   check("applyEvent liveness", state.sessions.get(29904).state, "ended");
+  applyEvent(state, "session", { ts: "2026-10-05T21:47:00Z", type: "session", session: "listings-bc", folder: "listings", pid: 29904, state: "removed", role: null });
+  check("removed state", [state.sessions.get(29904).state, state.sessions.get(29904).stateBeforeRemoval, liveSessions(state).some((s) => s.pid === 29904)], ["removed", "ended", false]);
   applySessionEvent(state, { ts: "2026-10-05T21:43:00Z", type: "session", session: null, folder: "scratch", pid: 30444, state: "started", role: null });
   applySessionEvent(state, { ts: "2026-10-05T21:45:00Z", type: "session", session: "scratch-7a", folder: "scratch", pid: 30444, state: "idle", role: null });
-  check("applySessionEvent merge", state.sessions.get(30444), { pid: 30444, session: "scratch-7a", folder: "scratch", role: null, state: "idle", ts: "2026-10-05T21:45:00Z", firstSeen: "2026-10-05T21:43:00Z", formerNames: [] });
+  check("applySessionEvent merge", state.sessions.get(30444), { pid: 30444, session: "scratch-7a", folder: "scratch", role: null, state: "idle", ts: "2026-10-05T21:45:00Z", firstSeen: "2026-10-05T21:43:00Z", formerNames: [], stateBeforeRemoval: null });
   applyMessageEvent(state, { ts: "2026-10-05T21:44:05Z", type: "message", from: "path-finder-e5", to: "path-finder-18", text: "F1 spec updated" });
   check("applyMessageEvent defaults", state.messages.at(-1), { ts: "2026-10-05T21:44:05Z", from: "path-finder-e5", to: "path-finder-18", text: "F1 spec updated", notify_on_idle: false });
   applyMessageEvent(state, { ts: "2026-10-05T22:00:29Z", type: "message", from: null, to: "path-finder-18", text: "sender unknown" });
@@ -81,6 +83,18 @@ check("createState shape", Object.keys(createState()), ["sessions", "placeholder
   check("prune +59s", prunePlaceholders(state, now + 59000), 0);
   check("prune +60s", prunePlaceholders(state, now + 60000), 1);
   check("prune size", state.placeholders.size, 0);
+}
+{
+  const fx = fixture("removed"); const state = applySnapshot(createState(), fx.snapshot);
+  for (const step of fx.events.slice(0, 2)) applyEvent(state, step.event, step.data);
+  check("reinstate before", [state.sessions.get(40707).state, state.sessions.get(40707).stateBeforeRemoval], ["removed", "idle"]);
+  applyEvent(state, fx.events[2].event, fx.events[2].data);
+  check("reinstate after", [state.sessions.get(40707).state, state.sessions.get(40707).stateBeforeRemoval, state.placeholders.size], ["idle", null, 0]);
+  check("reinstate live", liveSessions(state).map(sessionLabel), ["path-finder-18", "path-finder-e5", "tag-analyzer-63"]);
+  const r = applySnapshot(createState(), { sessions: [{ pid: 1, session: "a-11", folder: "a", state: "busy", ts: "2026-10-06T00:00:00Z" }], messages: [] });
+  applyEvent(r, "session", { pid: 1, session: "b-22", folder: "a", state: "busy" }); applyEvent(r, "session", { pid: 1, session: "b-22", folder: "a", state: "removed" });
+  applyEvent(r, "message", { from: "a-11", to: "x-99", text: "via former name" });
+  check("reinstate by former name", [r.sessions.get(1).state, [...r.placeholders.keys()]], ["busy", ["x-99"]]);
 }
 check("folderFromName 1", folderFromName("path-finder-18"), "path-finder");
 check("folderFromName 2", folderFromName("listings-bc"), "listings");
@@ -266,8 +280,19 @@ check("formatTimestamp null", formatTimestamp(null), "unknown time"); check("for
   applyEvent(state, "session", fx.events[1].data); draw(state);
   check("removed gone", svg.querySelector('.capsule[data-pid="40707"]'), null);
   check("removed footprint kept", svg.querySelector('.capsule[data-pid="29904"]').classList.contains("leaving"), true);
-  applyEvent(state, "session", fx.events[2].data); draw(state);
-  check("removed back", svg.querySelector('.capsule[data-pid="40707"]').dataset.state, "busy");
+  applyEvent(state, "message", fx.events[2].data); draw(state);
+  check("removed reinstated by message", [svg.querySelector('.capsule[data-pid="40707"]').dataset.state, svg.querySelectorAll('.capsule[data-state="placeholder"]').length], ["idle", 0]);
+  applyEvent(state, "session", fx.events[3].data); draw(state);
+  check("removed back busy", svg.querySelector('.capsule[data-pid="40707"]').dataset.state, "busy");
+}
+{
+  const fx = fixture("many"); const svg = new Element("svg"); const state = applySnapshot(createState(), fx.snapshot); const draw = createRenderer(svg, { ghostMs: 10000 }); draw(state);
+  applyEvent(state, fx.events[0].event, fx.events[0].data); draw(state);
+  const boxes = [...svg.querySelectorAll(".capsule")].map((c) => c.style.transform);
+  check("slot footprint dropped", [svg.querySelectorAll(".capsule.leaving").length, svg.querySelector('.capsule[data-pid="41001"]'), new Set(boxes).size === boxes.length], [0, null, true]);
+  const lone = new Element("svg"); const fewState = applySnapshot(createState(), fixture("few").snapshot); const drawLone = createRenderer(lone, { ghostMs: 10000 }); drawLone(fewState);
+  for (const step of fixture("few").events) applyEvent(fewState, step.event, step.data); drawLone(fewState);
+  check("lone footprint survives", lone.querySelector('.capsule[data-pid="30111"]')?.classList.contains("leaving"), true);
 }
 {
   const svg = new Element("svg"); const draw = createRenderer(svg, {}); draw(applySnapshot(createState(), fixture("many").snapshot));
