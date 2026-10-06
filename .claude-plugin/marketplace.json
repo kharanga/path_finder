@@ -1,0 +1,16 @@
+{
+  "name": "path-finder",
+  "description": "Marketplace for the path_finder repo: the cc-dashboard plugin",
+  "owner": {
+    "name": "Khang Nguyen"
+  },
+  "plugins": [
+    {
+      "name": "cc-dashboard",
+      "source": "./",
+      "description": "Live dashboard of every Claude Code session on this machine and the messages between them",
+      "version": "0.1.0",
+      "category": "productivity"
+    }
+  ]
+}

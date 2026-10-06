@@ -6,6 +6,8 @@ import { pathToFileURL } from "node:url";
 
 /** Where the hook appends events when CC_DASHBOARD_EVENTS is not set. */
 export const DEFAULT_EVENTS_PATH = join(homedir(), ".claude", "dashboard", "events.jsonl");
+/** Where declare-role.js saves roles by start folder, read by the hook so a restarted session keeps its role. */
+export const DEFAULT_ROLES_PATH = join(homedir(), ".claude", "dashboard", "roles.json");
 /** Claude Code session registry directory used to map session_id to PID and display name. */
 export const DEFAULT_SESSIONS_DIR = join(homedir(), ".claude", "sessions");
 
@@ -95,6 +97,17 @@ export function findClaudeAncestorPid(startPid = process.ppid, maxDepth = 6) {
   return null;
 }
 
+/** Reads the saved role for a start folder from roles.json, returning the string or null. */
+export function readSavedRole(cwd, rolesPath = DEFAULT_ROLES_PATH) {
+  if (typeof cwd !== "string" || cwd === "") return null;
+  try {
+    const roles = JSON.parse(readFileSync(rolesPath, "utf8"));
+    return typeof roles[cwd] === "string" ? roles[cwd] : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Resolves {pid, name} for a hook input, preferring the session registry and falling back to the process tree. */
 export function resolveSession(hookInput, options = {}) {
   const fromRegistry = lookupSessionRegistry(hookInput.session_id, options.sessionsDir);
@@ -103,7 +116,7 @@ export function resolveSession(hookInput, options = {}) {
   return { pid, name: null };
 }
 
-/** Converts raw hook input plus resolved session identity into a §3 event, or null when the hook is not one we log. */
+/** Converts raw hook input plus resolved identity ({pid, name, role}) into a §3 event, or null when the hook is not one we log. */
 export function buildEvent(hookInput, identity, now = new Date()) {
   const ts = now.toISOString();
   const state = stateForHook(hookInput);
@@ -116,7 +129,7 @@ export function buildEvent(hookInput, identity, now = new Date()) {
       folder: basename(hookInput.cwd || ""),
       pid: identity.pid,
       state,
-      role: null,
+      role: identity.role ?? null,
     };
   }
   if (hookInput.hook_event_name === "PostToolUse" && hookInput.tool_name === "SendMessage") {
@@ -150,7 +163,9 @@ export function main() {
   try {
     const hookInput = JSON.parse(readStdin());
     const eventsPath = process.env.CC_DASHBOARD_EVENTS || DEFAULT_EVENTS_PATH;
-    const event = buildEvent(hookInput, resolveSession(hookInput));
+    const rolesPath = process.env.CC_DASHBOARD_ROLES || DEFAULT_ROLES_PATH;
+    const identity = { ...resolveSession(hookInput), role: readSavedRole(hookInput.cwd, rolesPath) };
+    const event = buildEvent(hookInput, identity);
     if (event) appendEvent(eventsPath, event);
   } catch {
     return;
