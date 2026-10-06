@@ -2,20 +2,35 @@
 
 Owner: frontend-builder.
 
-One markdown file per module in `frontend/`. Expected files as the area grows:
+One markdown file per module in `frontend/`:
 
-- `layout.md`: ring placement keyed by folder.
-- `state.md`: snapshot and event reducer.
-- `render.md`: bodies, particles, threads, fades, reduced-motion behavior.
-- `timeline.md`: history scrubbing.
-- `panel.md`: message detail panel.
+- `state.md`: snapshot and event reducer (`frontend/state.js`).
+- `layout.md`: ring placement keyed by folder (`frontend/layout.js`).
+- `connect.md`: SSE connection with fixture fallback (`frontend/connect.js`).
+- `render.md`: bodies, labels, empty ring (`frontend/render.js`).
+- `app.md`: page bootstrap (`frontend/app.js`, `frontend/index.html`).
 
-Each public function or class is documented with:
+Planned as later tasks land: `timeline.md` (F5), `panel.md` (F6).
 
-- What it does
-- Inputs: name, type, and meaning
-- Output: type and meaning
-- Errors: what it can throw and when
-- Example: a realistic input and the expected output
+Each public function is documented with What it does, Inputs, Output, Errors, and Example. Docs are updated in the same task as the code. The validator checks every example.
 
-Docs are updated in the same task as the code. The validator checks every example.
+## Running the page without the server
+
+The page has no build step but uses ES modules, so it must be served over HTTP, not opened as a file. Any static server rooted at `frontend/` works:
+
+```
+python3 -m http.server 8787 --bind 127.0.0.1 --directory frontend
+```
+
+Then open `http://127.0.0.1:8787/`. Because `/events` returns 404 there, the page falls back to `frontend/fixtures/empty.json`. Force a fixture with `?fixture=<name>`, for example `http://127.0.0.1:8787/?fixture=few`.
+
+Fixture file shape:
+
+```json
+{
+  "snapshot": { "sessions": [], "messages": [] },
+  "events": [ { "delayMs": 1500, "event": "session", "data": { "...": "a §3 event" } } ]
+}
+```
+
+`snapshot` matches the SSE snapshot in `docs/overview.md`. Each entry in `events` is replayed through the same path as a live SSE event, `delayMs` after the previous entry. `event` is `session`, `message`, or `liveness`.
