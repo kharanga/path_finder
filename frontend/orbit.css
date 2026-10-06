@@ -125,6 +125,16 @@ body {
 .body[data-state="ended"] .name,
 .body[data-state="ended"] .role { fill: var(--muted); }
 
+.body.renamed .name {
+  animation: rename-flash 1.8s ease-out;
+}
+
+@keyframes rename-flash {
+  0% { fill: var(--busy); }
+  60% { fill: var(--busy); }
+  100% { fill: var(--text); }
+}
+
 @keyframes pulse {
   0%, 100% { transform: scale(1); opacity: 0.35; }
   50% { transform: scale(1.35); opacity: 0.1; }
@@ -186,6 +196,7 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .body, .body.leaving, .body .halo, .particle-dot, .thread, .thread.snapping { transition: none; }
   .body[data-state="busy"] .halo { animation: none; opacity: 0.3; }
+  .body.renamed .name { animation: none; fill: var(--busy); }
 }
 
 .ring {

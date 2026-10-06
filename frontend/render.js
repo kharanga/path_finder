@@ -16,6 +16,7 @@ const DEFAULT_TRAVEL_MS = 1200;
 const DEFAULT_LINGER_MS = 15000;
 const PARTICLE_HIT_RADIUS = 16;
 const SNAP_MS = 600;
+const RENAME_HIGHLIGHT_MS = 1800;
 
 // Builds the Orbit renderer bound to an <svg> element and returns its draw function.
 export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEFAULT_TRAVEL_MS, lingerMs = DEFAULT_LINGER_MS, reducedMotion = detectReducedMotion(), onSelect = null } = {}) {
@@ -187,7 +188,7 @@ function createBodyNode(layer, bodyNodes, pid, instant = false) {
   const title = appendTo(group, "title", {});
   const name = appendTo(group, "text", { class: "name" });
   const role = appendTo(group, "text", { class: "role" });
-  const node = { group, circle, title, name, role, ghostTimer: null };
+  const node = { group, circle, title, name, role, ghostTimer: null, lastLabel: null, renameTimer: null };
   bodyNodes.set(pid, node);
   flushStyles(group);
   group.classList.remove("entering");
@@ -212,15 +213,29 @@ function updateBodyNode(node, session, position) {
   node.name.setAttribute("y", placement.nameY);
   node.role.setAttribute("y", placement.roleY);
   node.name.textContent = truncateLabel(label, MAX_LABEL_CHARS);
+  if (node.lastLabel !== null && node.lastLabel !== label) highlightRename(node);
+  node.lastLabel = label;
   node.role.textContent = session.role ?? "";
   node.role.classList.toggle("hidden", !session.role);
+  const formerly = session.formerNames?.length ? `, formerly ${session.formerNames.join(", ")}` : "";
   if (session.state === "placeholder") node.title.textContent = `${label}, no session event yet (folder guessed: ${session.folder})`;
-  else node.title.textContent = session.role ? `${label} (${session.role}) in ${session.folder}` : `${label} in ${session.folder}`;
+  else node.title.textContent = `${session.role ? `${label} (${session.role})` : label} in ${session.folder}${formerly}`;
   node.group.setAttribute("aria-label", `${label}, ${session.state}${session.role ? `, ${session.role}` : ""}, folder ${session.folder}`);
 }
 
 function flushStyles(element) {
   if (typeof element.getBoundingClientRect === "function") element.getBoundingClientRect();
+}
+
+function highlightRename(node) {
+  if (node.renameTimer) clearTimeout(node.renameTimer);
+  node.group.classList.remove("renamed");
+  flushStyles(node.group);
+  node.group.classList.add("renamed");
+  node.renameTimer = setTimeout(() => {
+    node.group.classList.remove("renamed");
+    node.renameTimer = null;
+  }, RENAME_HIGHLIGHT_MS);
 }
 
 function detectReducedMotion() {

@@ -19,6 +19,7 @@ Event schema and the contract between server and page live in `docs/overview.md`
 | Area | Folder | Owner | Docs |
 |---|---|---|---|
 | Hooks, SSE server, fake event generator | `webhook/` | webhook-builder | `docs/webhook/` |
+| Plugin packaging: manifests, hook config, command, skill | `.claude-plugin/`, `hooks/`, `commands/`, `skills/` | webhook-builder | `docs/webhook/plugin.md` |
 | HTML visualization | `frontend/` | frontend-builder | `docs/frontend/` |
 | Tests | `tests/` (unit, integration, docs-examples, helpers) | validator | `tests/README.md`, review files |
 | This file, `SPEC.md`, `docs/overview.md`, git | repo root | manager | `docs/overview.md` |
