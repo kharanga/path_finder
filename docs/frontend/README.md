@@ -34,6 +34,8 @@ Then open `http://127.0.0.1:8787/`. Because `/events` returns 404 there, the pag
 | `generated-mid` | W4 output: 8 sessions with a populated snapshot (mid-run connect), ~95 s of events |
 | `many` | 15 sessions across 8 folders, same-folder siblings, a 30-character name, then a restart: one session ends by `liveness` and a new PID appears in the same folder |
 
+Other query parameters: `motion=reduce` or `motion=full` forces the reduced-motion behavior of particles and threads on or off (CSS still follows the OS setting).
+
 Fixture file shape:
 
 ```json

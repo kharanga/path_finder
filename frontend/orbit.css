@@ -349,7 +349,7 @@ body {
   pointer-events: none;
 }
 
-.tick {
+.timeline button.tick {
   position: absolute;
   top: 0;
   width: 10px;
@@ -357,6 +357,7 @@ body {
   margin-left: -5px;
   padding: 0;
   border: none;
+  border-radius: 0;
   background: transparent;
   cursor: pointer;
   pointer-events: auto;

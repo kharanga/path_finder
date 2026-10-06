@@ -4,7 +4,7 @@ Draws the Orbit ring into an `<svg>`. All geometry is in a fixed `0 0 1360 1000`
 
 ## createRenderer(svg, { ghostMs, travelMs, lingerMs, reducedMotion, onSelect })
 
-What it does: sets the viewBox, adds the ring circle, the "No sessions running" label, and an empty bodies layer, and returns a `draw(state)` function. Each call to `draw` reconciles one `<g class="body" data-pid data-state data-folder>` per live session: creating, moving, and relabeling nodes as needed. Each body has a `<circle class="halo">` (visible and pulsing only while busy), a `<circle class="core">`, a `<title>` tooltip with the full name, role, and folder, a `<text class="name">` truncated to 24 characters, and a `<text class="role">` that is hidden unless the session declared a role. Label offsets come from `labelPlacement`. Bodies are positioned with a CSS `transform`, so a position change animates over 600 ms unless the user prefers reduced motion.
+What it does: sets the viewBox, adds the ring circle, the "No sessions running" label, and an empty bodies layer, and returns a `draw(state)` function. Each call to `draw` reconciles one `<g class="body" data-pid data-state data-folder tabindex="0" role="img" aria-label>` per live session (the label reads "`<name>`, `<state>`, `<role>`, folder `<folder>`", so bodies are reachable with Tab and announced by screen readers; a focused body shows a light ring): creating, moving, and relabeling nodes as needed. Each body has a `<circle class="halo">` (visible and pulsing only while busy), a `<circle class="core">`, a `<title>` tooltip with the full name, role, and folder, a `<text class="name">` truncated to 24 characters, and a `<text class="role">` that is hidden unless the session declared a role. Label offsets come from `labelPlacement`. Bodies are positioned with a CSS `transform`, so a position change animates over 600 ms unless the user prefers reduced motion.
 
 State visuals (F3) are all CSS keyed on classes and `data-state`:
 
@@ -18,7 +18,7 @@ Messages (F4). The renderer remembers how many messages it has drawn. On each `d
 
 Threads. For each `state.threads` entry with status `waiting`, a `<path class="thread" data-thread-id>` is drawn along the same curve and re-routed on every draw so it follows bodies that move. It draws on from the sender using `stroke-dasharray` equal to the curve length and `stroke-dashoffset` animated from the length to 0 over `travelMs`. When the thread's status becomes `snapped` (recipient went idle) the path gets class `snapping` and its dashoffset returns to the full length, which retracts the line back into the sender over 500 ms before removal. Status `dropped` (recipient ended) fades the path out instead.
 
-Reduced motion. When `reducedMotion` is true (default: `matchMedia("(prefers-reduced-motion: reduce)")`), particles appear directly at the recipient as arrived markers, threads appear fully drawn, and snapping removes them at once.
+Reduced motion. When `reducedMotion` is true (default: `matchMedia("(prefers-reduced-motion: reduce)")`, and the renderer keeps listening for changes to that media query), particles appear directly at the recipient as arrived markers, threads appear fully drawn, and snapping removes them at once. The CSS side (`@media (prefers-reduced-motion: reduce)`) turns off the busy pulse, all body, particle, and thread transitions, and leaves the busy glow static.
 
 Inputs:
 - `svg` (SVGSVGElement): the target element. It should start empty.
@@ -26,7 +26,7 @@ Inputs:
 - `travelMs` (number, optional, default 1200): particle flight and thread draw-on time.
 - `lingerMs` (number, optional, default 15000): how long an arrived particle stays clickable at the recipient.
 - `onSelect` (function(message, index), optional): called when a particle is clicked or activated with the keyboard.
-- `reducedMotion` (boolean, optional): overrides the media query, useful in tests.
+- `reducedMotion` (boolean, optional): overrides the media query for the JavaScript behavior, useful in tests. `app.js` passes `true` for `?motion=reduce` and `false` for `?motion=full`. The CSS media query is not affected by the override.
 
 Output: `draw(state, { instant })`, a function taking the state from `state.js` and returning nothing, with one method: `draw.select(index)` adds class `selected` to the particle whose `data-message-index` equals `index` and removes it from all others (`null` clears). With `instant: true` (used by the timeline when scrubbing and when returning to live) bodies that are no longer live are removed at once instead of becoming ghosts, new bodies appear without the fade-in, and threads appear fully drawn. Particles are never spawned for a state whose `snapshotSeq` differs from the previous draw, which is always the case for replayed states.
 
@@ -42,6 +42,8 @@ document.querySelector('.body[data-pid="30111"]').dataset.state     // "busy"
 document.querySelector('.body[data-pid="30111"]').dataset.folder    // "tag-analyzer"
 document.querySelector('.body[data-pid="30111"] .role').textContent // "validator"
 document.querySelector('.body[data-pid="30111"] title').textContent // "tag-analyzer-63 (validator) in tag-analyzer"
+document.querySelector('.body[data-pid="30111"]').getAttribute("aria-label") // "tag-analyzer-63, busy, validator, folder tag-analyzer"
+document.querySelector('.body[data-pid="30111"]').getAttribute("tabindex")   // "0"
 document.querySelector(".empty-label").classList.contains("hidden") // true
 draw(createState());
 document.querySelectorAll(".body").length                           // 5, still present as ghosts
