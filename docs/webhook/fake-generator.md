@@ -17,12 +17,13 @@ With the default 15 sessions, in order:
 4. `notify_on_idle` message, recipient goes `busy`, `waiting`, `busy`, `idle` (thread survives a permission prompt).
 5. `notify_on_idle` message to `ghost-session-00`, a name with no session on the ring.
 6. A session starts with `session: null` (name lookup failed), sends a message with `from: null`, then a later event gives it a name.
-7. A session ends and a new one starts in the same folder with a new PID and new name suffix (restart).
-8. A session goes `busy` and dies without `ended`. In instant and fixture mode a `liveness` entry follows after 5 virtual seconds; in live mode the server detects the dead PID itself.
-9. `notify_on_idle` message whose recipient then dies without `ended`.
-10. Random activity: busy/idle cycles, occasional `waiting`, messages with 30% `notify_on_idle`. Runs until `--duration` seconds (default 60 in instant and fixture mode, unbounded in live mode) or Ctrl-C.
+7. A session is renamed mid-stream, same PID, to `RENAMED_NAME` (`manager-drives-feature-work`), mirroring Claude Code's auto-rename. It sends a message under the old name, then receives a `notify_on_idle` message and sends another under the new name.
+8. A session ends and a new one starts in the same folder with a new PID and new name suffix (restart).
+9. A session goes `busy` and dies without `ended`. In instant and fixture mode a `liveness` entry follows after 5 virtual seconds; in live mode the server detects the dead PID itself.
+10. `notify_on_idle` message whose recipient then dies without `ended`.
+11. Random activity: busy/idle cycles, occasional `waiting`, messages with 30% `notify_on_idle`. Runs until `--duration` seconds (default 60 in instant and fixture mode, unbounded in live mode) or Ctrl-C.
 
-Fewer sessions skip the steps that need more participants: step 3 needs 2, step 4 needs 3, step 7 needs 4, step 6 needs 5, step 8 needs 6, step 9 needs 8. `--sessions 0` produces an empty stream.
+Fewer sessions skip the steps that need more participants: steps 3 and 7 need 2, step 4 needs 3, step 8 needs 4, step 6 needs 5, step 9 needs 6, step 10 needs 8. `--sessions 0` produces an empty stream.
 
 ## Flags
 
@@ -47,7 +48,7 @@ node webhook/fake.js --fixture frontend/fixtures/generated-many.json --start-tim
 node webhook/fake.js --fixture frontend/fixtures/generated-mid.json --sessions 8 --snapshot-until 40 --start-time 2026-10-05T21:40:00Z
 ```
 
-A fast variant for test runs, every `delayMs` divided by 10 so the 160 second stream plays in 16:
+A fast variant for test runs, every `delayMs` divided by 10 so the 164 second stream plays in 16:
 
 ```
 node webhook/fake.js --fixture /tmp/generated-fast.json --speed 10 --start-time 2026-10-05T21:40:00Z
@@ -96,7 +97,7 @@ What it does: builds the stateful generator. `deps.write(entry)` replaces file o
 
 Inputs: `options` from `parseArgs`; `deps` (object, optional).
 
-Output: `{random, sessions, entries, live(), advance(ms), startSession(folder, {anonymous}), setState(session, state), nameSession(session), endSession(session), killSilently(session), emitLiveness(session), sendMessage(from, to, notifyOnIdle), shutdown(), emit(event)}`. Every emitted event passes `validateEvent` first. `entries` holds `{atMs, event, data}` for everything emitted.
+Output: `{random, sessions, entries, live(), advance(ms), startSession(folder, {anonymous}), setState(session, state), nameSession(session), renameSession(session, newName), endSession(session), killSilently(session), emitLiveness(session), sendMessage(from, to, notifyOnIdle), shutdown(), emit(event)}`. Every emitted event passes `validateEvent` first. `entries` holds `{atMs, event, data}` for everything emitted.
 
 Errors: `emit` throws when an event is invalid, which only happens on a programming error in the scenario.
 
@@ -152,10 +153,10 @@ With the same entries and `speed = 4` the single event has `delayMs: 250`.
 node webhook/fake.js --fixture /tmp/fx.json --start-time 2026-10-05T21:40:00Z
 ```
 
-Produces 124 events, 0 snapshot sessions, 17 distinct names, 6 `notify_on_idle` messages, 1 message with `from: null`, 1 message to `ghost-session-00`, 2 `liveness` entries, first event `{"delayMs":3000,"event":"session","data":{"ts":"2026-10-05T21:40:03.000Z","type":"session","session":"listings-72","folder":"listings","pid":70025,"state":"started","role":null}}`. Running it twice gives byte-identical files.
+Produces 129 events, 0 snapshot sessions, 18 distinct names, 7 `notify_on_idle` messages, 1 message with `from: null`, 1 message to `ghost-session-00`, 2 `liveness` entries, first event `{"delayMs":3000,"event":"session","data":{"ts":"2026-10-05T21:40:03.000Z","type":"session","session":"listings-72","folder":"listings","pid":70025,"state":"started","role":null}}`. Running it twice gives byte-identical files.
 
 ```
 node webhook/fake.js --out /tmp/fake.jsonl --instant
 ```
 
-Produces 122 lines (the two liveness entries are not written in raw mode), every line passes `parseEventLine`.
+Produces 127 lines (the two liveness entries are not written in raw mode), every line passes `parseEventLine`.
