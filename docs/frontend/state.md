@@ -218,7 +218,7 @@ liveSessions(state).map(sessionLabel)
 
 ## sessionByName(state, name)
 
-What it does: finds the session whose display name equals `name`, or the placeholder pseudo-session with that name. A non-string `name` (such as a `null` sender) gives `undefined`.
+What it does: finds the session whose current display name equals `name`, or the placeholder pseudo-session with that name. A non-string `name` (such as a `null` sender) gives `undefined`. Former names are not searched yet: a session renamed mid-run (SPEC §6) is only found by its new name until task F9 adds per-PID former-name lookup.
 
 Inputs: `state` (object), `name` (string or null).
 
