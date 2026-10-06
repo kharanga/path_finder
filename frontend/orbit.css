@@ -57,18 +57,56 @@ body {
 }
 
 .orbit {
-  width: min(100%, (100vh - 80px) * 1.2);
+  width: min(100%, (100vh - 80px) * 1.36);
   height: auto;
-  aspect-ratio: 6 / 5;
+  aspect-ratio: 1.36;
   overflow: visible;
 }
 
 .body {
-  transition: transform 600ms ease;
+  opacity: 1;
+  transition: transform 600ms ease, opacity 700ms ease;
+}
+
+.body.entering { opacity: 0; }
+
+.body.leaving {
+  opacity: 0.3;
+  transition: opacity 1500ms ease;
+}
+
+.body .halo {
+  fill: var(--busy);
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 500ms ease;
+}
+
+.body[data-state="busy"] .halo {
+  opacity: 0.35;
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
+.body[data-state="busy"] .core {
+  filter: drop-shadow(0 0 10px var(--busy));
+}
+
+.body[data-state="idle"] .core { opacity: 0.7; }
+.body[data-state="idle"] .name { fill: var(--muted); }
+
+.body[data-state="ended"] .core { fill: var(--ring); }
+.body[data-state="ended"] .name,
+.body[data-state="ended"] .role { fill: var(--muted); }
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 0.35; }
+  50% { transform: scale(1.35); opacity: 0.1; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .body { transition: none; }
+  .body, .body.leaving, .body .halo { transition: none; }
+  .body[data-state="busy"] .halo { animation: none; opacity: 0.3; }
 }
 
 .ring {
@@ -86,14 +124,15 @@ body {
   font-size: 28px;
 }
 
-.body circle {
+.body .core {
   fill: var(--idle);
   stroke: var(--bg);
   stroke-width: 3;
+  transition: fill 500ms ease, opacity 500ms ease;
 }
 
-.body[data-state="busy"] circle { fill: var(--busy); }
-.body[data-state="started"] circle { fill: var(--started); }
+.body[data-state="busy"] .core { fill: var(--busy); }
+.body[data-state="started"] .core { fill: var(--started); }
 
 .body .name {
   fill: var(--text);

@@ -1,69 +1,55 @@
-# Ready: W1 verify hook behavior, W2 runtime manifest
+# Ready: W1 verify hook behavior (re-review), W2 runtime manifest (PASS)
 
 ## Done
 
-- `webhook/hooks/capture-raw.js`: catch-all hook. Reads the hook JSON from stdin, appends one redacted record per invocation to a temp log, exits 0 always. Values are replaced by type and length; only `session_id`, `hook_event_name`, `cwd`, `tool_name`, `source`, `reason`, `stop_hook_active`, `permission_mode`, and the `SendMessage` inputs `to` and `notify_when_idle` are kept verbatim. Prompt text and message text are never logged.
-- `webhook/package.json`: Node 24 manifest, `"type": "module"`, zero dependencies, scripts `start`, `demo`, `fake` (the last two land with W4 and W5).
-- `webhook/schema.js`, `webhook/state.js`, `webhook/liveness.js`: early drafts for W3 and W5, not yet part of any task handoff. Ignore for this review.
-- `docs/webhook/hooks.md`: raw hook input shape, how a hook maps to its session, every exported function of `capture-raw.js`.
-- `SPEC.md` §6: preliminary W-U1 and W-U2 findings with evidence. W-U3 and W-U4 wait for the raw log.
+- W1 live test complete. Catch-all installed by the manager at 06:01Z; 57 records captured across four sessions by 06:05Z. This session sent one `SendMessage` with `notify_when_idle: true` to `path-finder-e5`, the recipient's `UserPromptSubmit` and later `Stop` both appeared in the log.
+- `SPEC.md` §6: all four W-U findings filled in with quoted evidence, plus observed extra fields and two notes for the manager (`Notification` fires on permission prompts; `~/.claude/sessions/<pid>.json` `status` can back up a missed `Stop`).
+- `docs/webhook/hooks.md`: raw input shape table rewritten from the observed records.
+- `webhook/hooks/capture-raw.js`: entry point guarded with `import.meta.url === pathToFileURL(process.argv[1]).href`, per review note 1. A bare import no longer reads stdin or writes a record.
+- Drafts present but not part of this handoff: `webhook/hooks/dashboard-hook.js` (W3), `webhook/schema.js`, `webhook/state.js`, `webhook/liveness.js`, `webhook/tail.js`, `webhook/server.js` (W5), `webhook/fake.js` (W4). Not started per the manager's rule; review them when their task IDs are assigned.
 
 ## How to test
 
-Smoke test without installing anything:
+Findings check:
 
 ```
 cd /Users/khangnguyen/Documents/path_finder
-echo '{"session_id":"test-123","hook_event_name":"PostToolUse","cwd":"/tmp/x","tool_name":"SendMessage","tool_input":{"to":"listings-bc","message":"hello there","notify_when_idle":true},"tool_response":{"ok":true}}' | node webhook/hooks/capture-raw.js /tmp/raw-test.jsonl; echo "exit=$?"
-echo 'not json' | node webhook/hooks/capture-raw.js /tmp/raw-test.jsonl; echo "exit=$?"
-echo '{"a":1}' | node webhook/hooks/capture-raw.js /nonexistent-root/raw.jsonl; echo "exit=$?"
-wc -l /tmp/raw-test.jsonl
+sed -n '/^Findings:/,/^Open design questions/p' SPEC.md
 ```
 
-Expected: three lines `exit=0`, `wc -l` reports 2. The first record's `input.kept.tool_input` is `{"to":"listings-bc","notify_when_idle":true}` and `input.shape.tool_input.message` is `string(11)`. No prompt or message text appears anywhere in the file.
+Expected: W-U1 to W-U4 each have a finding with timestamps or quoted record fragments.
 
-After the manager installs the snippet below: in one session run `SendMessage` to another session, let the recipient finish its turn, then check `/tmp/cc-dashboard-raw.jsonl` has records with `hook_event_name` of `UserPromptSubmit`, `PostToolUse` with `tool_name` `SendMessage`, and `Stop`.
+Raw log cross-check, redacted summary only, no values:
 
-Runtime check for W2: `node --version` prints v24.x. `cd webhook && npm install` succeeds with no dependencies to fetch.
+```
+python3 -c "
+import json
+for line in open('/tmp/cc-dashboard-raw.jsonl'):
+    r=json.loads(line); k=r['input'].get('kept',{})
+    claude=[a['pid'] for a in r['ancestors'] if 'claude' in a['command']]
+    print(r['captured_at'][11:19], claude[:1], k.get('hook_event_name'), k.get('tool_name',''), k.get('tool_input',{}).get('to',''))
+"
+```
+
+Expected: a `PostToolUse SendMessage path-finder-e5` line for PID 52134 at 06:03:57, a `UserPromptSubmit` for PID 40707 at 06:04:10, a `Stop` for PID 40707 at 06:04:57, and no line containing prompt or message text.
+
+Import guard:
+
+```
+cd /Users/khangnguyen/Documents/path_finder
+wc -l /tmp/cc-dashboard-raw.jsonl
+node -e 'import("./webhook/hooks/capture-raw.js").then(m => console.log(Object.keys(m).length, "exports"))' < /dev/null
+wc -l /tmp/cc-dashboard-raw.jsonl
+```
+
+Expected: `8 exports` and the two line counts differ only by hooks other sessions fired in between, never by a record whose `argv` is empty and whose `cwd` is this repo at the same second. Cleaner: set `CC_DASHBOARD_RAW_LOG=/tmp/guard-test.jsonl` for the import and confirm that file is not created.
 
 ## Requests
 
-1. Manager: install this catch-all into `~/.claude/settings.json` for the W1 test window. It covers every event, not just the five the dashboard needs, so the raw log also shows which events fire on inbox-driven turns.
-
-```json
-{
-  "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node /Users/khangnguyen/Documents/path_finder/webhook/hooks/capture-raw.js /tmp/cc-dashboard-raw.jsonl", "timeout": 5 }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node /Users/khangnguyen/Documents/path_finder/webhook/hooks/capture-raw.js /tmp/cc-dashboard-raw.jsonl", "timeout": 5 }] }],
-    "PreToolUse": [{ "matcher": "SendMessage", "hooks": [{ "type": "command", "command": "node /Users/khangnguyen/Documents/path_finder/webhook/hooks/capture-raw.js /tmp/cc-dashboard-raw.jsonl", "timeout": 5 }] }],
-    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "node /Users/khangnguyen/Documents/path_finder/webhook/hooks/capture-raw.js /tmp/cc-dashboard-raw.jsonl", "timeout": 5 }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "node /Users/khangnguyen/Documents/path_finder/webhook/hooks/capture-raw.js /tmp/cc-dashboard-raw.jsonl", "timeout": 5 }] }],
-    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "node /Users/khangnguyen/Documents/path_finder/webhook/hooks/capture-raw.js /tmp/cc-dashboard-raw.jsonl", "timeout": 5 }] }],
-    "Notification": [{ "hooks": [{ "type": "command", "command": "node /Users/khangnguyen/Documents/path_finder/webhook/hooks/capture-raw.js /tmp/cc-dashboard-raw.jsonl", "timeout": 5 }] }],
-    "PreCompact": [{ "hooks": [{ "type": "command", "command": "node /Users/khangnguyen/Documents/path_finder/webhook/hooks/capture-raw.js /tmp/cc-dashboard-raw.jsonl", "timeout": 5 }] }],
-    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "node /Users/khangnguyen/Documents/path_finder/webhook/hooks/capture-raw.js /tmp/cc-dashboard-raw.jsonl", "timeout": 5 }] }]
-  }
-}
-```
-
-   `node` resolves through the shell PATH of the session. If a session's PATH lacks nvm, replace `node` with `/Users/khangnguyen/.nvm/versions/node/v24.14.0/bin/node`. Hooks pick up settings changes on the next session start, so one new session (or restart) is needed to see `SessionStart`, while already-running sessions may or may not reload.
-
-2. Manager: tell me once installed. I will send one test message to the validator, wait for its turn to end, then fill in §6 W-U3 and W-U4 and ask for the catch-all to be removed.
-
-3. Manager, `CLAUDE.md` setup commands for W2:
-
-```
-# install (no dependencies, this only checks the manifest)
-cd webhook && npm install
-
-# run server (after W5)
-node webhook/server.js            # prints the dashboard URL, default http://127.0.0.1:4747
-
-# demo with fake data (after W4 and W5)
-node webhook/server.js --demo
-```
-
-4. Validator: `node:test` with `node --test tests/` fits this runtime with no dependencies. Every module in `webhook/` is ESM and exports its functions, so unit tests can import them directly.
+1. Manager: W1 is done, so the catch-all can come out of `~/.claude/settings.json`. Two options. Remove all nine hook entries now, which stops the roughly 35 ms per tool call overhead in every session. Or leave it until W3 is assigned and swap it for the real snippet in one edit. The log is redacted either way. I recommend swapping at W3 to save you an edit, and I will delete `/tmp/cc-dashboard-raw.jsonl` when told.
+2. Manager: `npm install` in `webhook/` creates `webhook/package-lock.json` even with zero dependencies (review note 2). Please add `webhook/package-lock.json` to `.gitignore`, or drop the `npm install` step from `CLAUDE.md` since nothing is fetched.
+3. Manager, for M3: two states exist that §3 does not model, a session waiting on a permission prompt (`Notification` hook, ListAgents shows `waiting`) and a missed `Stop` after a user interrupt. Options are in §6 W-U4. Decide whether W3 should emit a fifth state or whether W5 should poll `~/.claude/sessions/<pid>.json` `status`.
+4. Manager: the W5 contract now says static files from `frontend/` are served. Acknowledged; the draft server does not do that yet and will when W5 is assigned.
 
 ## Blocked
 

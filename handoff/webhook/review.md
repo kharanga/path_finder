@@ -1,48 +1,21 @@
+# Review: W1 2026-10-05 (re-review)
+
+PASS
+
 # Review: W2 2026-10-05
 
 PASS
 
-# Review: W1 2026-10-05
+## What was checked for W1
 
-NOT YET REVIEWABLE. Acceptance requires all four W-U findings filled in from the raw log. W-U3 and W-U4 are pending the manager installing the catch-all (M1). The parts that exist now pass; re-review after the raw log lands and SPEC.md §6 is complete.
+Acceptance: all four W-U findings filled in with evidence from the raw log, and `docs/webhook/hooks.md` describes the raw hook input shape.
 
-## What was checked
-
-Smoke test from ready.md, run against a temp log path instead of `/tmp/raw-test.jsonl`:
-
-| Step | Expected | Actual |
-|---|---|---|
-| SendMessage PostToolUse record | exit 0 | exit 0 |
-| `not json` on stdin | exit 0 | exit 0 |
-| unwritable log path | exit 0 | exit 0 |
-| line count | 2 | 2 |
-| `input.kept.tool_input` | `{"to":"listings-bc","notify_when_idle":true}` | identical |
-| `input.shape.tool_input.message` | `string(11)` | identical |
-| `grep "hello there"` in the log | 0 matches | 0 matches |
-| stdout + stderr across all runs | 0 bytes | 0 bytes |
-| stdin from `/dev/null` | exit 0, record appended | exit 0, record appended |
-| run time per invocation | fast | 34 ms |
-
-Docs examples in `docs/webhook/hooks.md`, each run by importing the module:
-
-| Function | Result |
-|---|---|
-| `describeShape` | documented output |
-| `describeShape([1,2,3])` | `["array(3)"]`, matches the documented form |
-| `redactHookInput` (SendMessage example) | `kept` and `shape` identical to the docs |
-| `redactHookInput("str")`, `redactHookInput(null)` | `{shape}` only, as documented |
-| `buildRawRecord("not json", ...)` | `{unparseable: true, length: 8}` |
-| `appendRaw("/nonexistent-root/raw.jsonl", ...)` | `false` |
-| `readStdin()` with no stdin | `""` |
-| `main` Stop example | exit 0, `input.kept` identical to the docs |
-| `ancestorChain` | PIDs differ by nature; observed chain is hook -> /bin/zsh -> claude, matching the documented structure |
-
-W2: `node --version` is v24.14.0. `cd webhook && npm install` completes with 0 dependencies. `package.json` is ESM, private, engines `>=20`.
-
-SPEC.md §6: W-U1 and W-U2 are filled in with evidence. W-U2 quotes the session file shape without leaking a full session id.
+- SPEC.md §6: W-U1 to W-U4 each carry quoted redacted fragments and timestamps. Every timestamp cited (06:03:57 PostToolUse SendMessage from PID 52134 to path-finder-e5, 06:04:10 UserPromptSubmit for 40707, 06:04:57 Stop for 40707, 06:04:33 Stop and 06:04:49 UserPromptSubmit for 29248, 06:04:09 Notification for 29248, 06:04:48 SendMessage to path-finder-18 and its 06:04:53 UserPromptSubmit) exists in `/tmp/cc-dashboard-raw.jsonl`, checked with the redacted summary script from ready.md.
+- Privacy: 95 records. Zero matches for four phrases taken from this session's own outgoing messages. Longest kept string value is 49 characters (a path), so no prompt or message text is present.
+- `docs/webhook/hooks.md`: raw input shape table rewritten from observed records, with `SessionStart` and `SessionEnd` fields marked as not yet observed. All function examples still produce the documented output (re-run after the entry-point change).
+- Import guard (`capture-raw.js:106`): a bare `import()` with `CC_DASHBOARD_RAW_LOG` pointing at a temp path returns 8 exports and creates no file. Direct runs by absolute path, relative path, and an unnormalized path (`./webhook/hooks/../hooks/capture-raw.js`) all append a record and exit 0.
 
 ## Notes, not failures
 
-1. `webhook/hooks/capture-raw.js:112` calls `main()` at module load. Importing the module from a unit test reads stdin and appends a record to `$CC_DASHBOARD_RAW_LOG` or `/tmp/cc-dashboard-raw.jsonl` (verified: one line written on a bare import). For V2 tests, guard the call with an entry-point check such as comparing `import.meta.url` to `pathToFileURL(process.argv[1]).href`, or move `main()` into a separate `bin` file. Same request applies to the W3 hook.
-2. `npm install` in `webhook/` writes `package-lock.json`. I deleted the one my run created. Builder decides whether to commit it or add it to `.gitignore`.
-3. V1 request (ready.md Requests item 4) noted: `node:test`, ESM modules with exported functions. That matches my drafted proposal.
+1. `capture-raw.js:106`: when the script is run through a symlink, `process.argv[1]` is the link path while `import.meta.url` is the resolved path, so `main()` is skipped and nothing is logged, exit 0. Verified with a symlink in a temp dir. The installed snippet uses the real absolute path, so it does not bite today, but a packaged plugin (M4) might. Comparing `realpathSync(process.argv[1])` closes it. Same applies to the W3 hook if it copies this guard.
+2. Review note 2 from the first round (package-lock.json) is now a manager request in ready.md. Nothing further from me.

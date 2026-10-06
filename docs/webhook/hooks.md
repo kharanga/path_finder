@@ -4,27 +4,31 @@ Scripts in `webhook/hooks/` that Claude Code runs from `~/.claude/settings.json`
 
 ## Raw hook input shape
 
-Claude Code pipes one JSON object to every hook command. Fields common to every event:
+Claude Code pipes one JSON object to every hook command. Confirmed from the W1 raw log on Claude Code 2.1.291. Fields common to every event:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `session_id` | string | UUID of the session, same as the transcript file name |
+| `session_id` | string, 36 chars | UUID of the session, same as the transcript file name |
 | `transcript_path` | string | path of the session transcript |
 | `cwd` | string | folder the session started in |
-| `hook_event_name` | string | `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `Stop`, `SessionEnd`, ... |
-| `permission_mode` | string | current permission mode |
+| `scratchpad_dir` | string | the session's scratch directory |
+| `prompt_id` | string, 36 chars | UUID of the current turn |
+| `hook_event_name` | string | `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Stop`, `Notification`, `SessionEnd`, ... |
 
 Event-specific fields:
 
 | Event | Extra fields |
 |---|---|
-| `SessionStart` | `source`: `startup`, `resume`, `clear`, or `compact` |
-| `UserPromptSubmit` | `prompt`: the submitted text |
-| `PostToolUse` | `tool_name`, `tool_input`, `tool_response`, `tool_use_id` |
-| `Stop` | `stop_hook_active`: boolean |
-| `SessionEnd` | `reason`: why the session ended |
+| `SessionStart` | `source`: `startup`, `resume`, `clear`, or `compact` (from the Claude Code docs; not yet observed in the raw log) |
+| `UserPromptSubmit` | `permission_mode`, `prompt` |
+| `PreToolUse` / `PostToolUse` | `tool_name`, `tool_input`, `tool_response` (post only) |
+| `Stop` | `permission_mode`, `effort.level`, `stop_hook_active` (boolean), `last_assistant_message`, `background_tasks` (array), `session_crons` (array) |
+| `Notification` | `message`, `notification_type` |
+| `SessionEnd` | `reason` (from the Claude Code docs; not yet observed) |
 
-For `tool_name` `SendMessage`, `tool_input` mirrors the tool's parameters: `to` (string), `message` (string), `notify_when_idle` (boolean, optional), `summary` (string, optional). This is confirmed from the tool's own schema. The rest of the table is being confirmed in task W1 from the raw log; the raw log is the source of truth if they differ.
+For `tool_name` `SendMessage`, `tool_input` mirrors the tool's parameters: `to` (string), `message` (string), `notify_when_idle` (boolean, optional), `summary` (string, optional). Observed: `{"to":"path-finder-e5","notify_when_idle":true}` kept, with `message` of length 145 and `summary` of length 32 redacted.
+
+Timing facts that shape the real hook: `UserPromptSubmit` fires when a cross-session message is delivered, even mid-turn, so repeated `busy` events are normal. `Stop` fires at every completed turn end but not on user interrupt. Settings changes to hooks applied to running sessions without a restart.
 
 ## Mapping a hook to its session
 

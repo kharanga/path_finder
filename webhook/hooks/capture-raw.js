@@ -1,6 +1,7 @@
-import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { dirname } from "node:path";
 import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 export const DEFAULT_RAW_LOG = "/tmp/cc-dashboard-raw.jsonl";
 
@@ -102,4 +103,6 @@ export function main(argv = process.argv.slice(2)) {
   }
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+  main();
+}

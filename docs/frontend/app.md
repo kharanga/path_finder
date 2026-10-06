@@ -14,4 +14,6 @@ Output: the disconnect function returned by `connect`.
 
 Errors: none thrown directly. DOM errors surface if the elements are missing.
 
+`start` runs automatically at module load only when an element with id `orbit` exists, so importing `app.js` in a test without that element does nothing.
+
 Example: open `http://127.0.0.1:8787/?fixture=empty` served from `frontend/`. The status badge reads `fixture`, the ring is dashed, and the text "No sessions running" is centered. With `?fixture=few` five bodies appear, and after about seven seconds one has left the ring (tag-analyzer-63 ended), one is renamed from `pid 30444` to `scratch-7a`, and `listings-bc` has turned busy.

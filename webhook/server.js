@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { readFileSync, existsSync, mkdtempSync } from "node:fs";
+import { readFileSync, existsSync, mkdtempSync, realpathSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -153,9 +153,9 @@ export async function startServer(overrides = {}) {
       replaying = false;
     },
   });
-  hub.runLivenessCheck();
   let livenessTimer = null;
   if (options.livenessIntervalMs > 0) {
+    hub.runLivenessCheck();
     livenessTimer = setInterval(() => hub.runLivenessCheck(), options.livenessIntervalMs);
   }
   const server = createServer((request, response) => handleRequest(hub, options, request, response));
@@ -186,7 +186,7 @@ async function main() {
   process.on("SIGTERM", shutdown);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   main().catch((error) => {
     console.error(error.message);
     process.exit(1);
