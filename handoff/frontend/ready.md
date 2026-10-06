@@ -26,6 +26,10 @@ Generator re-check (manager request, after the handoff was first written): `webh
 - Raw instant mode (`--out … --instant`, 127 lines, fed straight into `applyEvent`): same result. Two more live bodies than fixture mode because raw mode carries no `liveness` entries (the server adds those), which is expected.
 - Difference from `rename.json`: the generator sends the old-name message *before* the rename event and the notify *to the new name*, which is what real hooks produce (they re-read the registry). `rename.json` keeps the stricter cases (old-name message after the rename, notify to the old name) so both orderings are covered. `README.md` fixture table updated.
 
+Also fixed while re-checking (render.js): a newly started body had no transform until its first update, so the 600 ms transform transition slid it in from the SVG origin while it faded in. The slot position is now set before the first style flush, so new bodies fade in at their slot. Visible before the fix on `?fixture=generated-fast` at ~8.5 s (`tag-analyzer-ba` appearing at the top-left corner).
+
+Known limitation, not fixed: with 17 live bodies plus ghosts (`generated-fast` after ~8 s) a long truncated label in the bottom-center slot can touch the side label of its neighbor. The F2 target is ~15 sessions; above that, labels may touch at the top and bottom slots.
+
 ## How to test
 
 ```
