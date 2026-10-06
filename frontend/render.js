@@ -1,4 +1,4 @@
-import { boardLayout, tracePath, traceKey, edgeBox, truncateLabel, boardFor, CAPSULE } from "./layout.js";
+import { boardLayout, tracePath, traceKey, edgeBox, truncateLabel, boardFor, assignLanes, laneOptions, traceCorridors, CAPSULE } from "./layout.js";
 import { liveSessions, sessionLabel, sessionByName } from "./state.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -27,6 +27,16 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
   const capsuleNodes = new Map();
   const traceNodes = new Map();
   const chargeNodes = new Map();
+  const pairOrder = [];
+  const boxOf = (pid) => lastBoxes.get(Number(pid)) ?? lastBoxes.get(pid);
+  const laneRules = {
+    columnOf: (pid) => boxOf(pid)?.index ?? pid,
+    corridorsOf: (key) => {
+      const [a, b] = key.split("|").map(boxOf);
+      return a && b ? traceCorridors(a, b) : [];
+    },
+  };
+  let lanes = assignLanes(pairOrder, laneRules);
   const lastBoxes = new Map();
   const rowLabelNodes = new Map();
   const options = { ghostMs, travelMs, lingerMs, reducedMotion, onSelect, onRemove, portrait, editing: false };
@@ -50,11 +60,20 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
     return { from: fallback, to: fallback, real: false };
   }
 
+  function routeFor(from, to) {
+    if (from.pid === null || to.pid === null) return tracePath(from, to);
+    const key = traceKey(from.pid, to.pid);
+    if (!lanes.lanes.has(key)) pairOrder.push(key);
+    lanes = assignLanes(pairOrder, laneRules);
+    return tracePath(from, to, laneOptions(lanes, key, from, to));
+  }
+
   function ensureTrace(from, to) {
     const key = traceKey(from.pid, to.pid);
     let node = traceNodes.get(key);
     if (!node) {
-      const path = appendTo(tracesLayer, "path", { class: "trace", "data-trace": key, d: tracePath(from, to).d });
+      const path = appendTo(tracesLayer, "path", { class: "trace", "data-trace": key, d: routeFor(from, to).d });
+      path.dataset.lane = String(lanes.lanes.get(key));
       node = { path, a: from.pid, b: to.pid };
       traceNodes.set(key, node);
     }
@@ -70,7 +89,7 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
         traceNodes.delete(key);
         continue;
       }
-      node.path.setAttribute("d", tracePath(a, b).d);
+      node.path.setAttribute("d", routeFor(a, b).d);
     }
   }
 
@@ -104,6 +123,8 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
       clearLayer(tracesLayer);
       traceNodes.clear();
       chargeNodes.clear();
+      pairOrder.length = 0;
+      lanes = assignLanes(pairOrder, laneRules);
       for (const message of state.messages) {
         const ends = endpoints(state, message);
         if (ends.real) ensureTrace(ends.from, ends.to);
@@ -113,7 +134,7 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
       const message = state.messages[index];
       const ends = endpoints(state, message);
       if (ends.real) ensureTrace(ends.from, ends.to);
-      spawnPulse(pulsesLayer, message, index, ends.from, ends.to, options, `pulse-path-${pulseSerial++}`);
+      spawnPulse(pulsesLayer, message, index, ends.from, ends.to, routeFor(ends.from, ends.to), options, `pulse-path-${pulseSerial++}`);
     }
     drawnMessageCount = state.messages.length;
     rerouteTraces();
@@ -121,7 +142,7 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
     const chargeOptions = instant ? { ...options, reducedMotion: true } : options;
     for (const thread of state.threads) {
       const ends = endpoints(state, thread);
-      updateChargeNode(chargesLayer, chargeNodes, thread, ends.from, ends.to, chargeOptions);
+      updateChargeNode(chargesLayer, chargeNodes, thread, routeFor(ends.from, ends.to), ends.to, chargeOptions);
     }
   }
 
@@ -176,11 +197,11 @@ function drawRowLabels(layer, rowLabelNodes, rows) {
   }
 }
 
-function spawnPulse(layer, message, index, from, to, { travelMs, lingerMs, reducedMotion, onSelect }, pathId) {
-  const route = tracePath(from, to);
+function spawnPulse(layer, message, index, from, to, route, { travelMs, lingerMs, reducedMotion, onSelect }, pathId) {
+  const arrival = route.points[route.points.length - 1];
   const group = appendTo(layer, "g", { class: message.notify_on_idle ? "pulse notify" : "pulse", "data-message-index": index, role: "button", tabindex: "0" });
   appendTo(group, "path", { id: pathId, class: "pulse-path", d: route.d });
-  const hit = appendTo(group, "circle", { class: "pulse-hit", r: PULSE_HIT_RADIUS, cx: to.cx, cy: to.cy });
+  const hit = appendTo(group, "circle", { class: "pulse-hit", r: PULSE_HIT_RADIUS, cx: arrival.x, cy: arrival.y });
   const dot = appendTo(group, "circle", { class: "pulse-dot", r: PULSE_RADIUS });
   const title = appendTo(group, "title", {});
   const sender = typeof message.from === "string" ? message.from : "unknown sender";
@@ -201,8 +222,8 @@ function spawnPulse(layer, message, index, from, to, { travelMs, lingerMs, reduc
     setTimeout(() => group.remove(), lingerMs);
   };
   if (reducedMotion) {
-    dot.setAttribute("cx", to.cx);
-    dot.setAttribute("cy", to.cy);
+    dot.setAttribute("cx", arrival.x);
+    dot.setAttribute("cy", arrival.y);
     settle();
     return group;
   }
@@ -216,10 +237,9 @@ function spawnPulse(layer, message, index, from, to, { travelMs, lingerMs, reduc
   return group;
 }
 
-function updateChargeNode(layer, chargeNodes, thread, from, to, { travelMs, reducedMotion }) {
+function updateChargeNode(layer, chargeNodes, thread, route, to, { travelMs, reducedMotion }) {
   let node = chargeNodes.get(thread.id);
   if (thread.status === "waiting") {
-    const route = tracePath(from, to);
     if (!node) {
       const path = appendTo(layer, "path", { class: "charge drawing", "data-thread-id": thread.id, d: route.d });
       path.setAttribute("stroke-dasharray", route.length);
