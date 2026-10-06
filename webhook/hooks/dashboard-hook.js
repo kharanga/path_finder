@@ -13,6 +13,15 @@ const STATE_BY_HOOK_EVENT = {
   Stop: "idle",
   SessionEnd: "ended",
 };
+const WAITING_NOTIFICATION_TYPE = "permission_prompt";
+
+/** Returns the §3 session state a hook input maps to, or null when the hook carries no state change. */
+export function stateForHook(hookInput) {
+  if (hookInput.hook_event_name === "Notification") {
+    return hookInput.notification_type === WAITING_NOTIFICATION_TYPE ? "waiting" : null;
+  }
+  return STATE_BY_HOOK_EVENT[hookInput.hook_event_name] ?? null;
+}
 
 /** Reads all of stdin synchronously and returns it as a string, or "" when stdin is a TTY or unreadable. */
 export function readStdin() {
@@ -74,7 +83,7 @@ export function resolveSession(hookInput, options = {}) {
 /** Converts raw hook input plus resolved session identity into a §3 event, or null when the hook is not one we log. */
 export function buildEvent(hookInput, identity, now = new Date()) {
   const ts = now.toISOString();
-  const state = STATE_BY_HOOK_EVENT[hookInput.hook_event_name];
+  const state = stateForHook(hookInput);
   if (state) {
     if (!Number.isInteger(identity.pid)) return null;
     return {
