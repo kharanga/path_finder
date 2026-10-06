@@ -42,7 +42,7 @@ test("applySessionEvent keys by pid, keeps known name, folder, and role, and tra
   const state = createState();
   applySessionEvent(state, session({ ts: "2026-10-05T21:43:00Z", session: null, folder: "scratch", pid: 30444, state: "started" }));
   applySessionEvent(state, session({ ts: "2026-10-05T21:45:00Z", session: "scratch-7a", folder: "scratch", pid: 30444, state: "idle" }));
-  applySessionEvent(state, session({ ts: "2026-10-05T21:46:00Z", session: null, pid: 30444, state: "busy", role: "validator" }));
+  applySessionEvent(state, session({ ts: "2026-10-05T21:46:00Z", session: null, folder: "scratch", pid: 30444, state: "busy", role: "validator" }));
   applySessionEvent(state, session({ ts: "2026-10-05T21:47:00Z", session: null, pid: 30444, state: "waiting", role: null, folder: undefined }));
   assert.deepEqual(state.sessions.get(30444), { pid: 30444, session: "scratch-7a", folder: "scratch", role: "validator", state: "waiting", ts: "2026-10-05T21:47:00Z", firstSeen: "2026-10-05T21:43:00Z", formerNames: [] });
   assert.equal(applySessionEvent(state, { pid: "nope" }).sessions.size, 1);

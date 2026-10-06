@@ -18,14 +18,14 @@ test("parseRole throws the usage error for missing, empty, too long, or badly sh
 test("resolveCallingSession combines the pid walk and registry lookup", () => {
   const calls = [];
   const resolved = resolveCallingSession({ findPid: () => 7, lookup: (pid) => { calls.push(pid); return { pid, name: "x-1", cwd: "/a/b/listings", status: "idle" }; } });
-  assert.deepEqual(resolved, { pid: 7, name: "x-1", folder: "listings", state: "idle" });
+  assert.deepEqual(resolved, { pid: 7, name: "x-1", cwd: "/a/b/listings", folder: "listings", state: "idle" });
   assert.deepEqual(calls, [7]);
 });
 
 test("resolveCallingSession falls back to busy for unknown, ended, or missing statuses and empty folder for a missing cwd", () => {
   for (const status of ["weird", "ended", null, undefined]) {
     const resolved = resolveCallingSession({ findPid: () => 1, lookup: () => ({ pid: 1, name: null, cwd: null, status }) });
-    assert.deepEqual(resolved, { pid: 1, name: null, folder: "", state: "busy" }, String(status));
+    assert.deepEqual(resolved, { pid: 1, name: null, cwd: null, folder: "", state: "busy" }, String(status));
   }
   assert.equal(resolveCallingSession({ findPid: () => 1, lookup: () => ({ pid: 1, name: "n", cwd: "/x", status: "waiting" }) }).state, "waiting");
 });

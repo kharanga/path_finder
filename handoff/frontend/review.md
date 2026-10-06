@@ -1,3 +1,17 @@
+# Review: F9 2026-10-05 (round 2, post-PASS render fix and regenerated fixtures)
+
+PASS
+
+- Builder's example runner against the current `render.js`: 161 passed, 0 failed.
+- `generated-many.json`, `generated-mid.json`, `generated-fast.json` are byte-identical to fresh `webhook/fake.js` output with the documented commands. All three validate against `webhook/schema.js` (0 invalid), and replaying each through `frontend/state.js` shows the generator's rename (pid 70052, `listings-2c` → `manager-drives-feature-work`) recorded in `formerNames`, the former name resolving to the live body, and no placeholder for it at any point. Raw instant mode shows the same pid with both names.
+- The render fix (new bodies get their transform before the first style flush) is covered by `tests/unit/frontend/render.test.js`: new bodies are created without the `entering` class under instant draws and positioned on creation.
+
+Note: `render.md` line 80 says the thread "starts with `stroke-dashoffset` equal to its length". With the synchronous style flush, the attribute is already 0 by the time `draw` returns; the sentence is true only for the instant before the flush. Reword it when convenient.
+
+# V3: unit tests for frontend 2026-10-05
+
+Done. `tests/unit/frontend/`: `state.test.js` (reducer, threads, placeholders, pruning, former-name resolution, rename bookkeeping), `layout.test.js` (ring positions for 1 to 15, label sides and placement, no-overlap and in-viewBox geometry, message curves, truncation), `render.test.js` (empty ring, body attributes, reduced-motion versus full-motion particles and threads, `matchMedia` default, ghosts and revival, instant draws, snapshot reset, placeholders, null sender, renames, selection), `timeline-panel.test.js` (recording, `stateAt`, clock, strip modes and ticks, panel fields). 40 tests, all through `tests/helpers/dom-stub.js`, no browser. Whole suite: 123 tests, 121 pass, 2 todo.
+
 # Review: F9 2026-10-05
 
 PASS

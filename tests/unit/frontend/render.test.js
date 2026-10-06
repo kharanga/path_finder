@@ -99,10 +99,11 @@ test("full motion: particles animate along their own path and threads draw on fr
   assert.equal(motion.children[0].getAttribute("href"), `#${q(".particle-path").getAttribute("id")}`);
   assert.equal(q(".particle").classList.contains("arrived"), false);
   const thread = q(".thread");
-  assert.equal(thread.getAttribute("stroke-dashoffset"), thread.getAttribute("stroke-dasharray"));
+  assert.ok(Number(thread.getAttribute("stroke-dasharray")) > 0);
+  assert.equal(thread.getAttribute("stroke-dashoffset"), "0");
+  assert.equal(thread.classList.contains("drawing"), false);
   await sleep(40);
   assert.equal(q(".particle").classList.contains("arrived"), true);
-  assert.equal(thread.getAttribute("stroke-dashoffset"), "0");
 });
 
 test("reduced motion defaults from matchMedia when no override is given", () => {
@@ -163,11 +164,11 @@ test("placeholders render as placeholder bodies and messages route to them; null
   const state = createState();
   applySnapshot(state, { sessions: [{ ts: "2026-10-05T22:00:00Z", type: "session", session: "a-1", folder: "a", pid: 1, state: "idle", role: null }], messages: [] }, NOW);
   draw(state);
-  applyEvent(state, "message", { ts: "2026-10-05T22:00:01Z", type: "message", from: "a-1", to: "b-2", text: "x", notify_on_idle: true }, NOW);
+  applyEvent(state, "message", { ts: "2026-10-05T22:00:01Z", type: "message", from: "a-1", to: "b-22", text: "x", notify_on_idle: true }, NOW);
   draw(state);
-  const placeholder = q('.body[data-pid="placeholder:b-2"]');
+  const placeholder = q('.body[data-pid="placeholder:b-22"]');
   assert.equal(placeholder.dataset.state, "placeholder");
-  assert.equal(placeholder.querySelector("title").textContent, "b-2, no session event yet (folder guessed: b)");
+  assert.equal(placeholder.querySelector("title").textContent, "b-22, no session event yet (folder guessed: b)");
   const [x, y] = placeholder.style.transform.match(/[\d.]+/g);
   assert.equal(q(".particle-dot").getAttribute("cx"), String(Number(x)));
   assert.equal(q(".particle-dot").getAttribute("cy"), String(Number(y)));

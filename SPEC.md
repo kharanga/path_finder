@@ -63,7 +63,7 @@ F1 to F9 all PASS. Frontend complete.
 
 ### 5.3 tests
 
-`node:test`, suite in `tests/`, green with placeholders. See `tests/README.md`.
+`node:test`, suite in `tests/`. Unit coverage for webhook (V2) and frontend (V3) complete. Integration (V4) and docs examples (V5) pending. See `tests/README.md`.
 
 ### 5.4 docs
 
@@ -151,7 +151,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 
 - [x] **V1: test structure.** `node:test`, `tests/` with `unit/`, `integration/`, `docs-examples/`, `helpers/`. Run with `node --test "tests/**/*.test.js"`. Done 2026-10-05.
 - [x] **V2: unit tests for webhook.** Hook event formatting, state reduction from events, PID liveness with a mocked process check, malformed line handling. Mock the filesystem and process calls.
-- [~] path-finder-e5 **V3: unit tests for frontend.** Ring position function, state reducer, reduced-motion branch. Use a DOM test environment, no real browser needed.
+- [x] **V3: unit tests for frontend.** Ring position function, state reducer, reduced-motion branch. Use a DOM test environment, no real browser needed.
 - [ ] **V4: integration tests.** W4 output through the server into a connected SSE client, using a temp `events.jsonl`. Never the real file. Include the rename scenario (§6) and a role declaration via `declare-role.js` against the temp file.
 - [ ] **V5: docs examples.** Every example in `docs/` runs and produces the documented output. Use the runtime's markdown example runner if one exists, otherwise a small script.
 - [ ] **V6: review each ready.md** against this file's acceptance criteria. Write `review.md` as PASS or numbered failures with file, line, input, expected, actual. Missing or outdated docs count as failures.
