@@ -103,6 +103,10 @@ await checkAsync("server startServer", async () => {
   assert.equal((await fetch(`http://127.0.0.1:${port}/sessions/29904/remove`, { method: "POST" })).status, 204);
   assert.deepEqual((await fetch(`http://127.0.0.1:${port}/snapshot`).then((r) => r.json())).sessions, []);
   assert.equal(JSON.parse(readFileSync(ef, "utf8").trim().split("\n").pop()).state, "removed");
+  assert.equal((await fetch(`http://127.0.0.1:${port}/sessions/abc/remove`, { method: "POST" })).status, 404);
+  const linesBefore = readFileSync(ef, "utf8").trim().split("\n").length;
+  assert.equal((await fetch(`http://127.0.0.1:${port}/sessions/29904/remove`, { method: "POST" })).status, 204);
+  assert.equal(readFileSync(ef, "utf8").trim().split("\n").length, linesBefore);
   const sse = await fetch(`http://127.0.0.1:${port}/events`); const reader = sse.body.getReader(); const { value } = await reader.read(); const text = new TextDecoder().decode(value);
   assert.equal(text, ': connected\n\nevent: snapshot\ndata: {"sessions":[],"messages":[]}\n\n');
   await reader.cancel(); await stop();
