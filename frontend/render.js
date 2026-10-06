@@ -30,6 +30,7 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
   const threadNodes = new Map();
   const lastPositions = new Map();
   const options = { ghostMs, travelMs, lingerMs, reducedMotion, onSelect };
+  watchReducedMotion((reduce) => { options.reducedMotion = reduce; });
   let drawnMessageCount = 0;
   let drawnSnapshotSeq = null;
   let particleSerial = 0;
@@ -180,7 +181,7 @@ function startGhost(node, bodyNodes, lastPositions, pid, ghostMs) {
 }
 
 function createBodyNode(layer, bodyNodes, pid, instant = false) {
-  const group = appendTo(layer, "g", { class: instant ? "body" : "body entering", "data-pid": pid });
+  const group = appendTo(layer, "g", { class: instant ? "body" : "body entering", "data-pid": pid, tabindex: "0", role: "img" });
   appendTo(group, "circle", { class: "halo", r: HALO_RADIUS });
   const circle = appendTo(group, "circle", { class: "core", r: BODY_RADIUS });
   const title = appendTo(group, "title", {});
@@ -215,6 +216,7 @@ function updateBodyNode(node, session, position) {
   node.role.classList.toggle("hidden", !session.role);
   if (session.state === "placeholder") node.title.textContent = `${label}, no session event yet (folder guessed: ${session.folder})`;
   else node.title.textContent = session.role ? `${label} (${session.role}) in ${session.folder}` : `${label} in ${session.folder}`;
+  node.group.setAttribute("aria-label", `${label}, ${session.state}${session.role ? `, ${session.role}` : ""}, folder ${session.folder}`);
 }
 
 function flushStyles(element) {
@@ -223,6 +225,12 @@ function flushStyles(element) {
 
 function detectReducedMotion() {
   return typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function watchReducedMotion(onChange) {
+  if (typeof matchMedia !== "function") return;
+  const query = matchMedia("(prefers-reduced-motion: reduce)");
+  query.addEventListener?.("change", (event) => onChange(event.matches));
 }
 
 function clearLayer(layer) {

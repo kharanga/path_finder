@@ -87,11 +87,11 @@ Findings:
 - Extra fields observed per event, all values redacted: every event has `session_id`, `transcript_path`, `cwd`, `scratchpad_dir`, `prompt_id`, `hook_event_name`; `UserPromptSubmit` adds `permission_mode`, `prompt`; `Stop` adds `permission_mode`, `effort.level`, `stop_hook_active`, `last_assistant_message`, `background_tasks`, `session_crons`; `Notification` adds `message`, `notification_type`; `PostToolUse` adds `tool_name`, `tool_input`, `tool_response`. No `SessionStart` or `SessionEnd` was observed because no session started or ended during the window; their `source` and `reason` fields are kept by the catch-all for the next restart.
 - Hooks installed into `~/.claude/settings.json` took effect in already-running sessions within seconds, no restart needed.
 
-Open design questions, manager decides:
+Design decisions, 2026-10-05:
 
-- How does a session declare a role? Candidate: an extra event type written by an optional skill.
-- How far back does the timeline go? Does the server need to persist beyond replaying `events.jsonl`?
-- Who rotates `events.jsonl`?
+- Role declaration: a session runs `node webhook/declare-role.js <role>`. The script resolves its own session the same way the hook does (registry by PID walk) and appends a `session` event with the current state and `role` set. The reducer already keeps the last non-null role. The optional skill teaches sessions to run it. Task W7.
+- Timeline depth: the server replays all of `events.jsonl` on start and keeps the last 500 messages in memory (`state.js` limit). The page timeline covers what the snapshot holds. No further persistence.
+- Rotation: none in v1. `events.jsonl` is append-only; the user truncates it by hand. The server tolerates a truncated file on restart.
 
 ## 7. Contract between webhook and frontend
 
@@ -121,8 +121,13 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
   Acceptance: output validates against §3 schema. frontend-builder can run it against the page with one command. Docs: `docs/webhook/fake-generator.md`.
 - [~] path-finder-37 (in review) **W5: server.** Tails `events.jsonl` (path configurable), replays the file on startup, keeps in-memory state, runs the PID liveness check on an interval, serves `GET /`, static files from `frontend/`, and `GET /events` per §7.
   Acceptance: browser connecting mid-run receives a correct snapshot. Killing a session process marks it ended within one interval. Server survives malformed lines. Docs: `docs/webhook/server.md`, one entry per public function and endpoint.
-- [~] path-finder-37 **W6: documentation standard.** Every public function has a one-line docstring. Every module has a file in `docs/webhook/` with what, inputs, output, errors, example.
+- [~] path-finder-37 (in review) **W6: documentation standard.** Every public function has a one-line docstring. Every module has a file in `docs/webhook/` with what, inputs, output, errors, example.
   Acceptance: validator confirms every documented example produces the documented output.
+
+- [~] path-finder-37 **W7: role declaration.** `webhook/declare-role.js <role>` appends a `session` event for the calling session with `role` set, resolving PID and name like the hook. Prints nothing on success, exits 0, exits 1 with one line on stderr if the session cannot be resolved.
+  Acceptance: run from a live session, the ring shows the role under that body within one tail interval. Docs: `docs/webhook/declare-role.md`.
+- [ ] **W8: plugin bundle.** Package hooks, server, the `declare-role` skill, and a `/dashboard` command as a Claude Code plugin so another machine can install it without editing `settings.json` by hand. Hook commands must not hard-code this repo's path or the nvm node path. Research the current plugin manifest format first and put the proposed layout under Requests before building.
+  Acceptance: documented install steps on a clean checkout produce working hooks and a running dashboard. Docs: `docs/webhook/plugin.md`.
 
 ### 8.2 frontend-builder
 
@@ -151,5 +156,5 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 
 - [x] M1: install hook snippets into `~/.claude/settings.json`. Real W3 hook installed 2026-10-05, catch-all removed, raw log deleted.
 - [x] M2: update `CLAUDE.md` setup commands after W2.
-- [~] M3: decide the open design questions in §6. Decided 2026-10-05: `waiting` state from the Notification hook plus a server-side status poll. Remaining: role declaration, timeline depth, log rotation.
-- [ ] M4: packaging, later. Plugin bundle with hooks, optional role-declaring skill, and a `/dashboard` command. Reference model: Graphify.
+- [x] M3: design questions in §6 decided 2026-10-05: waiting state plus status poll, role declaration via W7, timeline depth equals snapshot, no rotation in v1.
+- [~] M4: packaging, assigned to webhook-builder as W7 and W8. Reference model: Graphify.

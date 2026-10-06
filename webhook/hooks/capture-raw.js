@@ -69,7 +69,7 @@ export function redactHookInput(input) {
 export function buildRawRecord(stdinText, argv, now = new Date()) {
   let input;
   try {
-    input = JSON.parse(stdinText);
+    input = redactHookInput(JSON.parse(stdinText));
   } catch {
     input = { unparseable: true, length: stdinText.length };
   }
@@ -79,7 +79,7 @@ export function buildRawRecord(stdinText, argv, now = new Date()) {
     ancestors: ancestorChain(),
     argv,
     cwd: process.cwd(),
-    input: redactHookInput(input),
+    input,
   };
 }
 

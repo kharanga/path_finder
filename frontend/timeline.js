@@ -31,6 +31,10 @@ export function createTimeline() {
     messageTimes() {
       return entries.filter((entry) => entry.name === "message").map((entry) => entry.tsMs);
     },
+    // Returns recorded messages with their timestamps, oldest first.
+    messages() {
+      return entries.filter((entry) => entry.name === "message").map((entry) => ({ tsMs: entry.tsMs, data: entry.data }));
+    },
     // Rebuilds the state as of tsMs by replaying every entry at or before it.
     stateAt(tsMs) {
       const state = createState();
@@ -51,7 +55,7 @@ export function createTimeline() {
 }
 
 // Mounts the scrubber UI onto a container and returns controls to keep it in sync with the timeline.
-export function mountTimelineStrip(container, timeline, { onScrub, onLive }) {
+export function mountTimelineStrip(container, timeline, { onScrub, onLive, onTick }) {
   const liveButton = container.querySelector("[data-role=live]");
   const slider = container.querySelector("[data-role=scrubber]");
   const timeLabel = container.querySelector("[data-role=time]");
@@ -74,7 +78,7 @@ export function mountTimelineStrip(container, timeline, { onScrub, onLive }) {
       if (live) slider.value = range.endMs;
     }
     timeLabel.textContent = live ? "Live" : formatClock(Number(slider.value));
-    renderTicks(ticks, timeline.messageTimes(), range);
+    renderTicks(ticks, timeline.messages(), range, onTick);
   }
 
   slider.addEventListener("input", () => {
@@ -105,14 +109,19 @@ export function formatClock(tsMs) {
   return [date.getHours(), date.getMinutes(), date.getSeconds()].map((n) => String(n).padStart(2, "0")).join(":");
 }
 
-function renderTicks(ticks, times, range) {
+function renderTicks(ticks, messages, range, onTick) {
   while (ticks.firstChild) ticks.removeChild(ticks.firstChild);
   if (!range || range.endMs === range.startMs) return;
   const span = range.endMs - range.startMs;
-  for (const tsMs of times) {
-    const tick = document.createElement("span");
+  for (const { tsMs, data } of messages) {
+    const tick = document.createElement("button");
+    tick.type = "button";
     tick.className = "tick";
     tick.style.left = `${(((tsMs - range.startMs) / span) * 100).toFixed(2)}%`;
+    const sender = typeof data.from === "string" ? data.from : "unknown sender";
+    tick.setAttribute("aria-label", `Message from ${sender} to ${data.to} at ${formatClock(tsMs)}`);
+    tick.title = `${sender} → ${data.to}, ${formatClock(tsMs)}`;
+    if (onTick) tick.addEventListener("click", () => onTick(data, tsMs));
     ticks.appendChild(tick);
   }
 }
