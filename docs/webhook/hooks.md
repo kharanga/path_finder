@@ -71,6 +71,30 @@ stateForHook({ hook_event_name: "Notification", notification_type: "idle_prompt"
 stateForHook({ hook_event_name: "PreToolUse" })                                            // null
 ```
 
+### readSessionRegistry(sessionsDir = ~/.claude/sessions)
+
+What it does: reads every `<pid>.json` in the registry.
+
+Inputs: `sessionsDir` (string).
+
+Output: array of `{pid, sessionId, name, cwd, status}`, each field a string or `null` except `pid` (integer). Unparseable files are skipped; an unreadable directory gives `[]`.
+
+Errors: none thrown.
+
+Example: `readSessionRegistry("/nonexistent")` is `[]`. On this machine `readSessionRegistry().some((entry) => entry.pid === 52134)` is `true` while this session runs.
+
+### lookupSessionRegistryByPid(pid, sessionsDir = ~/.claude/sessions)
+
+What it does: returns the registry entry for one PID. Used by `declare-role.js`, which has no `session_id` on stdin.
+
+Inputs: `pid` (integer); `sessionsDir` (string).
+
+Output: `{pid, sessionId, name, cwd, status}` or `null`.
+
+Errors: none thrown.
+
+Example: `lookupSessionRegistryByPid(52134)` has `name` `"path-finder-37"` and `cwd` `"/Users/khangnguyen/Documents/path_finder"` while this session runs; `lookupSessionRegistryByPid(1)` is `null`.
+
 ### lookupSessionRegistry(sessionId, sessionsDir = ~/.claude/sessions)
 
 What it does: scans Claude Code's session registry for the entry whose `sessionId` matches.
