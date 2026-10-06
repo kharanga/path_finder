@@ -68,6 +68,10 @@ Confirmed in W1: `SendMessage` exposes `to`, `message`, and `notify_when_idle`, 
   - Then `event: session` and `event: message` with the schema above, as they arrive.
   - `event: liveness` with a `session` object in state `ended` when the PID check finds a dead process.
 
+## Page fixture shape
+
+For driving the page without the server, `webhook/fake.js --fixture <path>` writes `{snapshot, events: [{delayMs, event, data}]}`, where `event` is one of `session`, `message`, `liveness` and `data` is the matching payload from the stream above. The page loads it with `?fixture=<name>` from `frontend/fixtures/`. Commands are in `docs/webhook/fake-generator.md`.
+
 ## Data flow for one message
 
 1. Session A calls `SendMessage` to session B.

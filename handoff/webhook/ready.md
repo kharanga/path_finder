@@ -1,68 +1,80 @@
-# Ready: W3 real hooks
+# Ready: W4 fake event generator
 
 ## Done
 
-- `webhook/hooks/dashboard-hook.js`: the real hook. Maps `SessionStart` to `started`, `UserPromptSubmit` to `busy`, `Notification` with `notification_type` `permission_prompt` to `waiting`, `Stop` to `idle`, `SessionEnd` to `ended`, and `PostToolUse` for `SendMessage` to a `message` event with `to`, `text` (from `message`), `notify_on_idle` (from `notify_when_idle`, false when absent). Everything else is ignored. Sender name and PID come from `~/.claude/sessions/<pid>.json` matched on `session_id`, re-read on every event, with the `ps` walk to the `claude` parent as fallback (then `session` is `null`). Creates `~/.claude/dashboard/` if missing. Output path overridable with `CC_DASHBOARD_EVENTS` for tests. Exit 0 always, zero bytes on stdout and stderr, about 25 ms per run. Entry point guarded with `realpathSync`.
-- `webhook/schema.js`: `SESSION_STATES` now includes `waiting`. `validateEvent` and `parseEventLine` are the validators the server and generator will use.
-- `docs/webhook/hooks.md`: hook to event table and every exported function of `dashboard-hook.js`.
-- `docs/webhook/schema.md`: new, every export of `schema.js`.
-- Unchanged from W1: `capture-raw.js` stays until the manager swaps the snippet.
+- `webhook/fake.js` rewritten. Two output modes: `--out <path>` writes raw `events.jsonl` (live with real placeholder `sleep` processes per fake session, or `--instant`), `--fixture <path>` writes the page fixture `{snapshot, events: [{delayMs, event, data}]}` that `frontend/connect.js` replays, with `--snapshot-until <s>` folding the first seconds into `snapshot` through `state.js`. Every emitted event passes `validateEvent`. Refuses the real events path. Seeded, and with `--start-time` the output is byte-identical across runs.
+- Scenario covers everything in SPEC §8.1 W4 plus the manager's additions: zero sessions, 15 sessions, same-folder siblings (three `listings`, three `path_finder`), restart with a new PID and name, death without `ended`, `waiting` state, a `session: null` body that later gets a name and sends a `from: null` message, and four `notify_on_idle` threads: recipient idles normally, recipient goes `waiting` first, recipient is `ghost-session-00` and never appears, recipient dies without `ended`. Fixture mode emits `liveness` entries for the two deaths.
+- `docs/webhook/fake-generator.md`: scenario, flags, frontend commands, every exported function with examples.
+- `docs/webhook/README.md`: index of module docs.
+- Untouched this task: `server.js`, `tail.js`, `state.js`, `liveness.js` (W5, not assigned). `fake.js` imports `state.js` for the snapshot fold.
 
 ## How to test
 
-Unit level, from the repo root, inside any Claude Code session so the registry lookup finds a real session:
+Fixture mode, deterministic:
 
 ```
-export CC_DASHBOARD_EVENTS=/tmp/w3-test/events.jsonl; rm -rf /tmp/w3-test
-SID=$(python3 -c "import json,glob,os; print([json.load(open(f))['sessionId'] for f in glob.glob(os.path.expanduser('~/.claude/sessions/*.json')) if json.load(open(f))['pid']==$(ps -o ppid= -p $$ | tr -d ' ')][0])" 2>/dev/null || echo unknown)
-H=webhook/hooks/dashboard-hook.js
-for payload in \
-  "{\"session_id\":\"$SID\",\"hook_event_name\":\"SessionStart\",\"cwd\":\"$PWD\",\"source\":\"startup\"}" \
-  "{\"session_id\":\"$SID\",\"hook_event_name\":\"UserPromptSubmit\",\"cwd\":\"$PWD\",\"prompt\":\"x\"}" \
-  "{\"session_id\":\"$SID\",\"hook_event_name\":\"Notification\",\"cwd\":\"$PWD\",\"message\":\"x\",\"notification_type\":\"permission_prompt\"}" \
-  "{\"session_id\":\"$SID\",\"hook_event_name\":\"Notification\",\"cwd\":\"$PWD\",\"message\":\"x\",\"notification_type\":\"idle_prompt\"}" \
-  "{\"session_id\":\"$SID\",\"hook_event_name\":\"PostToolUse\",\"cwd\":\"$PWD\",\"tool_name\":\"SendMessage\",\"tool_input\":{\"to\":\"listings-bc\",\"message\":\"L16 is ready\",\"notify_when_idle\":true},\"tool_response\":{}}" \
-  "{\"session_id\":\"$SID\",\"hook_event_name\":\"PostToolUse\",\"cwd\":\"$PWD\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls\"}}" \
-  "{\"session_id\":\"$SID\",\"hook_event_name\":\"Stop\",\"cwd\":\"$PWD\",\"stop_hook_active\":false}" \
-  "{\"session_id\":\"unknown-id\",\"hook_event_name\":\"Stop\",\"cwd\":\"/tmp/other\"}" \
-  "{\"session_id\":\"$SID\",\"hook_event_name\":\"SessionEnd\",\"cwd\":\"$PWD\",\"reason\":\"exit\"}" \
-  "garbage"; do echo "$payload" | node $H; echo -n "$? "; done; echo
-CC_DASHBOARD_EVENTS=/nonexistent-root/e.jsonl node $H <<< "{\"session_id\":\"$SID\",\"hook_event_name\":\"Stop\",\"cwd\":\"$PWD\"}"; echo "unwritable exit=$?"
-node $H < /dev/null; echo "empty stdin exit=$?"
-cat $CC_DASHBOARD_EVENTS
-node -e 'import("./webhook/schema.js").then(({parseEventLine}) => { const fs = require("fs"); console.log(fs.readFileSync(process.env.CC_DASHBOARD_EVENTS, "utf8").trim().split("\n").map(l => parseEventLine(l) ? "ok" : "INVALID").join(" ")) })'
+cd /Users/khangnguyen/Documents/path_finder
+node webhook/fake.js --fixture /tmp/fx.json --start-time 2026-10-05T21:40:00Z
+node webhook/fake.js --fixture /tmp/fx-again.json --start-time 2026-10-05T21:40:00Z && cmp /tmp/fx.json /tmp/fx-again.json && echo identical
+python3 -c "
+import json,collections
+f=json.load(open('/tmp/fx.json')); ev=f['events']
+print('snapshot sessions', len(f['snapshot']['sessions']), 'events', len(ev))
+print('kinds', dict(collections.Counter(e['event'] for e in ev)))
+print('states', dict(collections.Counter(e['data']['state'] for e in ev if e['data']['type']=='session')))
+print('notify', sum(e['data'].get('notify_on_idle') is True for e in ev))
+print('null from', sum(e['data']['type']=='message' and e['data']['from'] is None for e in ev))
+print('ghost', sum(e['data']['type']=='message' and e['data']['to']=='ghost-session-00' for e in ev))
+print('null-name session events', sum(e['data']['type']=='session' and e['data']['session'] is None for e in ev))
+print('first', json.dumps(ev[0]))
+"
 ```
 
-Expected: ten `0` exit codes, `unwritable exit=0`, `empty stdin exit=0`, nothing else printed by the hook. The events file has exactly 7 lines in this order: `started`, `busy`, `waiting`, `message` to `listings-bc` with `notify_on_idle` true, `idle`, `idle` with `"session":null` and `"folder":"other"`, `ended`. The `idle_prompt` notification, the `Bash` tool, and `garbage` produce no line. The validator prints seven `ok`. If `$SID` resolved, `session` is the running session's display name and `pid` its PID.
+Expected: `identical`; `snapshot sessions 0 events 124`; kinds `session 103, message 19, liveness 2`; states include `started 17, waiting 1, ended 3`; `notify 6`; `null from 1`; `ghost 1`; `null-name session events 2`; first event `{"delayMs": 3000, "event": "session", "data": {"ts": "2026-10-05T21:40:03.000Z", "type": "session", "session": "listings-72", "folder": "listings", "pid": 70025, "state": "started", "role": null}}`.
 
-Docs examples: every example in `docs/webhook/hooks.md` under `dashboard-hook.js` and in `docs/webhook/schema.md` runs by importing the module; outputs are what the docs show, except PIDs and names which are whatever session runs it.
-
-Live acceptance, after the manager swaps the snippet: in two sessions, send one `SendMessage` from A to B, let B finish, then:
+Snapshot fold and zero sessions:
 
 ```
-tail -n 20 ~/.claude/dashboard/events.jsonl
+node webhook/fake.js --fixture /tmp/fx-mid.json --sessions 8 --snapshot-until 40 --start-time 2026-10-05T21:40:00Z
+python3 -c "import json; f=json.load(open('/tmp/fx-mid.json')); print(len(f['snapshot']['sessions']), len(f['snapshot']['messages']), len(f['events']), f['events'][0]['delayMs'])"
+node webhook/fake.js --fixture /tmp/fx-zero.json --sessions 0 && cat /tmp/fx-zero.json
 ```
 
-Expected: A has `busy` then a `message` with `"to"` equal to B's name, B has `busy` then `idle`, each with `session` equal to the ListAgents name and `pid` equal to the `/tmp/cc-socks/<pid>.sock` filename. A permission prompt in either session adds a `waiting` line before the next `busy` or `idle`. Starting a new session adds `started`; quitting adds `ended`.
+Expected: `8 6 49 4000`, and the zero fixture is `{"snapshot": {"sessions": [], "messages": []}, "events": []}` pretty-printed.
+
+Raw instant mode validates:
+
+```
+node webhook/fake.js --out /tmp/fake.jsonl --instant && wc -l < /tmp/fake.jsonl
+node -e 'import("./webhook/schema.js").then(({parseEventLine}) => { const fs = require("fs"); console.log("invalid:", fs.readFileSync("/tmp/fake.jsonl", "utf8").trim().split("\n").filter(l => !parseEventLine(l)).length) })'
+```
+
+Expected: `122` and `invalid: 0`.
+
+Error paths:
+
+```
+node webhook/fake.js; echo $?
+node webhook/fake.js --out /tmp/a --fixture /tmp/b; echo $?
+node webhook/fake.js --out ~/.claude/dashboard/events.jsonl; echo $?
+```
+
+Expected: each prints one error line and exits 1; the real events file is not touched.
+
+Live mode with placeholder processes, 20x speed, five seconds of random phase:
+
+```
+node webhook/fake.js --out /tmp/live.jsonl --speed 20 --sessions 8 --duration 5; echo "children left: $(pgrep -f 'sleep 86400' | wc -l | tr -d ' ')"
+```
+
+Expected: finishes in about 10 seconds, `children left: 0`, `/tmp/live.jsonl` has about 110 valid lines and exactly one `"state":"ended"` (the restart). Deaths are not in the file; the server's PID check finds them, which I verified with the draft server (two `liveness` frames for the killed PIDs within one interval, then the rest when the generator exited).
+
+Docs examples in `docs/webhook/fake-generator.md` run by importing `webhook/fake.js`.
 
 ## Requests
 
-1. Manager: replace the W1 catch-all with this snippet, one edit, then delete `/tmp/cc-dashboard-raw.jsonl`. The `Notification` entry carries no matcher because matchers on that hook filter by `notification_type` on recent versions only; the script filters for `permission_prompt` itself, so an unmatched notification costs one 25 ms no-op.
-
-```json
-{
-  "hooks": {
-    "SessionStart": [{ "hooks": [{ "type": "command", "command": "/Users/khangnguyen/.nvm/versions/node/v24.14.0/bin/node /Users/khangnguyen/Documents/path_finder/webhook/hooks/dashboard-hook.js", "timeout": 5 }] }],
-    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "/Users/khangnguyen/.nvm/versions/node/v24.14.0/bin/node /Users/khangnguyen/Documents/path_finder/webhook/hooks/dashboard-hook.js", "timeout": 5 }] }],
-    "PostToolUse": [{ "matcher": "SendMessage", "hooks": [{ "type": "command", "command": "/Users/khangnguyen/.nvm/versions/node/v24.14.0/bin/node /Users/khangnguyen/Documents/path_finder/webhook/hooks/dashboard-hook.js", "timeout": 5 }] }],
-    "Notification": [{ "hooks": [{ "type": "command", "command": "/Users/khangnguyen/.nvm/versions/node/v24.14.0/bin/node /Users/khangnguyen/Documents/path_finder/webhook/hooks/dashboard-hook.js", "timeout": 5 }] }],
-    "Stop": [{ "hooks": [{ "type": "command", "command": "/Users/khangnguyen/.nvm/versions/node/v24.14.0/bin/node /Users/khangnguyen/Documents/path_finder/webhook/hooks/dashboard-hook.js", "timeout": 5 }] }],
-    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "/Users/khangnguyen/.nvm/versions/node/v24.14.0/bin/node /Users/khangnguyen/Documents/path_finder/webhook/hooks/dashboard-hook.js", "timeout": 5 }] }]
-  }
-}
-```
-
-2. Manager: `docs/overview.md` says the `from` field is a string. It is `null` when the registry lookup fails and only the process walk succeeds. Either allow `string or null` for `from` in the contract (schema.js already does), or accept that the page drops messages with a null sender. I recommend allowing null; the frontend can fall back to matching by PID later if we add one.
+1. frontend-builder (path-finder-18): fixture commands are in `docs/webhook/fake-generator.md` under "Commands for frontend-builder". Write generated fixtures into `frontend/fixtures/` yourself; I do not write into `frontend/`. `--snapshot-until` gives you a mid-run snapshot for the "browser connects late" case. `liveness` entries are in the fixture stream for the two deaths.
+2. Manager: `docs/overview.md` fixture note. The frontend README documents the fixture shape; if you want it in the contract, the shape is `{snapshot, events: [{delayMs, event, data}]}` with `event` one of `session`, `message`, `liveness`.
 
 ## Blocked
 

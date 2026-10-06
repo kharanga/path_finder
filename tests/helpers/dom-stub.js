@@ -27,7 +27,18 @@ class StubElement {
     this.textContent = "";
     this.classList = new ClassList();
     this.dataset = {};
-    this.style = {};
+    this.style = { setProperty(name, value) { this[name] = value; } };
+  }
+  get firstChild() {
+    return this.children[0] ?? null;
+  }
+  removeChild(child) {
+    this.children = this.children.filter((element) => element !== child);
+    child.parentNode = null;
+    return child;
+  }
+  setAttributeNS(_namespace, name, value) {
+    this.attributes[name] = String(value);
   }
   setAttribute(name, value) {
     this.attributes[name] = String(value);
@@ -58,10 +69,10 @@ class StubElement {
 
 function matchesSimple(element, simple) {
   if (/^[a-z]+$/i.test(simple)) return element.tagName === simple;
-  const match = simple.match(/^\.([\w-]+)(?:\[data-pid="(\d+)"\])?$/);
+  const match = simple.match(/^\.([\w-]+)(?:\[data-([\w-]+)="([^"]*)"\])?$/);
   if (!match) return false;
   if (!element.classList.contains(match[1])) return false;
-  return match[2] === undefined || element.attributes["data-pid"] === match[2];
+  return match[2] === undefined || element.attributes[`data-${match[2]}`] === match[3];
 }
 
 function matchesSelector(element, selector) {

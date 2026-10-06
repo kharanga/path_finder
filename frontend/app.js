@@ -1,20 +1,46 @@
-import { createState, applySnapshot, applyEvent } from "./state.js";
+import { createState, applySnapshot, applyEvent, prunePlaceholders } from "./state.js";
 import { createRenderer } from "./render.js";
 import { connect } from "./connect.js";
+import { createTimeline, mountTimelineStrip } from "./timeline.js";
 
-// Boots the dashboard: wires the event source to the state reducer and the renderer.
-export function start({ svg, statusElement }) {
-  const state = createState();
+const PLACEHOLDER_SWEEP_MS = 5000;
+
+// Boots the dashboard: wires the event source to the live state, the timeline, and the renderer.
+export function start({ svg, statusElement, timelineElement }) {
+  const liveState = createState();
+  const timeline = createTimeline();
   const draw = createRenderer(svg);
-  draw(state);
+  const strip = mountTimelineStrip(timelineElement, timeline, {
+    onScrub(tsMs) {
+      draw(timeline.stateAt(tsMs), { instant: true });
+    },
+    onLive() {
+      draw(liveState, { instant: true });
+    },
+  });
+  draw(liveState);
+
+  function afterLiveChange() {
+    if (strip.isLive) draw(liveState);
+    strip.refresh();
+  }
+
+  setInterval(() => {
+    if (prunePlaceholders(liveState) > 0) afterLiveChange();
+  }, PLACEHOLDER_SWEEP_MS);
+
   return connect({
     onSnapshot(snapshot) {
-      applySnapshot(state, snapshot);
-      draw(state);
+      const receivedAtMs = Date.now();
+      applySnapshot(liveState, snapshot, receivedAtMs);
+      timeline.recordSnapshot(snapshot, receivedAtMs);
+      afterLiveChange();
     },
     onEvent(name, data) {
-      applyEvent(state, name, data);
-      draw(state);
+      const receivedAtMs = Date.now();
+      applyEvent(liveState, name, data, receivedAtMs);
+      timeline.record(name, data, receivedAtMs);
+      afterLiveChange();
     },
     onStatus(status) {
       statusElement.textContent = status;
@@ -24,4 +50,10 @@ export function start({ svg, statusElement }) {
 }
 
 const orbitElement = typeof document === "undefined" ? null : document.getElementById("orbit");
-if (orbitElement) start({ svg: orbitElement, statusElement: document.getElementById("status") });
+if (orbitElement) {
+  start({
+    svg: orbitElement,
+    statusElement: document.getElementById("status"),
+    timelineElement: document.getElementById("timeline"),
+  });
+}
