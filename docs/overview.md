@@ -40,7 +40,7 @@ Session state:
 | `session` | string or null | display name, null until known |
 | `folder` | string | basename of the session's start folder |
 | `pid` | integer | process id, the stable key |
-| `state` | `started`, `busy`, `idle`, `ended` | |
+| `state` | `started`, `busy`, `waiting`, `idle`, `ended` | `waiting` is a permission prompt |
 | `role` | string or null | declared role, if any |
 
 Message:
