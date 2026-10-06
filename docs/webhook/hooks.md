@@ -51,7 +51,7 @@ Hook to event mapping:
 | `PostToolUse` with `tool_name` `SendMessage` | `message` |
 | anything else | nothing |
 
-`role` is always `null` until a role-declaring mechanism exists.
+`role` comes from `~/.claude/dashboard/roles.json` (`CC_DASHBOARD_ROLES` overrides), written by `declare-role.js` and keyed by start folder; it is `null` when the session's `cwd` has no entry.
 
 ### stateForHook(hookInput)
 
@@ -95,6 +95,18 @@ Errors: none thrown.
 
 Example: `lookupSessionRegistryByPid(52134)` has `name` `"path-finder-37"` and `cwd` `"/Users/khangnguyen/Documents/path_finder"` while this session runs; `lookupSessionRegistryByPid(1)` is `null`.
 
+### readSavedRole(cwd, rolesPath = ~/.claude/dashboard/roles.json)
+
+What it does: looks up the saved role for a start folder.
+
+Inputs: `cwd` (string); `rolesPath` (string).
+
+Output: the role string, or `null` when `cwd` is empty, the file is missing or not JSON, or has no entry.
+
+Errors: none thrown.
+
+Example: with `/tmp/roles-example.json` holding `{"/a/b":"manager"}`, `readSavedRole("/a/b", "/tmp/roles-example.json")` is `"manager"`, `readSavedRole("/zzz", "/tmp/roles-example.json")` is `null`, and `readSavedRole("/a/b", "/nonexistent.json")` is `null`.
+
 ### lookupSessionRegistry(sessionId, sessionsDir = ~/.claude/sessions)
 
 What it does: scans Claude Code's session registry for the entry whose `sessionId` matches.
@@ -135,7 +147,7 @@ Example: `resolveSession({ session_id: "nope" }, { findPid: () => 4242 })` retur
 
 What it does: converts hook input plus resolved identity into a §3 event.
 
-Inputs: `hookInput` (object) parsed hook JSON; `identity` (`{pid, name}`); `now` (Date).
+Inputs: `hookInput` (object) parsed hook JSON; `identity` (`{pid, name, role}`, `role` optional and `null` when absent); `now` (Date).
 
 Output: a `session` event, a `message` event, or `null` when the hook is not logged or `identity.pid` is not an integer.
 
@@ -174,7 +186,7 @@ Same as in `capture-raw.js` below.
 
 What it does: reads stdin, resolves the session, builds the event, appends it. Swallows every error.
 
-Inputs: hook JSON on stdin; `CC_DASHBOARD_EVENTS` environment variable optionally overrides the output path.
+Inputs: hook JSON on stdin; `CC_DASHBOARD_EVENTS` optionally overrides the output path and `CC_DASHBOARD_ROLES` the saved-roles file.
 
 Output: none. Exit code is always 0, nothing on stdout or stderr.
 

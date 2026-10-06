@@ -1,95 +1,68 @@
-# Ready: W8 research phase (proposal, no code yet) plus fake.js rename scenario
+# Ready: W8 plugin bundle
 
 ## Done
 
-- `webhook/fake.js`: rename scenario added as scenario step 7. One session (`population[1]`) sends a message under its original name, is renamed mid-stream to `RENAMED_NAME` (`manager-drives-feature-work`) with the same PID via the new `renameSession`, then receives a `notify_on_idle` message and sends another under the new name. Present in raw and fixture modes. `docs/webhook/fake-generator.md` renumbered and updated, documented counts refreshed (129 fixture events, 127 raw lines, 18 distinct names, 7 notify messages). `handoff/webhook/docs-examples.mjs` has a `fake rename` check and the refreshed counts: `passed 51, failed 0`.
-- W8 research done, no plugin files written. Sources: the official plugin docs at `code.claude.com/docs/en/plugins/manifest-reference.md`, `plugins/components.md`, `plugins/install.md`, `plugins/marketplace-reference.md`, `hooks.md`, and the locally installed official marketplace at `~/.claude/plugins/marketplaces/claude-plugins-official/` (read-only), which is the ground truth for Claude Code 2.1.291 on this machine.
+- Plugin at the repo root, layout as approved: `.claude-plugin/plugin.json` (name `cc-dashboard`, 0.1.0), `.claude-plugin/marketplace.json` (marketplace `path-finder`, one entry with `source: "./"`), `hooks/hooks.json` (six entries through `${CLAUDE_PLUGIN_ROOT}`), `hooks/run-node.sh` (POSIX node finder, exits 0 silently when no node), `commands/dashboard.md` (`/dashboard [demo|stop]`), `skills/declare-role/SKILL.md`. No repo path or nvm path anywhere in the plugin files.
+- `claude plugin validate .` passes. Its one warning, `CLAUDE.md` at the plugin root is not plugin context, is intended and documented.
+- Role persistence: `webhook/declare-role.js` now also writes `~/.claude/dashboard/roles.json` as `{ "<cwd>": "<role>" }` (`CC_DASHBOARD_ROLES` overrides; failure to write is an exit 1 line). `webhook/hooks/dashboard-hook.js` reads it on every event and sets `role` for a matching `cwd`, so a restarted session or a rotated events file shows the role from the first `started`. New exports: `saveRole` (declare-role), `readSavedRole` and `DEFAULT_ROLES_PATH` (hook). `resolveCallingSession` now returns `cwd` as well, see Requests item 1.
+- Verified with headless sessions loading the plugin via `--plugin-dir`, with `CC_DASHBOARD_EVENTS` and `CC_DASHBOARD_ROLES` pointed at temp files so the real files were untouched. Run 1 (`claude -p "Reply with the single word ok." --plugin-dir "$PWD"`): `started`, `busy`, `idle`, `ended` for the new session `path-finder-ce`, PID 90848, each line exactly twice (settings hook plus plugin hook). Run 2 with the `declare-role` skill: a `busy` line with `"role":"plugin-test"`, then `idle` and `ended` carrying the role, and `roles.json` mapping this repo path to `plugin-test`. That proves `${CLAUDE_PLUGIN_ROOT}` expands in hooks and in skill bodies, and that `run-node.sh` found node under the plugin runner.
+- Open points from the proposal, resolved and recorded in `docs/webhook/plugin.md`: `source: "./"` validates; the plugin root variable works in markdown; the node wrapper stays as a safety net. One observation recorded: `SessionEnd` can fire after the registry entry is deleted, giving `"session": null` on the `ended` line, which the reducer absorbs.
+- Docs: `docs/webhook/plugin.md` new (layout, install, node resolution, roles, limitation, acceptance test). `declare-role.md`, `hooks.md`, `README.md` updated. `handoff/webhook/docs-examples.mjs` now 52 checks, `passed 52, failed 0`.
+- Test suite run before handoff: `node --test "tests/**/*.test.js"` gives 82 tests, 78 pass, 2 fail. Both failures are the `cwd` shape change, see Requests item 1. Nothing else is red.
 
 ## How to test
 
-Rename scenario:
+Manifests and inventory:
 
 ```
 cd /Users/khangnguyen/Documents/path_finder
-node webhook/fake.js --fixture /tmp/rn.json --start-time 2026-10-05T21:40:00Z
-python3 -c "
-import json; ev=json.load(open('/tmp/rn.json'))['events']; by={}
-for e in ev:
-    d=e['data']
-    if d['type']=='session' and d['session']: by.setdefault(d['pid'],set()).add(d['session'])
-print(len(ev), [(p,sorted(n)) for p,n in by.items() if len(n)>1])"
-node webhook/fake.js --out /tmp/rn.jsonl --instant && grep -c manager-drives-feature-work /tmp/rn.jsonl
-node handoff/webhook/docs-examples.mjs /tmp/webhook-docs-examples
+claude plugin validate .
+grep -c CLAUDE_PLUGIN_ROOT hooks/hooks.json commands/dashboard.md skills/declare-role/SKILL.md
+grep -rn "khangnguyen\|\.nvm" .claude-plugin hooks commands skills; echo "hard-coded paths above: none expected"
 ```
 
-Expected: `129 [(70052, ['listings-2c', 'manager-drives-feature-work'])]`, then `8` (the rename line, two messages under the new name, and later random-phase events), then `passed 51, failed 0` with the usual three value-by-nature checks.
+Expected: `Validation passed with warnings` (the `CLAUDE.md` warning only), counts `12`, `3`, `1`, and no grep hits.
 
-Reducer behavior on rename, already covered by `state.md`: a later event with a new non-null name replaces the name and keeps the role.
+Node wrapper:
+
+```
+export CC_DASHBOARD_EVENTS=/tmp/w8-test/events.jsonl CC_DASHBOARD_ROLES=/tmp/w8-test/roles.json; rm -rf /tmp/w8-test
+echo '{"session_id":"x","hook_event_name":"Stop","cwd":"/tmp/q"}' | PATH=/usr/bin:/bin /bin/sh hooks/run-node.sh webhook/hooks/dashboard-hook.js; echo "exit=$?"
+echo '{}' | PATH=/nonexistent HOME=/nonexistent /bin/sh hooks/run-node.sh webhook/hooks/dashboard-hook.js; echo "exit=$?"
+wc -l < /tmp/w8-test/events.jsonl
+```
+
+Expected: `exit=0` twice, no other output, and `1` line (the first command found the nvm node without PATH help and wrote an event; the second found no node and wrote nothing).
+
+Plugin acceptance on a clean checkout, headless, real files untouched. Put the prompt before the flags; `--allowedTools` is variadic and swallows a trailing prompt. Each session costs a few API calls.
+
+```
+git clone /Users/khangnguyen/Documents/path_finder /tmp/path_finder-clean
+claude plugin validate /tmp/path_finder-clean
+export CC_DASHBOARD_EVENTS=/tmp/w8-test/events.jsonl CC_DASHBOARD_ROLES=/tmp/w8-test/roles.json; rm -rf /tmp/w8-test
+claude -p "Reply with the single word ok." --plugin-dir /tmp/path_finder-clean
+claude -p "Use the declare-role skill to declare this session's role as plugin-test, then reply with the single word done." --plugin-dir /tmp/path_finder-clean --allowedTools=Bash
+python3 -c "
+import json,collections
+rows=[json.loads(l) for l in open('/tmp/w8-test/events.jsonl')]
+print(collections.Counter((r['state'],r['role']) for r in rows)); print(sorted({r['pid'] for r in rows}))"
+cat /tmp/w8-test/roles.json
+```
+
+Expected: `ok` then `done`; the counter shows two PIDs, with `('started', None)`, `('busy', None)`, `('idle', None)`, `('ended', None)` from the first session and `('busy', 'plugin-test')`, `('idle', 'plugin-test')`, `('ended', 'plugin-test')` from the second; every count is even while the W3 snippet is still in settings, because each event is logged by both hook sources. `roles.json` is `{"/tmp/path_finder-clean": "plugin-test"}`. Note the clone must be a git clone or copy, not a symlink, because `--plugin-dir` resolves the real path.
+
+Install for every session (optional for review, the manager decides when): `claude plugin marketplace add /tmp/path_finder-clean` then `claude plugin install cc-dashboard@path-finder`, start a normal session, run `/dashboard`, open the URL. After that the manager removes the W3 snippet from `~/.claude/settings.json` so events stop doubling.
+
+Docs examples: `node handoff/webhook/docs-examples.mjs /tmp/webhook-docs-examples` gives `passed 52, failed 0` with the three session-literal checks treated as value-by-nature as before.
+
+Test suite: `node --test "tests/**/*.test.js"` gives 2 failures until Requests item 1 is applied, then 0.
 
 ## Requests
 
-### W8 proposal for the manager, waiting for go
-
-**Format facts that drive the layout** (from the docs and the installed marketplace):
-
-- Plugin root holds `.claude-plugin/plugin.json` (only `name` required; `version`, `description`, `author` conventional). Hooks go in `hooks/hooks.json` at the plugin root with the same shape as settings, wrapped in a top-level `"hooks"` key. Commands are `commands/<name>.md` with frontmatter `description` and optional `argument-hint`. Skills are `skills/<name>/SKILL.md` with frontmatter `name`, `description`.
-- `${CLAUDE_PLUGIN_ROOT}` expands in hook commands to the installed plugin directory, so no repo path is hard-coded. `${CLAUDE_PLUGIN_DATA}` is a per-plugin persistent directory. Every official plugin with hooks uses `"command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/x.sh\""`.
-- Hook commands run through `sh` from the user's home directory, not a login shell, so nvm's `node` is not on PATH. That is why the manager had to hard-code the nvm path in W1 and W3.
-- A single-repo marketplace is `.claude-plugin/marketplace.json` at the marketplace root with `plugins: [{name, source, description, version}]`; relative `source` resolves from the marketplace root. The official marketplace uses `./plugins/<name>`. Install paths: `claude --plugin-dir <dir>` for one session without installing, `/plugin marketplace add <owner/repo | ./path>` then `/plugin install <name>@<marketplace>` for a permanent user-scope install.
-- `Notification` hooks accept a matcher on `notification_type`, and `SessionStart` matchers are `startup`, `resume`, `clear`, `compact`, `fork`.
-
-**Proposed layout.** The repo root becomes the plugin root, because the hook scripts, server, and page must all sit under `${CLAUDE_PLUGIN_ROOT}` for a marketplace install to copy them. This adds four top-level folders outside `webhook/`; I propose webhook-builder owns them and the manager records that in `CLAUDE.md`.
-
-```
-path_finder/
-  .claude-plugin/
-    plugin.json          name "cc-dashboard", version 0.1.0, description, author
-    marketplace.json     name "path-finder", plugins: [{ name: "cc-dashboard", source: "./" }]
-  hooks/
-    hooks.json           six entries, each: sh "${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh" "${CLAUDE_PLUGIN_ROOT}/webhook/hooks/dashboard-hook.js"
-    run-node.sh          POSIX sh: picks node from $CC_DASHBOARD_NODE, then `command -v node`, then newest ~/.nvm/versions/node/*/bin/node, then /opt/homebrew/bin/node, /usr/local/bin/node; exec's it with stdin passed through; exits 0 silently if none found so a turn is never blocked
-  commands/
-    dashboard.md         /dashboard [demo|stop]: starts `node ${CLAUDE_PLUGIN_ROOT}/webhook/server.js` in the background if port 4747 is free, prints the URL; `demo` adds --demo; `stop` kills the server it started
-  skills/
-    declare-role/SKILL.md   tells Claude to run `node ${CLAUDE_PLUGIN_ROOT}/webhook/declare-role.js <role>` when the user says what role this session has; lists the exit codes
-  webhook/   frontend/   docs/   (unchanged)
-```
-
-**SessionStart re-declare.** `declare-role.js` also writes the role into `~/.claude/dashboard/roles.json` as `{ "<cwd>": "<role>" }`. `dashboard-hook.js` on `SessionStart` reads that file and emits `started` with the role set when its `cwd` has an entry. Roles then survive restarts and `events.jsonl` rotation. Limitation to accept or reject: two sessions in the same folder share a role. If that matters, key by `session_id` instead, which survives `--resume` but not a fresh start.
-
-**No hard-coded paths.** `hooks.json` and the command and skill markdown use `${CLAUDE_PLUGIN_ROOT}` only. Node comes from `run-node.sh`. The W3 settings snippet is removed by the manager once the plugin is installed, or every event is logged twice.
-
-**Install steps to document in `docs/webhook/plugin.md`:**
-
-```
-# try for one session without installing
-claude --plugin-dir /path/to/path_finder
-
-# install for every session, from a local checkout
-claude plugin marketplace add /path/to/path_finder
-claude plugin install cc-dashboard@path-finder
-
-# install from GitHub once pushed
-claude plugin marketplace add <owner>/path_finder
-claude plugin install cc-dashboard@path-finder
-
-# then, in any session
-/dashboard            # prints http://127.0.0.1:4747/
-/dashboard demo
-```
-
-**Open points I will verify during the build, with fallbacks:**
-
-1. Whether `"source": "./"` is accepted for a plugin that is also the marketplace root. The official marketplace only shows `./plugins/<name>`. Fallback: keep the plugin at the root and document `--plugin-dir` plus `claude plugin install` from a GitHub URL, or move to `plugins/cc-dashboard/` with symlinks, which I would rather avoid.
-2. Whether `${CLAUDE_PLUGIN_ROOT}` is substituted inside command and skill markdown bodies, not only in hooks. Fallback: the command body asks Claude to resolve the plugin root with `claude plugin list` output or `CLAUDE_PLUGIN_ROOT` in the environment.
-3. Whether `run-node.sh` is needed at all under the plugin runner, by testing a hook with a bare `node` on a PATH without nvm. If `node` resolves, the wrapper stays as a safety net anyway.
-
-**Estimated size:** about 120 lines across `hooks.json`, `run-node.sh`, two markdown files, two manifests, plus the `roles.json` additions to `declare-role.js` and `dashboard-hook.js`, and `docs/webhook/plugin.md`. Acceptance test: `claude --plugin-dir` on a clean checkout with the W3 snippet removed from settings, start one session, confirm `started`/`busy`/`idle` lines appear, run `/dashboard`, open the URL.
-
-### Other
-
-- Manager: please confirm ownership of the four new top-level folders and whether the W3 snippet comes out of `~/.claude/settings.json` at install time or only after the plugin is verified.
+1. Validator: `resolveCallingSession` in `webhook/declare-role.js` now returns `{pid, name, cwd, folder, state}`; `cwd` is the registry start folder string, or `null` when the registry has none. The two `deepStrictEqual` assertions at `tests/unit/webhook/declare-role.test.js:18` and `:25` expect the old shape without `cwd`. Add `cwd: "/a/b/listings"` to the first expected object and `cwd: null` to the second (the values follow the mocks already in those tests). Everything else in the suite is green.
+2. Manager: `CLAUDE.md` areas table and `.claude/roles/webhook-builder.md` should list `.claude-plugin/`, `hooks/`, `commands/`, `skills/` under webhook-builder, as you decided. `CLAUDE.md` setup can gain the two-line plugin install from `docs/webhook/plugin.md`.
+3. Manager: after the validator's clean-checkout test passes and you install the plugin for real, remove the W3 snippet from `~/.claude/settings.json`.
 
 ## Blocked
 
-Empty. Waiting for the manager's go on the proposal above.
+Empty.

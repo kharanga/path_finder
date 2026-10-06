@@ -176,16 +176,25 @@ check("fake rename", () => { const f = JSON.parse(readFileSync(`${T}/fx.json`, "
 const dr = await import(`${R}/webhook/declare-role.js`);
 check("declare parseRole", () => { assert.equal(dr.parseRole(["  manager "]), "manager"); assert.throws(() => dr.parseRole([]), /usage/); assert.throws(() => dr.parseRole(["bad/role!"]), /usage/); });
 check("declare resolve", () => {
-  assert.equal(J(dr.resolveCallingSession({ findPid: () => 1, lookup: () => ({ pid: 1, name: "x-1", cwd: "/a/b/listings", status: "idle" }) })), '{"pid":1,"name":"x-1","folder":"listings","state":"idle"}');
-  assert.equal(J(dr.resolveCallingSession({ findPid: () => 1, lookup: () => ({ pid: 1, name: null, cwd: null, status: "weird" }) })), '{"pid":1,"name":null,"folder":"","state":"busy"}');
+  assert.equal(J(dr.resolveCallingSession({ findPid: () => 1, lookup: () => ({ pid: 1, name: "x-1", cwd: "/a/b/listings", status: "idle" }) })), '{"pid":1,"name":"x-1","cwd":"/a/b/listings","folder":"listings","state":"idle"}');
+  assert.equal(J(dr.resolveCallingSession({ findPid: () => 1, lookup: () => ({ pid: 1, name: null, cwd: null, status: "weird" }) })), '{"pid":1,"name":null,"cwd":null,"folder":"","state":"busy"}');
   assert.throws(() => dr.resolveCallingSession({ findPid: () => null }), /no claude process found above this one/);
   assert.throws(() => dr.resolveCallingSession({ findPid: () => 999999, lookup: () => null }), /no registry entry for claude pid 999999/);
 });
 check("declare buildRoleEvent", () => assert.equal(J(dr.buildRoleEvent({ pid: 29904, name: "listings-bc", folder: "listings", state: "idle" }, "validator", new Date("2026-10-05T21:40:00Z"))), '{"ts":"2026-10-05T21:40:00.000Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"idle","role":"validator"}'));
+check("declare saveRole / hook readSavedRole", () => {
+  const rp = `${T}/roles-example.json`; rmSync(rp, { force: true });
+  assert.equal(dr.saveRole(rp, "/a/b", "manager"), true); assert.equal(dr.saveRole(rp, "/c", "validator"), true);
+  assert.equal(readFileSync(rp, "utf8").trim().replace(/\s/g, ""), '{"/a/b":"manager","/c":"validator"}');
+  assert.equal(dr.saveRole("/nonexistent-root/r.json", "/a", "x"), false); assert.equal(dr.saveRole(rp, "", "x"), false);
+  assert.equal(hk.readSavedRole("/a/b", rp), "manager"); assert.equal(hk.readSavedRole("/zzz", rp), null); assert.equal(hk.readSavedRole("/a/b", "/nonexistent.json"), null);
+  assert.equal(hk.buildEvent({ hook_event_name: "SessionStart", cwd: "/a/b" }, { pid: 7, name: "b-01", role: "manager" }, new Date("2026-10-05T21:40:00Z")).role, "manager");
+});
 check("declare cli", () => {
-  const ef = `${T}/role/events.jsonl`; rmSync(`${T}/role`, { recursive: true, force: true }); const env = { ...process.env, CC_DASHBOARD_EVENTS: ef };
+  const ef = `${T}/role/events.jsonl`; rmSync(`${T}/role`, { recursive: true, force: true }); const env = { ...process.env, CC_DASHBOARD_EVENTS: ef, CC_DASHBOARD_ROLES: `${T}/role/roles.json` };
   assert.equal(execFileSync("node", [`${R}/webhook/declare-role.js`, "webhook-builder"], { env }).toString(), "");
   const e = JSON.parse(readFileSync(ef, "utf8").trim()); assert.deepEqual([e.type, e.session, e.pid, e.role], ["session", "path-finder-37", 52134, "webhook-builder"]); assert.ok(schema.validateEvent(e).ok);
+  assert.equal(JSON.parse(readFileSync(`${T}/role/roles.json`, "utf8"))["/Users/khangnguyen/Documents/path_finder"], "webhook-builder");
   let code = 0, err = ""; try { execFileSync("node", [`${R}/webhook/declare-role.js`], { env, stdio: ["ignore", "pipe", "pipe"] }); } catch (x) { code = x.status; err = x.stderr.toString(); }
   assert.equal(code, 1); assert.match(err, /^usage: declare-role.js <role>/); assert.equal(err.trim().split("\n").length, 1);
   code = 0; try { execFileSync("node", [`${R}/webhook/declare-role.js`, "manager"], { env: { ...env, CC_DASHBOARD_EVENTS: "/nonexistent-root/e.jsonl" }, stdio: ["ignore", "pipe", "pipe"] }); } catch (x) { code = x.status; err = x.stderr.toString(); }

@@ -42,6 +42,20 @@ node webhook/server.js --demo
 node --test "tests/**/*.test.js"
 ```
 
+Install as a Claude Code plugin so hooks and the `/dashboard` command work in every session without editing settings by hand. Full steps in `docs/webhook/plugin.md`.
+
+```
+# try for one session
+claude --plugin-dir /path/to/path_finder
+
+# install for every session
+claude plugin marketplace add /path/to/path_finder
+claude plugin install cc-dashboard@path-finder
+
+# then in any session
+/dashboard
+```
+
 ## Coding conventions
 
 - Every public function, class, or endpoint gets a one-line summary comment or docstring, nothing more. This project rule replaces the global "no comments" rule. No other comments. Put meaning in names.
