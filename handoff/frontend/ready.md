@@ -1,40 +1,43 @@
-# Ready: F8 documentation standard, with the F4 round 2 / F6 docs fix
+# Ready: F9 session renames
 
 ## Done
 
-F4 round 2 and F6 review failure (one cause, two places): the null-sender message is index 6 of 7. Fixed in `docs/frontend/state.md` (`state.messages.length // 7`) and `docs/frontend/render.md` (selection example uses index 6). No code change.
+`frontend/state.js`
+- `Session.formerNames`: per-PID list of earlier display names, oldest first. Appended in `applySessionEvent` when the event's string name differs from the previously known name. First naming (`null` → name) is not a rename. No duplicates; `a → b → a → c` gives `["a", "b"]`.
+- `sessionByName` resolves in three steps: current name of any session, then a former name of a live session, then a placeholder. Ended sessions are not matched by former name.
+- Thread resolution matches `thread.to` against all names of the session (current and former), so a notify sent to the former name snaps when the renamed body goes idle.
+- Placeholders for any of a session's names are deleted on its session event; `applyMessageEvent` goes through `sessionByName`, so a message to or from a former name of a live body never creates a placeholder.
 
-F8 sweep over `frontend/` and `docs/frontend/`:
+`frontend/render.js`
+- Label updated in place; when it changes the group gets class `renamed` for 1.8 s (name flashes yellow then fades; static yellow under reduced motion). Tooltip appends `formerly <names>`.
+- Message endpoints use `sessionByName`, so particles and threads for a former name attach to the renamed body.
 
-- Inventory: 25 exports across 7 modules. Every one has exactly one one-line summary comment above it (checked by script) and a docs section (`##`, or `###` for the `createTimeline` methods).
-- Every section now has all five labels: What it does, Inputs, Output, Errors, Example. Added the missing Errors lines (`folderFromName` throws `TypeError` on a non-string, `formatClock`, `formatTimestamp`, `recordSnapshot`, `record`), Inputs/Errors on the no-argument timeline methods, and a full What/Inputs/Output/Errors block for the `size` getter. The timeline methods share one example, labeled as such.
-- Every example run as written: 144 checks, 0 failures, against the real modules in Node with a small DOM stub (see Requests 1). Covers `state.md`, `layout.md`, `timeline.md` (including `mountTimelineStrip` with the footer markup), `panel.md` (including `createPanel`), `render.md` (bodies, ghosts, revive, `many.json` truncation, particles, threads, selection, placeholder, SMIL attributes), and the `app.js` import guard. `connect.md` and the browser-only paragraphs were checked by reading against the code; they match.
-- Time-zone dependent outputs (`formatClock`, `formatTimestamp`, `describeMessage(...).time`) are stated as local time in the docs with a UTC and a US Pacific rendering.
-- `docs/frontend/README.md`: table of every real file in `frontend/` with its role and docs file, the list of pure modules, what a DOM stub needs, query parameters, fixture table (now includes `generated-*`).
-- F9 forward note in `state.md` `sessionByName`: resolution is by current name only until F9 adds former names, so the docs do not promise what F9 will change.
+`frontend/orbit.css`: `.body.renamed .name` flash animation and reduced-motion override.
 
-SPEC.md §8.2 F8 marked `[~] path-finder-18`.
+`frontend/fixtures/rename.json`: 3 sessions, then message → rename of pid 29248 (`path-finder-0d` → `manager-drives-feature-work`) → message sent as the former name → notify to the former name → renamed body idle (snap) → message to an unknown name (placeholder).
+
+Docs: `state.md` (Session shape, rename rules, `sessionByName` order, rename examples; the F8 "current-name-only" note is gone), `render.md` (highlight, tooltip, rename example with the 24-char truncation), `README.md` (fixture row). Example runner extended to 161 checks, all passing.
+
+SPEC.md §8.2 F9 marked `[~] path-finder-18`.
 
 ## How to test
 
-1. Export inventory and comment check (from repo root):
-
 ```
-cd frontend && for f in *.js; do echo "== $f"; awk '/^export (async )?function|^export const/ { name=$0; sub(/^export (async )?function /,"",name); sub(/^export const /,"",name); sub(/\(.*/,"",name); sub(/ =.*/,"",name); c = (prev ~ /^\/\/ /) ? "ok" : "MISSING"; print "  " name " " c } { prev=$0 }' "$f"; done
+python3 -m http.server 8787 --bind 127.0.0.1 --directory frontend
 ```
 
-Expected: 25 names, all `ok`.
-
-2. Label check: every `##`/`###` section in `docs/frontend/*.md` except README has lines starting with `What it does`, `Inputs`, `Output`, `Errors`, and an `Example` (the `createTimeline` sub-sections share the example under `size`).
-
-3. Examples: run each example in the docs as written. For the pure modules plain Node suffices. For `render.md`, `createPanel`, and `mountTimelineStrip`, use a DOM stub (Requests 1 has a ready one). Expected outputs are the ones in the docs; local-time strings should be compared against `new Date(...)` components.
-
-4. `docs/frontend/README.md` table matches `ls frontend frontend/fixtures`.
+1. `?fixture=rename`. At ~3.5 s the right-hand body's label changes in place to `manager-drives-feature-…` and flashes yellow; the ring does not add or remove a body and no `path-finder-0d` placeholder appears. Hover: tooltip ends with `formerly path-finder-0d`.
+2. ~5 s: a particle leaves the renamed body (message sent as `path-finder-0d`) toward `path-finder-18`.
+3. ~7.5 s: notify from `listings-bc` to `path-finder-0d`: particle and thread end on the renamed body. ~10 s: it goes idle, the thread retracts into `listings-bc`.
+4. ~11.5 s: `nobody-99` appears as a dashed placeholder (unknown name still gets one).
+5. In the console: `document.querySelectorAll('.body').length` is 4 (3 sessions + 1 placeholder), none with `data-pid="placeholder:path-finder-0d"`.
+6. Node: `state.md` rename examples (`formerNames`, `sessionByName` by former name, `placeholders.size` 0 after event 4, thread `waiting` then `snapped`, final labels, `a b a c`), `render.md` rename paragraph with a DOM stub (name text, class `renamed`, title, body count 3 after event 2, particle for event 3 starts at the body's translate position).
+7. Timeline scrub across the rename: before event 2 the body reads `path-finder-0d`, after it the new name; both states show exactly one body for pid 29248.
 
 ## Requests
 
-1. Validator: a DOM stub and a runner that executes all 144 example checks exist at `/private/tmp/claude-501/-Users-khangnguyen-Documents-path-finder/658ff14a-2610-461f-9302-e64c02a54c6a/scratchpad/docs-check/` (`dom-stub.js`, `run-examples.mjs`, run with `node run-examples.mjs /path/to/repo`). Copy them into `tests/` if useful for V5; I did not put them in the repo because tests are yours.
-2. Manager: ready for F9 after this passes.
+1. Validator: the example runner at `/private/tmp/claude-501/-Users-khangnguyen-Documents-path-finder/658ff14a-2610-461f-9302-e64c02a54c6a/scratchpad/docs-check/` now includes the F9 checks (`node run-examples.mjs /path/to/repo`, expect `161 passed, 0 failed`).
+2. Manager: when W8's generator rename scenario lands, I will re-check F9 against it and regenerate `generated-*.json`. Nothing else pending on my side.
 
 ## Blocked
 

@@ -144,7 +144,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [~] path-finder-18 (in review) **F8: documentation standard.** One-line docstring on each public function. `docs/frontend/` has one file per module with what, inputs, output, errors, example.
   Acceptance for F3 to F8: validator confirms against W4 output and the docs examples.
 
-- [~] path-finder-18 **F9: session renames.** A session can be renamed mid-run (see §6). Resolve message endpoints to bodies by PID when the name matches no live body but matches a former name of one; keep a per-PID list of former names from session events; never create a placeholder body for a former name of a live session. Label updates in place with a brief highlight.
+- [~] path-finder-18 (in review) **F9: session renames.** A session can be renamed mid-run (see §6). Resolve message endpoints to bodies by PID when the name matches no live body but matches a former name of one; keep a per-PID list of former names from session events; never create a placeholder body for a former name of a live session. Label updates in place with a brief highlight.
   Acceptance: W4 rename scenario shows one body throughout with the label changing, messages before and after the rename attach to it, no placeholder appears. Docs updated.
 
 ### 8.3 validator
