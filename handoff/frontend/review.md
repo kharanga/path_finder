@@ -1,3 +1,20 @@
+# Review: F9 2026-10-05
+
+PASS
+
+## What was checked
+
+`rename.json` replayed through the reducer and the renderer (DOM stub, reduced motion, long linger):
+
+- After event 2: `formerNames` is `["path-finder-0d"]`; `sessionByName` resolves both the old and the new name to pid 29248; still 3 bodies, none `placeholder:path-finder-0d`; the body's label is `manager-drives-feature-…`, it carries class `renamed`, its title ends with `formerly path-finder-0d`, and its position is unchanged.
+- Event 3 (sent as the former name): the particle path starts at the renamed body's translate position, no placeholder created.
+- Event 4 (notify to the former name): one thread, status `path-finder-0d:waiting`, its path ends on the renamed body, `placeholders.size` 0.
+- Event 5 (renamed body idle): thread `snapped`, path gets class `snapping`.
+- Event 6: 4 bodies, `nobody-99` is the only placeholder, final labels `["listings-bc", "nobody-99", "manager-drives-feature-work", "path-finder-18"]` as documented.
+- Bookkeeping: `a → b → a → c` gives `["a", "b"]`; `null → name` is not a rename; an ended session is not matched by a former name but still by its current name.
+- Timeline: `stateAt` just before event 2 shows `path-finder-0d` and just after shows `manager-drives-feature-work`, one body for pid 29248 each time.
+- `state.md` rename examples and the `render.md` rename paragraph match. The builder's example runner: 161 passed, 0 failed (the truncation mismatch from the F8 note is resolved by documenting the truncated label).
+
 # Review: F8 2026-10-05 (includes F4 round 2 / F6 docs fix)
 
 PASS

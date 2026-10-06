@@ -8,7 +8,7 @@ What it does: sets the viewBox, adds the ring circle, the "No sessions running" 
 
 State visuals (F3) are all CSS keyed on classes and `data-state`:
 
-- A new body is created with class `entering` (opacity 0); styles are flushed synchronously and the class removed, so it fades in even when the tab is in the background (where `requestAnimationFrame` is paused).
+- A new body is created with class `entering` (opacity 0) and its ring position already set as its transform; styles are flushed synchronously and the class removed, so it fades in at its slot (no slide from the origin) even when the tab is in the background (where `requestAnimationFrame` is paused).
 - When a body's label changes (a rename, or a PID-only body receiving its name) the text is updated in place and the group gets class `renamed` for 1.8 s, which flashes the label yellow and fades it back. The tooltip lists former names.
 - When a session stops being live, its node is not removed. It gets `data-state="ended"` and class `leaving`, fades to a faint mark at its last position, and is removed after `ghostMs`. If the same PID becomes live again before then, the timer is cancelled and the node is reused.
 - `busy`: yellow core with a drop-shadow glow and a pulsing halo. `waiting` (permission prompt): orange core with a faint static halo, no pulse. `idle`: dim core and muted label. `started`: light blue core. `ended`: ring-colored core. `placeholder` (a name seen only in messages): hollow dashed circle, italic muted label, title "`<name>`, no session event yet (folder guessed: `<folder>`)".
