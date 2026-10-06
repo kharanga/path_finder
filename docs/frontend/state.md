@@ -8,7 +8,7 @@ The state object:
 { sessions: Map<number, Session>, placeholders: Map<string, Placeholder>, messages: Message[], threads: Thread[], lastEventTs: string | null, snapshotSeq: number }
 ```
 
-`Placeholder` is `{ name, folder, createdAtMs }`: a body for a name that appeared in a message but has no session event yet. `folder` is guessed by `folderFromName`. Placeholders are merged away when a session event with that name arrives and pruned by `prunePlaceholders` after 60 s.
+`Placeholder` is `{ name, folder, createdAtMs }`: a capsule for a name that appeared in a message but has no session event yet. `folder` is guessed by `folderFromName`. Placeholders are merged away when a session event with that name arrives and pruned by `prunePlaceholders` after 60 s.
 
 `Session` is `{ pid, session, folder, role, state, ts, firstSeen, formerNames }`. `state` is one of `started`, `busy`, `waiting`, `idle`, `ended`, `removed`. `removed` is written by the server on a manual removal; the reducer treats it like `ended` (not live), the renderer drops the capsule with no footprint, and any later event for the PID makes it live again. `formerNames` lists earlier display names of the same PID, oldest first, because Claude Code can rename a session mid-run (SPEC §6). `Message` is `{ ts, from, to, text, notify_on_idle }`; `from` is a string or `null` (the hook could not resolve the sender's name). `Thread` is `{ id, from, to, ts, status, resolvedTs }` where `id` is the index of the message in `messages` and `status` is `waiting`, `snapped`, or `dropped`. `snapshotSeq` counts snapshots so the renderer can tell a rebuild from incremental growth.
 
@@ -239,7 +239,7 @@ liveSessions(state).map(sessionLabel)
 
 ## sessionByName(state, name)
 
-What it does: resolves a name to a body in three steps: a session whose current display name equals `name` (live or ended), then a live session whose `formerNames` include `name`, then the placeholder pseudo-session with that name. A non-string `name` (such as a `null` sender) gives `undefined`. Ended sessions are not matched by former name, so a stale name after a restart still gets a placeholder.
+What it does: resolves a name to a capsule in three steps: a session whose current display name equals `name` (live or ended), then a live session whose `formerNames` include `name`, then the placeholder pseudo-session with that name. A non-string `name` (such as a `null` sender) gives `undefined`. Ended sessions are not matched by former name, so a stale name after a restart still gets a placeholder.
 
 Inputs: `state` (object), `name` (string or null).
 
@@ -253,14 +253,14 @@ Example:
 sessionByName(state, "scratch-7a")?.pid // 30444
 sessionByName(state, "nobody")          // undefined
 // with rename.json fully replayed:
-sessionByName(state, "path-finder-0d")?.pid                // 29248 (former name of a live body)
+sessionByName(state, "path-finder-0d")?.pid                // 29248 (former name of a live capsule)
 sessionByName(state, "manager-drives-feature-work")?.pid   // 29248
 sessionByName(state, "nobody-99")?.pid                     // "placeholder:nobody-99"
 ```
 
 ## sessionLabel(session)
 
-What it does: returns the text drawn next to a body.
+What it does: returns the text drawn inside a capsule.
 
 Inputs: `session` (Session).
 
