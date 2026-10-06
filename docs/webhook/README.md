@@ -1,19 +1,12 @@
 # webhook docs
 
-Owner: webhook-builder.
+Owner: webhook-builder. One markdown file per module in `webhook/`.
 
-One markdown file per module in `webhook/`. Expected files as the area grows:
+| File | Module | Status |
+|---|---|---|
+| `hooks.md` | `webhook/hooks/dashboard-hook.js`, `webhook/hooks/capture-raw.js`, raw hook input shape | W1, W3 |
+| `schema.md` | `webhook/schema.js` | W3 |
+| `fake-generator.md` | `webhook/fake.js` | W4 |
+| `server.md` | `webhook/server.js`, `webhook/tail.js`, `webhook/state.js`, `webhook/liveness.js` | W5, pending |
 
-- `hooks.md`: the hook script, raw hook input shape, each exported function.
-- `fake-generator.md`: the fake event generator and its options.
-- `server.md`: the server, each public function, and each HTTP endpoint.
-
-Each public function, class, or endpoint is documented with:
-
-- What it does
-- Inputs: name, type, and meaning
-- Output: type and meaning
-- Errors: what it can throw and when
-- Example: a realistic input and the expected output
-
-Docs are updated in the same task as the code. The validator checks every example.
+Each public function, class, or endpoint is documented with What it does, Inputs, Output, Errors, and an Example with a realistic input and the expected output. Docs are updated in the same task as the code. The validator checks every example.

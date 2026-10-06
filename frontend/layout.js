@@ -86,7 +86,7 @@ function round(value) {
 }
 
 function compareByFolderThenLabel(a, b) {
-  const folderOrder = a.folder.localeCompare(b.folder);
+  const folderOrder = a.folder.replace(/_/g, "-").localeCompare(b.folder.replace(/_/g, "-"));
   if (folderOrder !== 0) return folderOrder;
   return String(a.session ?? a.pid).localeCompare(String(b.session ?? b.pid));
 }

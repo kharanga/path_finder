@@ -4,8 +4,11 @@ import { homedir } from "node:os";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { validateEvent } from "./schema.js";
+import { createState, applyEvent, snapshot } from "./state.js";
 
 export const REAL_EVENTS_PATH = join(homedir(), ".claude", "dashboard", "events.jsonl");
+export const GHOST_RECIPIENT = "ghost-session-00";
+export const DEFAULT_LIVENESS_DELAY_SECONDS = 5;
 
 export const FOLDERS = [
   "listings", "listings", "listings",
@@ -50,48 +53,71 @@ export function createRandom(seed) {
   };
 }
 
-/** Parses CLI flags (--out, --speed, --sessions, --seed, --instant, --duration) into options. */
+/** Parses CLI flags (--out, --fixture, --speed, --sessions, --seed, --instant, --duration, --snapshot-until) into options. */
 export function parseArgs(argv) {
-  const options = { out: null, speed: 1, sessions: 15, seed: 42, instant: false, durationSeconds: null };
+  const options = {
+    out: null,
+    fixture: null,
+    speed: 1,
+    sessions: 15,
+    seed: 42,
+    instant: false,
+    durationSeconds: null,
+    snapshotUntilSeconds: 0,
+    startTime: null,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
     const value = argv[index + 1];
     if (flag === "--out") options.out = value, index += 1;
+    else if (flag === "--fixture") options.fixture = value, index += 1;
     else if (flag === "--speed") options.speed = Number(value), index += 1;
     else if (flag === "--sessions") options.sessions = Number(value), index += 1;
     else if (flag === "--seed") options.seed = Number(value), index += 1;
     else if (flag === "--duration") options.durationSeconds = Number(value), index += 1;
+    else if (flag === "--snapshot-until") options.snapshotUntilSeconds = Number(value), index += 1;
+    else if (flag === "--start-time") options.startTime = value, index += 1;
     else if (flag === "--instant") options.instant = true;
     else throw new Error(`unknown flag ${flag}`);
   }
-  if (!options.out) throw new Error("--out <path> is required");
-  if (resolve(options.out) === REAL_EVENTS_PATH) throw new Error("refusing to write to the real events file");
+  if (!options.out && !options.fixture) throw new Error("--out <path> or --fixture <path> is required");
+  if (options.out && options.fixture) throw new Error("use either --out or --fixture, not both");
+  if (options.out && resolve(options.out) === REAL_EVENTS_PATH) throw new Error("refusing to write to the real events file");
   if (!(options.speed > 0)) throw new Error("--speed must be a positive number");
+  if (options.fixture) options.instant = true;
+  if (options.instant && options.durationSeconds === null) options.durationSeconds = 60;
+  if (options.startTime !== null && Number.isNaN(Date.parse(options.startTime))) throw new Error("--start-time must be ISO 8601");
   return options;
 }
 
-/** Creates the generator: holds fake sessions, writes validated events, and owns the placeholder processes. */
+/** Creates the generator: fake sessions, a virtual or real clock, validated emission, and placeholder processes. */
 export function createGenerator(options, deps = {}) {
   const random = createRandom(options.seed);
-  const write = deps.write ?? ((line) => appendFileSync(options.out, line));
-  const now = deps.now ?? (() => new Date());
+  const startMs = options.startTime ? Date.parse(options.startTime) : (deps.now ?? (() => new Date()))().getTime();
+  const nowFn = deps.now ?? (() => new Date());
+  const entries = [];
   const children = [];
   const sessions = [];
   let fakePidCounter = 70000;
-  let simulatedMs = 0;
+  let virtualMs = 0;
 
-  const timestamp = () => {
-    if (options.instant) {
-      simulatedMs += 1000;
-      return new Date(now().getTime() + simulatedMs).toISOString();
-    }
-    return now().toISOString();
+  const currentMs = () => (options.instant ? startMs + virtualMs : nowFn().getTime());
+  const advance = (ms) => {
+    virtualMs += ms;
+  };
+
+  const record = (eventName, data) => {
+    const entry = { atMs: currentMs() - startMs, event: eventName, data };
+    entries.push(entry);
+    if (deps.write) deps.write(entry);
+    else if (options.out && eventName !== "liveness") appendFileSync(options.out, `${JSON.stringify(data)}\n`);
+    return entry;
   };
 
   const emit = (event) => {
     const check = validateEvent(event);
     if (!check.ok) throw new Error(`invalid fake event: ${check.errors.join("; ")}`);
-    write(`${JSON.stringify(event)}\n`);
+    record(event.type, event);
     return event;
   };
 
@@ -106,11 +132,12 @@ export function createGenerator(options, deps = {}) {
   };
 
   const sessionEvent = (session, state) =>
-    emit({ ts: timestamp(), type: "session", session: session.name, folder: session.folder, pid: session.pid, state, role: session.role });
+    emit({ ts: new Date(currentMs()).toISOString(), type: "session", session: session.name, folder: session.folder, pid: session.pid, state, role: session.role });
 
-  const startSession = (folder) => {
+  const startSession = (folder, { anonymous = false } = {}) => {
     const { pid, child } = allocatePid();
-    const session = { name: `${folder.replace(/_/g, "-")}-${random.hex2()}`, folder, pid, child, role: null, state: "started" };
+    const name = anonymous ? null : `${folder.replace(/_/g, "-")}-${random.hex2()}`;
+    const session = { name, folder, pid, child, role: null, state: "started" };
     sessions.push(session);
     sessionEvent(session, "started");
     return session;
@@ -119,6 +146,11 @@ export function createGenerator(options, deps = {}) {
   const setState = (session, state) => {
     session.state = state;
     sessionEvent(session, state);
+  };
+
+  const nameSession = (session) => {
+    session.name = `${session.folder.replace(/_/g, "-")}-${random.hex2()}`;
+    sessionEvent(session, session.state);
   };
 
   const endSession = (session) => {
@@ -131,10 +163,23 @@ export function createGenerator(options, deps = {}) {
     if (session.child) session.child.kill("SIGKILL");
   };
 
-  const sendMessage = (from, to, notifyOnIdle) =>
-    emit({ ts: timestamp(), type: "message", from: from.name, to: to.name, text: random.pick(MESSAGE_TEXTS), notify_on_idle: notifyOnIdle });
+  const emitLiveness = (session) => {
+    if (!options.instant) return null;
+    const data = { ts: new Date(currentMs()).toISOString(), type: "session", session: session.name, folder: session.folder, pid: session.pid, state: "ended", role: session.role };
+    return record("liveness", data);
+  };
 
-  const live = () => sessions.filter((session) => session.state !== "ended" && session.state !== "dead");
+  const sendMessage = (from, to, notifyOnIdle) =>
+    emit({
+      ts: new Date(currentMs()).toISOString(),
+      type: "message",
+      from: from.name,
+      to: typeof to === "string" ? to : to.name,
+      text: random.pick(MESSAGE_TEXTS),
+      notify_on_idle: notifyOnIdle,
+    });
+
+  const live = () => sessions.filter((session) => session.state !== "ended" && session.state !== "dead" && session.name !== null);
 
   const shutdown = () => {
     for (const child of children) {
@@ -146,17 +191,24 @@ export function createGenerator(options, deps = {}) {
     }
   };
 
-  return { random, sessions, live, startSession, setState, endSession, killSilently, sendMessage, shutdown, emit };
+  return { random, sessions, entries, live, advance, startSession, setState, nameSession, endSession, killSilently, emitLiveness, sendMessage, shutdown, emit };
 }
 
-/** Plays the scripted scenario, then random activity until duration or SIGINT; resolves when done. */
+/** Plays the scripted scenario, then random activity until the duration ends or SIGINT; resolves when done. */
 export async function runScenario(generator, options, sleepFn) {
-  const wait = (seconds) => (options.instant ? Promise.resolve() : sleepFn((seconds * 1000) / options.speed));
+  const wait = async (seconds) => {
+    if (options.instant) {
+      generator.advance(seconds * 1000);
+      return;
+    }
+    await sleepFn((seconds * 1000) / options.speed);
+  };
   const busyThenIdle = async (session, busySeconds) => {
     generator.setState(session, "busy");
     await wait(busySeconds);
     generator.setState(session, "idle");
   };
+  const virtualElapsed = () => generator.entries.length === 0 ? 0 : generator.entries[generator.entries.length - 1].atMs / 1000;
 
   await wait(3);
 
@@ -174,45 +226,98 @@ export async function runScenario(generator, options, sleepFn) {
     }
   }
 
-  const everyone = generator.live();
-  if (everyone.length >= 2) {
-    const [sender, recipient] = [everyone[0], everyone[1]];
+  const population = generator.live();
+
+  if (population.length >= 2) {
+    const [sender, recipient] = population;
     generator.sendMessage(sender, recipient, true);
     await wait(2);
     await busyThenIdle(recipient, 4);
   }
 
-  if (everyone.length >= 3) {
-    const restarting = everyone[2];
+  if (population.length >= 3) {
+    const [sender, , recipient] = population;
+    generator.sendMessage(sender, recipient, true);
+    await wait(1);
+    generator.setState(recipient, "busy");
+    await wait(2);
+    generator.setState(recipient, "waiting");
+    await wait(4);
+    generator.setState(recipient, "busy");
+    await wait(2);
+    generator.setState(recipient, "idle");
+  }
+
+  if (population.length >= 1) {
+    generator.sendMessage(population[0], GHOST_RECIPIENT, true);
+    await wait(3);
+  }
+
+  if (population.length >= 5) {
+    const anonymous = generator.startSession(population[4].folder, { anonymous: true });
+    await wait(1);
+    generator.setState(anonymous, "busy");
+    generator.sendMessage(anonymous, population[0], false);
+    await wait(1);
+    await busyThenIdle(population[0], 1);
+    generator.nameSession(anonymous);
+    await wait(1);
+    generator.setState(anonymous, "idle");
+  }
+
+  if (population.length >= 4) {
+    const restarting = population[3];
     generator.endSession(restarting);
     await wait(2);
     const reborn = generator.startSession(restarting.folder);
     await busyThenIdle(reborn, 2);
   }
 
-  if (generator.live().length >= 4) {
-    const dying = generator.live()[3];
+  if (population.length >= 6) {
+    const dying = population[5];
     generator.setState(dying, "busy");
     await wait(1);
     generator.killSilently(dying);
+    await wait(DEFAULT_LIVENESS_DELAY_SECONDS);
+    generator.emitLiveness(dying);
   }
 
-  if (options.instant) return;
+  if (population.length >= 8) {
+    const [sender, , , , , , , recipient] = population;
+    generator.sendMessage(sender, recipient, true);
+    await wait(1);
+    generator.setState(recipient, "busy");
+    await wait(2);
+    generator.killSilently(recipient);
+    await wait(DEFAULT_LIVENESS_DELAY_SECONDS);
+    generator.emitLiveness(recipient);
+  }
 
-  const deadline = options.durationSeconds ? Date.now() + options.durationSeconds * 1000 : Infinity;
-  while (Date.now() < deadline) {
-    const population = generator.live();
-    if (population.length === 0) break;
-    const actor = generator.random.pick(population);
+  const startedRandomAt = options.instant ? virtualElapsed() : Date.now() / 1000;
+  const elapsedSinceRandomStart = () => (options.instant ? virtualElapsed() : Date.now() / 1000) - startedRandomAt;
+  while (options.durationSeconds === null || elapsedSinceRandomStart() < options.durationSeconds) {
+    const actors = generator.live();
+    if (actors.length === 0) break;
+    const actor = generator.random.pick(actors);
     const roll = generator.random.next();
-    if (roll < 0.6) {
+    if (roll < 0.5) {
       await busyThenIdle(actor, generator.random.int(2, 6));
+    } else if (roll < 0.6) {
+      generator.setState(actor, "busy");
+      await wait(1);
+      generator.setState(actor, "waiting");
+      await wait(generator.random.int(2, 5));
+      generator.setState(actor, "busy");
+      await wait(1);
+      generator.setState(actor, "idle");
     } else {
-      const targets = population.filter((candidate) => candidate !== actor);
-      if (targets.length === 0) continue;
+      const targets = actors.filter((candidate) => candidate !== actor);
+      if (targets.length === 0) {
+        await wait(1);
+        continue;
+      }
       const recipient = generator.random.pick(targets);
-      const notify = generator.random.next() < 0.3;
-      generator.sendMessage(actor, recipient, notify);
+      generator.sendMessage(actor, recipient, generator.random.next() < 0.3);
       await wait(1);
       await busyThenIdle(recipient, generator.random.int(1, 4));
     }
@@ -220,12 +325,30 @@ export async function runScenario(generator, options, sleepFn) {
   }
 }
 
+/** Converts recorded entries into the page fixture {snapshot, events}, folding entries up to snapshotUntilSeconds into the snapshot. */
+export function buildFixture(entries, snapshotUntilSeconds = 0) {
+  const cutoffMs = snapshotUntilSeconds * 1000;
+  const state = createState();
+  const events = [];
+  let previousMs = cutoffMs;
+  for (const entry of entries) {
+    if (entry.atMs <= cutoffMs) {
+      applyEvent(state, entry.data);
+      continue;
+    }
+    events.push({ delayMs: entry.atMs - previousMs, event: entry.event, data: entry.data });
+    previousMs = entry.atMs;
+  }
+  return { snapshot: snapshot(state), events };
+}
+
 const sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  mkdirSync(dirname(resolve(options.out)), { recursive: true });
-  writeFileSync(options.out, "");
+  const target = options.out ?? options.fixture;
+  mkdirSync(dirname(resolve(target)), { recursive: true });
+  if (options.out) writeFileSync(options.out, "");
   const generator = createGenerator(options);
   const stop = () => {
     generator.shutdown();
@@ -235,6 +358,9 @@ async function main() {
   process.on("SIGTERM", stop);
   process.on("exit", () => generator.shutdown());
   await runScenario(generator, options, sleep);
+  if (options.fixture) {
+    writeFileSync(options.fixture, `${JSON.stringify(buildFixture(generator.entries, options.snapshotUntilSeconds), null, 2)}\n`);
+  }
   generator.shutdown();
 }
 

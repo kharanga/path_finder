@@ -39,7 +39,7 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
     return (session && lastPositions.get(session.pid)) || null;
   }
 
-  return function draw(state) {
+  return function draw(state, { instant = false } = {}) {
     const sessions = liveSessions(state);
     emptyLabel.classList.toggle("hidden", sessions.length > 0);
     ring.classList.toggle("empty", sessions.length === 0);
@@ -49,11 +49,13 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
       seen.add(session.pid);
       const position = positions.get(session.pid);
       lastPositions.set(session.pid, { x: position.x, y: position.y });
-      const node = bodyNodes.get(session.pid) ?? createBodyNode(bodiesLayer, bodyNodes, session.pid);
+      const node = bodyNodes.get(session.pid) ?? createBodyNode(bodiesLayer, bodyNodes, session.pid, instant);
       updateBodyNode(node, session, position);
     }
     for (const [pid, node] of bodyNodes) {
-      if (!seen.has(pid) && !node.ghostTimer) startGhost(node, bodyNodes, lastPositions, pid, ghostMs);
+      if (seen.has(pid)) continue;
+      if (instant) removeBody(node, bodyNodes, lastPositions, pid);
+      else if (!node.ghostTimer) startGhost(node, bodyNodes, lastPositions, pid, ghostMs);
     }
 
     if (state.snapshotSeq !== drawnSnapshotSeq) {
@@ -71,12 +73,20 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
     }
     drawnMessageCount = state.messages.length;
 
+    const threadOptions = instant ? { ...options, reducedMotion: true } : options;
     for (const thread of state.threads) {
       const from = positionForName(state, thread.from) ?? CENTER;
       const to = positionForName(state, thread.to) ?? CENTER;
-      updateThreadNode(threadsLayer, threadNodes, thread, from, to, options);
+      updateThreadNode(threadsLayer, threadNodes, thread, from, to, threadOptions);
     }
   };
+}
+
+function removeBody(node, bodyNodes, lastPositions, pid) {
+  if (node.ghostTimer) clearTimeout(node.ghostTimer);
+  node.group.remove();
+  bodyNodes.delete(pid);
+  lastPositions.delete(pid);
 }
 
 function spawnParticle(layer, message, index, from, to, { travelMs, lingerMs, reducedMotion }, pathId) {
@@ -146,8 +156,8 @@ function startGhost(node, bodyNodes, lastPositions, pid, ghostMs) {
   }, ghostMs);
 }
 
-function createBodyNode(layer, bodyNodes, pid) {
-  const group = appendTo(layer, "g", { class: "body entering", "data-pid": pid });
+function createBodyNode(layer, bodyNodes, pid, instant = false) {
+  const group = appendTo(layer, "g", { class: instant ? "body" : "body entering", "data-pid": pid });
   appendTo(group, "circle", { class: "halo", r: HALO_RADIUS });
   const circle = appendTo(group, "circle", { class: "core", r: BODY_RADIUS });
   const title = appendTo(group, "title", {});
@@ -179,7 +189,8 @@ function updateBodyNode(node, session, position) {
   node.name.textContent = truncateLabel(label, MAX_LABEL_CHARS);
   node.role.textContent = session.role ?? "";
   node.role.classList.toggle("hidden", !session.role);
-  node.title.textContent = session.role ? `${label} (${session.role}) in ${session.folder}` : `${label} in ${session.folder}`;
+  if (session.state === "placeholder") node.title.textContent = `${label}, no session event yet (folder guessed: ${session.folder})`;
+  else node.title.textContent = session.role ? `${label} (${session.role}) in ${session.folder}` : `${label} in ${session.folder}`;
 }
 
 function detectReducedMotion() {

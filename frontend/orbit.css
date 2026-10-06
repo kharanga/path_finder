@@ -98,6 +98,15 @@ body {
 .body[data-state="waiting"] .core { fill: var(--waiting); }
 .body[data-state="waiting"] .halo { fill: var(--waiting); opacity: 0.2; }
 
+.body[data-state="placeholder"] .core {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+  opacity: 0.6;
+}
+.body[data-state="placeholder"] .name { fill: var(--muted); font-style: italic; }
+
 .body[data-state="idle"] .core { opacity: 0.7; }
 .body[data-state="idle"] .name { fill: var(--muted); }
 
@@ -183,5 +192,76 @@ body {
   fill: var(--muted);
   font-size: 17px;
 }
+
+.timeline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px 14px;
+  border-top: 1px solid var(--ring);
+}
+
+.timeline button {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--ring);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.timeline button:disabled {
+  color: #7ee2a8;
+  border-color: #7ee2a8;
+  cursor: default;
+}
+
+.timeline[data-mode="scrub"] { border-top-color: var(--busy); }
+
+.track {
+  position: relative;
+  flex: 1;
+  height: 28px;
+}
+
+.ticks {
+  position: absolute;
+  inset: 0 8px;
+  pointer-events: none;
+}
+
+.tick {
+  position: absolute;
+  top: 2px;
+  width: 2px;
+  height: 8px;
+  margin-left: -1px;
+  background: var(--thread);
+  opacity: 0.8;
+}
+
+.track input[type="range"] {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  margin: 0;
+  accent-color: var(--busy);
+}
+
+.track input[type="range"]:disabled { opacity: 0.4; }
+
+.time {
+  min-width: 5ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.timeline[data-mode="scrub"] .time { color: var(--busy); }
 
 .hidden { display: none; }

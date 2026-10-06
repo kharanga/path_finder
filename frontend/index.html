@@ -14,6 +14,14 @@
 <main class="stage">
   <svg id="orbit" class="orbit" role="img" aria-label="Claude Code sessions on a ring"></svg>
 </main>
+<footer id="timeline" class="timeline" data-mode="live">
+  <button data-role="live" type="button" disabled>Live</button>
+  <div class="track">
+    <div data-role="ticks" class="ticks"></div>
+    <input data-role="scrubber" type="range" min="0" max="0" value="0" step="1" disabled aria-label="Scrub through history">
+  </div>
+  <span data-role="time" class="time">Live</span>
+</footer>
 <script type="module" src="./app.js"></script>
 </body>
 </html>
