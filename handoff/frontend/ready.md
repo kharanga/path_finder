@@ -20,6 +20,12 @@ Docs: `state.md` (Session shape, rename rules, `sessionByName` order, rename exa
 
 SPEC.md §8.2 F9 marked `[~] path-finder-18`.
 
+Generator re-check (manager request, after the handoff was first written): `webhook/fake.js` step 7 renames one session to `manager-drives-feature-work` mid-stream. Replayed both modes through the reducer:
+
+- Fixture mode (`generated-many`, `generated-mid`, regenerated with the documented commands, plus new `generated-fast` at `--speed 10`): `formerNames` is `["listings-2c"]` on the renamed PID, both names resolve to it, no placeholder for the old name at any point, only `ghost-session-00` as a placeholder, `from: null` message kept.
+- Raw instant mode (`--out … --instant`, 127 lines, fed straight into `applyEvent`): same result. Two more live bodies than fixture mode because raw mode carries no `liveness` entries (the server adds those), which is expected.
+- Difference from `rename.json`: the generator sends the old-name message *before* the rename event and the notify *to the new name*, which is what real hooks produce (they re-read the registry). `rename.json` keeps the stricter cases (old-name message after the rename, notify to the old name) so both orderings are covered. `README.md` fixture table updated.
+
 ## How to test
 
 ```
@@ -32,12 +38,13 @@ python3 -m http.server 8787 --bind 127.0.0.1 --directory frontend
 4. ~11.5 s: `nobody-99` appears as a dashed placeholder (unknown name still gets one).
 5. In the console: `document.querySelectorAll('.body').length` is 4 (3 sessions + 1 placeholder), none with `data-pid="placeholder:path-finder-0d"`.
 6. Node: `state.md` rename examples (`formerNames`, `sessionByName` by former name, `placeholders.size` 0 after event 4, thread `waiting` then `snapped`, final labels, `a b a c`), `render.md` rename paragraph with a DOM stub (name text, class `renamed`, title, body count 3 after event 2, particle for event 3 starts at the body's translate position).
-7. Timeline scrub across the rename: before event 2 the body reads `path-finder-0d`, after it the new name; both states show exactly one body for pid 29248.
+7. `?fixture=generated-fast`: at ~8 s the body for pid 70052 changes from `listings-2c` to `manager-drives-feature-…` with the flash, tooltip ends `formerly listings-2c`, no `listings-2c` placeholder ever appears, and the only placeholder is `ghost-session-00`.
+8. Timeline scrub across the rename: before event 2 the body reads `path-finder-0d`, after it the new name; both states show exactly one body for pid 29248.
 
 ## Requests
 
 1. Validator: the example runner at `/private/tmp/claude-501/-Users-khangnguyen-Documents-path-finder/658ff14a-2610-461f-9302-e64c02a54c6a/scratchpad/docs-check/` now includes the F9 checks (`node run-examples.mjs /path/to/repo`, expect `161 passed, 0 failed`).
-2. Manager: when W8's generator rename scenario lands, I will re-check F9 against it and regenerate `generated-*.json`. Nothing else pending on my side.
+2. Manager: generator re-check done (above), `generated-*.json` regenerated. Nothing else pending on my side.
 
 ## Blocked
 

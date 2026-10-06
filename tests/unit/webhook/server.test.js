@@ -1,6 +1,6 @@
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, mkdirSync, symlinkSync } from "node:fs";
+import { writeFileSync, mkdirSync, symlinkSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs, sseFrame, resolveStaticFile, createHub, DEFAULTS, CONTENT_TYPES } from "../../../webhook/server.js";
 import { makeTmpDir } from "../../helpers/tmp-dir.js";
@@ -50,7 +50,7 @@ test("resolveStaticFile serves files inside the directory with content types and
   writeFileSync(join(root, "fixtures", "few.json"), "{}");
   writeFileSync(join(root, "blob.bin"), "");
   symlinkSync(outside, join(root, "escape.txt"));
-  assert.equal(resolveStaticFile(root, "/").filePath, join(root, "index.html"));
+  assert.equal(resolveStaticFile(root, "/").filePath, realpathSync(join(root, "index.html")));
   assert.equal(resolveStaticFile(root, "/").contentType, "text/html; charset=utf-8");
   assert.equal(resolveStaticFile(root, "/app.js").contentType, "text/javascript; charset=utf-8");
   assert.equal(resolveStaticFile(root, "/orbit.css").contentType, "text/css; charset=utf-8");

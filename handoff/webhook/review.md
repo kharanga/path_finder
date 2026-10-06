@@ -76,6 +76,23 @@ All ready.md expectations: fixture runs byte-identical with `--start-time`; 0 sn
 
 Docs examples other than failure 1: `parseArgs` fixture example and the `[]` throw, `createGenerator` example, `runScenario` with 0 sessions records 0 entries, `buildFixture` example, `emit` throws on an invalid event.
 
+# V2: unit tests for webhook 2026-10-05
+
+Done. `tests/unit/webhook/` holds one file per module, 8 files, 71 tests, all green with `node --test "tests/**/*.test.js"` (82 tests in the whole suite, 2 todo markers for V4 and V5).
+
+| File | Covers | Mocks |
+|---|---|---|
+| `schema.test.js` | every validation error, all five states, null sender, `parseEventLine` edge cases | none needed |
+| `state.test.js` | pid keying, name/folder/role carry-over, message cap, name lookup preferring live, snapshot order | none needed |
+| `liveness.test.js` | `isPidAlive` EPERM/ESRCH, socket hint, registry reads incl. bad JSON and wrong types, dead-session detection, every status-correction rule | `process.kill` via `mock.method`, injected `isAlive`/`readStatus`, temp registry dir |
+| `tail.test.js` | partial lines, truncation restart, missing file, multi-byte split, malformed lines passed through, replay then poll, `fromStart`, file appearing later | `mock.timers` for the poll interval, temp files |
+| `server.test.js` | flag parsing and every flag error, SSE frame, static resolution incl. traversal, bad encoding, directory, symlink escape, hub ingest/stats/broadcast/late snapshot/message limit, liveness check broadcasting `liveness` and `session` | injected `isAlive`/`readStatus`, temp frontend dir |
+| `dashboard-hook.test.js` | hook-to-state mapping incl. `waiting`, registry lookups by session id and pid with malformed files, resolver fallback, every `buildEvent` branch validated against the schema, `appendEvent`, and the script itself run with stdin for silent exit 0 and an unwritable path | injected `findPid`, temp registry and events dirs, `CC_DASHBOARD_EVENTS` |
+| `declare-role.test.js` | role pattern, session resolution with injected lookups, event building, `main` error path | injected resolvers, `process.stderr.write` via `mock.method` |
+| `fake.test.js` | PRNG determinism, flag parsing incl. refusing the real events path, generator with injected writer and virtual clock, anonymous/rename/end/kill/liveness paths, zero-session run, structural checks on the default scenario, byte-identical reruns, `buildFixture` fold and speed | injected `write`/`now`, `noChildren` |
+
+Not covered on purpose: `findClaudeAncestorPid` and `ancestorChain` (they shell out to `ps`; covered indirectly by the hook script run), `startServer`/`handleRequest` over HTTP, `tailFile` against a live server, and `startDemoGenerator` (V4 integration). Nothing reads or writes `~/.claude`, `/tmp/cc-socks`, or the real events file.
+
 # V1: test structure 2026-10-05
 
 Done and committed by the manager. Layout in `tests/README.md`, run with `node --test "tests/**/*.test.js"`.

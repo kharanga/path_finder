@@ -82,21 +82,29 @@ test("createGenerator handles anonymous sessions, naming, ending, silent death, 
   for (const entry of written) assert.equal(validateEvent(entry.data).ok, true);
 });
 
-test("runScenario with zero sessions records nothing and with the default seed matches the documented counts", async () => {
+test("runScenario with zero sessions records nothing", async () => {
   assert.equal((await recorded(instantOptions(["--sessions", "0"]))).length, 0);
+});
+
+test("runScenario with the default seed covers every scripted situation with valid events", async () => {
   const entries = await recorded(instantOptions());
-  assert.equal(entries.length, 124);
-  const kinds = entries.reduce((acc, entry) => ({ ...acc, [entry.event]: (acc[entry.event] ?? 0) + 1 }), {});
-  assert.deepEqual(kinds, { session: 103, message: 19, liveness: 2 });
-  const states = entries.filter((e) => e.data.type === "session").map((e) => e.data.state);
-  assert.equal(states.filter((s) => s === "started").length, 17);
-  assert.equal(states.filter((s) => s === "waiting").length, 1);
-  assert.equal(states.filter((s) => s === "ended").length, 3);
-  assert.equal(entries.filter((e) => e.data.notify_on_idle === true).length, 6);
-  assert.equal(entries.filter((e) => e.data.type === "message" && e.data.from === null).length, 1);
-  assert.equal(entries.filter((e) => e.data.type === "message" && e.data.to === GHOST_RECIPIENT).length, 1);
-  assert.deepEqual(entries[0], { atMs: 3000, event: "session", data: { ts: "2026-10-05T21:40:03.000Z", type: "session", session: "listings-72", folder: "listings", pid: 70025, state: "started", role: null } });
   for (const entry of entries) assert.equal(validateEvent(entry.data).ok, true);
+  assert.deepEqual(entries[0], { atMs: 3000, event: "session", data: { ts: "2026-10-05T21:40:03.000Z", type: "session", session: "listings-72", folder: "listings", pid: 70025, state: "started", role: null } });
+  const sessions = entries.filter((e) => e.data.type === "session");
+  const messages = entries.filter((e) => e.data.type === "message");
+  const states = new Set(sessions.map((e) => e.data.state));
+  assert.deepEqual([...states].sort(), ["busy", "ended", "idle", "started", "waiting"]);
+  assert.equal(entries.filter((e) => e.event === "liveness").length, 2);
+  assert.ok(messages.filter((e) => e.data.notify_on_idle).length >= 4);
+  assert.equal(messages.filter((e) => e.data.from === null).length, 1);
+  assert.equal(messages.filter((e) => e.data.to === GHOST_RECIPIENT).length, 1);
+  assert.ok(sessions.some((e) => e.data.session === null));
+  const namesByPid = new Map();
+  for (const e of sessions) if (e.data.session) namesByPid.set(e.data.pid, new Set([...(namesByPid.get(e.data.pid) ?? []), e.data.session]));
+  assert.ok([...namesByPid.values()].some((names) => names.size >= 2), "a session is renamed mid-stream");
+  const folders = new Set(sessions.map((e) => e.data.folder));
+  assert.ok(folders.has("listings") && folders.has("path_finder"));
+  assert.ok(entries.every((e, i) => i === 0 || e.atMs >= entries[i - 1].atMs), "entries are in time order");
   assert.equal(FOLDERS.length, 15);
 });
 

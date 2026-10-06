@@ -1,0 +1,1664 @@
+{
+  "snapshot": {
+    "sessions": [],
+    "messages": []
+  },
+  "events": [
+    {
+      "delayMs": 300,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:03.000Z",
+        "type": "session",
+        "session": "listings-72",
+        "folder": "listings",
+        "pid": 70025,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 50,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:03.500Z",
+        "type": "session",
+        "session": "listings-72",
+        "folder": "listings",
+        "pid": 70025,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 300,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:06.500Z",
+        "type": "session",
+        "session": "listings-72",
+        "folder": "listings",
+        "pid": 70025,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:06.500Z",
+        "type": "session",
+        "session": "listings-2c",
+        "folder": "listings",
+        "pid": 70052,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 50,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:07.000Z",
+        "type": "session",
+        "session": "listings-2c",
+        "folder": "listings",
+        "pid": 70052,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:09.000Z",
+        "type": "session",
+        "session": "listings-2c",
+        "folder": "listings",
+        "pid": 70052,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:40:09.000Z",
+        "type": "message",
+        "from": "listings-2c",
+        "to": "listings-72",
+        "text": "review.md has two failures, both in hooks.md",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:10.000Z",
+        "type": "session",
+        "session": "listings-72",
+        "folder": "listings",
+        "pid": 70025,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:11.000Z",
+        "type": "session",
+        "session": "listings-72",
+        "folder": "listings",
+        "pid": 70025,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:11.000Z",
+        "type": "session",
+        "session": "listings-3f",
+        "folder": "listings",
+        "pid": 70071,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 50,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:11.500Z",
+        "type": "session",
+        "session": "listings-3f",
+        "folder": "listings",
+        "pid": 70071,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 300,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:14.500Z",
+        "type": "session",
+        "session": "listings-3f",
+        "folder": "listings",
+        "pid": 70071,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:14.500Z",
+        "type": "session",
+        "session": "tag-analyzer-32",
+        "folder": "tag_analyzer",
+        "pid": 70084,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 50,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:15.000Z",
+        "type": "session",
+        "session": "tag-analyzer-32",
+        "folder": "tag_analyzer",
+        "pid": 70084,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:17.000Z",
+        "type": "session",
+        "session": "tag-analyzer-32",
+        "folder": "tag_analyzer",
+        "pid": 70084,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:17.000Z",
+        "type": "session",
+        "session": "path-finder-00",
+        "folder": "path_finder",
+        "pid": 70109,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 50,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:17.500Z",
+        "type": "session",
+        "session": "path-finder-00",
+        "folder": "path_finder",
+        "pid": 70109,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:19.500Z",
+        "type": "session",
+        "session": "path-finder-00",
+        "folder": "path_finder",
+        "pid": 70109,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:19.500Z",
+        "type": "session",
+        "session": "path-finder-97",
+        "folder": "path_finder",
+        "pid": 70112,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 50,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:20.000Z",
+        "type": "session",
+        "session": "path-finder-97",
+        "folder": "path_finder",
+        "pid": 70112,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:21.000Z",
+        "type": "session",
+        "session": "path-finder-97",
+        "folder": "path_finder",
+        "pid": 70112,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:40:21.000Z",
+        "type": "message",
+        "from": "path-finder-97",
+        "to": "listings-72",
+        "text": "handoff/webhook/ready.md is up, please review",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:22.000Z",
+        "type": "session",
+        "session": "listings-72",
+        "folder": "listings",
+        "pid": 70025,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:23.000Z",
+        "type": "session",
+        "session": "listings-72",
+        "folder": "listings",
+        "pid": 70025,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:23.000Z",
+        "type": "session",
+        "session": "path-finder-87",
+        "folder": "path_finder",
+        "pid": 70144,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 50,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:23.500Z",
+        "type": "session",
+        "session": "path-finder-87",
+        "folder": "path_finder",
+        "pid": 70144,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:24.500Z",
+        "type": "session",
+        "session": "path-finder-87",
+        "folder": "path_finder",
+        "pid": 70144,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:40:24.500Z",
+        "type": "message",
+        "from": "path-finder-87",
+        "to": "path-finder-97",
+        "text": "can you check docs/overview.md section 7",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:25.500Z",
+        "type": "session",
+        "session": "path-finder-97",
+        "folder": "path_finder",
+        "pid": 70112,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:26.500Z",
+        "type": "session",
+        "session": "path-finder-97",
+        "folder": "path_finder",
+        "pid": 70112,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:26.500Z",
+        "type": "session",
+        "session": "back-to-the-future-51",
+        "folder": "back_to_the_future",
+        "pid": 70177,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 50,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:27.000Z",
+        "type": "session",
+        "session": "back-to-the-future-51",
+        "folder": "back_to_the_future",
+        "pid": 70177,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:29.000Z",
+        "type": "session",
+        "session": "back-to-the-future-51",
+        "folder": "back_to_the_future",
+        "pid": 70177,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:40:29.000Z",
+        "type": "message",
+        "from": "back-to-the-future-51",
+        "to": "listings-72",
+        "text": "blocked on the settings snippet, see ready.md",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:30.000Z",
+        "type": "session",
+        "session": "listings-72",
+        "folder": "listings",
+        "pid": 70025,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:31.000Z",
+        "type": "session",
+        "session": "listings-72",
+        "folder": "listings",
+        "pid": 70025,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:31.000Z",
+        "type": "session",
+        "session": "graphify-3e",
+        "folder": "graphify",
+        "pid": 70201,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 50,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:31.500Z",
+        "type": "session",
+        "session": "graphify-3e",
+        "folder": "graphify",
+        "pid": 70201,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:33.500Z",
+        "type": "session",
+        "session": "graphify-3e",
+        "folder": "graphify",
+        "pid": 70201,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:40:33.500Z",
+        "type": "message",
+        "from": "graphify-3e",
+        "to": "listings-3f",
+        "text": "PASS, moving to the next task",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:34.500Z",
+        "type": "session",
+        "session": "listings-3f",
+        "folder": "listings",
+        "pid": 70071,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:35.500Z",
+        "type": "session",
+        "session": "listings-3f",
+        "folder": "listings",
+        "pid": 70071,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:35.500Z",
+        "type": "session",
+        "session": "notes-82",
+        "folder": "notes",
+        "pid": 70236,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 50,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:36.000Z",
+        "type": "session",
+        "session": "notes-82",
+        "folder": "notes",
+        "pid": 70236,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:37.000Z",
+        "type": "session",
+        "session": "notes-82",
+        "folder": "notes",
+        "pid": 70236,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:40:37.000Z",
+        "type": "message",
+        "from": "notes-82",
+        "to": "listings-3f",
+        "text": "L16 is ready, look at it",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:38.000Z",
+        "type": "session",
+        "session": "listings-3f",
+        "folder": "listings",
+        "pid": 70071,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:39.000Z",
+        "type": "session",
+        "session": "listings-3f",
+        "folder": "listings",
+        "pid": 70071,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:39.000Z",
+        "type": "session",
+        "session": "infra-ae",
+        "folder": "infra",
+        "pid": 70263,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 50,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:39.500Z",
+        "type": "session",
+        "session": "infra-ae",
+        "folder": "infra",
+        "pid": 70263,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 300,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:42.500Z",
+        "type": "session",
+        "session": "infra-ae",
+        "folder": "infra",
+        "pid": 70263,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:42.500Z",
+        "type": "session",
+        "session": "mobile-app-f1",
+        "folder": "mobile_app",
+        "pid": 70267,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 50,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:43.000Z",
+        "type": "session",
+        "session": "mobile-app-f1",
+        "folder": "mobile_app",
+        "pid": 70267,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:45.000Z",
+        "type": "session",
+        "session": "mobile-app-f1",
+        "folder": "mobile_app",
+        "pid": 70267,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:45.000Z",
+        "type": "session",
+        "session": "data-pipeline-1c",
+        "folder": "data_pipeline",
+        "pid": 70273,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 50,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:45.500Z",
+        "type": "session",
+        "session": "data-pipeline-1c",
+        "folder": "data_pipeline",
+        "pid": 70273,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:46.500Z",
+        "type": "session",
+        "session": "data-pipeline-1c",
+        "folder": "data_pipeline",
+        "pid": 70273,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:40:46.500Z",
+        "type": "message",
+        "from": "data-pipeline-1c",
+        "to": "path-finder-97",
+        "text": "blocked on the settings snippet, see ready.md",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:47.500Z",
+        "type": "session",
+        "session": "path-finder-97",
+        "folder": "path_finder",
+        "pid": 70112,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:48.500Z",
+        "type": "session",
+        "session": "path-finder-97",
+        "folder": "path_finder",
+        "pid": 70112,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:48.500Z",
+        "type": "session",
+        "session": "docs-site-13",
+        "folder": "docs_site",
+        "pid": 70309,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 50,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:49.000Z",
+        "type": "session",
+        "session": "docs-site-13",
+        "folder": "docs_site",
+        "pid": 70309,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 300,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:52.000Z",
+        "type": "session",
+        "session": "docs-site-13",
+        "folder": "docs_site",
+        "pid": 70309,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:52.000Z",
+        "type": "session",
+        "session": "experiments-b4",
+        "folder": "experiments",
+        "pid": 70321,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 50,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:52.500Z",
+        "type": "session",
+        "session": "experiments-b4",
+        "folder": "experiments",
+        "pid": 70321,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:53.500Z",
+        "type": "session",
+        "session": "experiments-b4",
+        "folder": "experiments",
+        "pid": 70321,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:40:53.500Z",
+        "type": "message",
+        "from": "listings-72",
+        "to": "listings-2c",
+        "text": "review.md has two failures, both in hooks.md",
+        "notify_on_idle": true
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:55.500Z",
+        "type": "session",
+        "session": "listings-2c",
+        "folder": "listings",
+        "pid": 70052,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 400,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:40:59.500Z",
+        "type": "session",
+        "session": "listings-2c",
+        "folder": "listings",
+        "pid": 70052,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:40:59.500Z",
+        "type": "message",
+        "from": "listings-72",
+        "to": "listings-3f",
+        "text": "L16 is ready, look at it",
+        "notify_on_idle": true
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:00.500Z",
+        "type": "session",
+        "session": "listings-3f",
+        "folder": "listings",
+        "pid": 70071,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:02.500Z",
+        "type": "session",
+        "session": "listings-3f",
+        "folder": "listings",
+        "pid": 70071,
+        "state": "waiting",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 400,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:06.500Z",
+        "type": "session",
+        "session": "listings-3f",
+        "folder": "listings",
+        "pid": 70071,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:08.500Z",
+        "type": "session",
+        "session": "listings-3f",
+        "folder": "listings",
+        "pid": 70071,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:41:08.500Z",
+        "type": "message",
+        "from": "listings-72",
+        "to": "ghost-session-00",
+        "text": "restarting to pick up the new hooks",
+        "notify_on_idle": true
+      }
+    },
+    {
+      "delayMs": 300,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:11.500Z",
+        "type": "session",
+        "session": null,
+        "folder": "path_finder",
+        "pid": 70344,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:12.500Z",
+        "type": "session",
+        "session": null,
+        "folder": "path_finder",
+        "pid": 70344,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:41:12.500Z",
+        "type": "message",
+        "from": null,
+        "to": "listings-72",
+        "text": "restarting to pick up the new hooks",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:13.500Z",
+        "type": "session",
+        "session": "listings-72",
+        "folder": "listings",
+        "pid": 70025,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:14.500Z",
+        "type": "session",
+        "session": "listings-72",
+        "folder": "listings",
+        "pid": 70025,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:14.500Z",
+        "type": "session",
+        "session": "path-finder-6f",
+        "folder": "path_finder",
+        "pid": 70344,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:15.500Z",
+        "type": "session",
+        "session": "path-finder-6f",
+        "folder": "path_finder",
+        "pid": 70344,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:41:15.500Z",
+        "type": "message",
+        "from": "listings-2c",
+        "to": "listings-72",
+        "text": "blocked on the settings snippet, see ready.md",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:16.500Z",
+        "type": "session",
+        "session": "listings-72",
+        "folder": "listings",
+        "pid": 70025,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:17.500Z",
+        "type": "session",
+        "session": "listings-72",
+        "folder": "listings",
+        "pid": 70025,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:17.500Z",
+        "type": "session",
+        "session": "manager-drives-feature-work",
+        "folder": "listings",
+        "pid": 70052,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:41:18.500Z",
+        "type": "message",
+        "from": "listings-72",
+        "to": "manager-drives-feature-work",
+        "text": "tests pass on my side, your turn",
+        "notify_on_idle": true
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:19.500Z",
+        "type": "session",
+        "session": "manager-drives-feature-work",
+        "folder": "listings",
+        "pid": 70052,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:21.500Z",
+        "type": "session",
+        "session": "manager-drives-feature-work",
+        "folder": "listings",
+        "pid": 70052,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:41:21.500Z",
+        "type": "message",
+        "from": "manager-drives-feature-work",
+        "to": "listings-72",
+        "text": "blocked on the settings snippet, see ready.md",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:22.500Z",
+        "type": "session",
+        "session": "tag-analyzer-32",
+        "folder": "tag_analyzer",
+        "pid": 70084,
+        "state": "ended",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:24.500Z",
+        "type": "session",
+        "session": "tag-analyzer-ba",
+        "folder": "tag_analyzer",
+        "pid": 70357,
+        "state": "started",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:24.500Z",
+        "type": "session",
+        "session": "tag-analyzer-ba",
+        "folder": "tag_analyzer",
+        "pid": 70357,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:26.500Z",
+        "type": "session",
+        "session": "tag-analyzer-ba",
+        "folder": "tag_analyzer",
+        "pid": 70357,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:26.500Z",
+        "type": "session",
+        "session": "path-finder-97",
+        "folder": "path_finder",
+        "pid": 70112,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 600,
+      "event": "liveness",
+      "data": {
+        "ts": "2026-10-05T21:41:32.500Z",
+        "type": "session",
+        "session": "path-finder-97",
+        "folder": "path_finder",
+        "pid": 70112,
+        "state": "ended",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:41:32.500Z",
+        "type": "message",
+        "from": "listings-72",
+        "to": "back-to-the-future-51",
+        "text": "tests pass on my side, your turn",
+        "notify_on_idle": true
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:33.500Z",
+        "type": "session",
+        "session": "back-to-the-future-51",
+        "folder": "back_to_the_future",
+        "pid": 70177,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 700,
+      "event": "liveness",
+      "data": {
+        "ts": "2026-10-05T21:41:40.500Z",
+        "type": "session",
+        "session": "back-to-the-future-51",
+        "folder": "back_to_the_future",
+        "pid": 70177,
+        "state": "ended",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 0,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:41:40.500Z",
+        "type": "message",
+        "from": "notes-82",
+        "to": "docs-site-13",
+        "text": "restarting to pick up the new hooks",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:41.500Z",
+        "type": "session",
+        "session": "docs-site-13",
+        "folder": "docs_site",
+        "pid": 70309,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:43.500Z",
+        "type": "session",
+        "session": "docs-site-13",
+        "folder": "docs_site",
+        "pid": 70309,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:45.500Z",
+        "type": "session",
+        "session": "path-finder-87",
+        "folder": "path_finder",
+        "pid": 70144,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 500,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:50.500Z",
+        "type": "session",
+        "session": "path-finder-87",
+        "folder": "path_finder",
+        "pid": 70144,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:41:51.500Z",
+        "type": "message",
+        "from": "experiments-b4",
+        "to": "manager-drives-feature-work",
+        "text": "review.md has two failures, both in hooks.md",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:52.500Z",
+        "type": "session",
+        "session": "manager-drives-feature-work",
+        "folder": "listings",
+        "pid": 70052,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:53.500Z",
+        "type": "session",
+        "session": "manager-drives-feature-work",
+        "folder": "listings",
+        "pid": 70052,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 300,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:41:56.500Z",
+        "type": "message",
+        "from": "listings-3f",
+        "to": "docs-site-13",
+        "text": "can you check docs/overview.md section 7",
+        "notify_on_idle": true
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:57.500Z",
+        "type": "session",
+        "session": "docs-site-13",
+        "folder": "docs_site",
+        "pid": 70309,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:41:58.500Z",
+        "type": "session",
+        "session": "docs-site-13",
+        "folder": "docs_site",
+        "pid": 70309,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:00.500Z",
+        "type": "session",
+        "session": "path-finder-87",
+        "folder": "path_finder",
+        "pid": 70144,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 500,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:05.500Z",
+        "type": "session",
+        "session": "path-finder-87",
+        "folder": "path_finder",
+        "pid": 70144,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 300,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:42:08.500Z",
+        "type": "message",
+        "from": "path-finder-87",
+        "to": "notes-82",
+        "text": "review.md has two failures, both in hooks.md",
+        "notify_on_idle": true
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:09.500Z",
+        "type": "session",
+        "session": "notes-82",
+        "folder": "notes",
+        "pid": 70236,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:11.500Z",
+        "type": "session",
+        "session": "notes-82",
+        "folder": "notes",
+        "pid": 70236,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:42:12.500Z",
+        "type": "message",
+        "from": "docs-site-13",
+        "to": "path-finder-6f",
+        "text": "handoff/webhook/ready.md is up, please review",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:13.500Z",
+        "type": "session",
+        "session": "path-finder-6f",
+        "folder": "path_finder",
+        "pid": 70344,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 300,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:16.500Z",
+        "type": "session",
+        "session": "path-finder-6f",
+        "folder": "path_finder",
+        "pid": 70344,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:18.500Z",
+        "type": "session",
+        "session": "listings-3f",
+        "folder": "listings",
+        "pid": 70071,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 500,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:23.500Z",
+        "type": "session",
+        "session": "listings-3f",
+        "folder": "listings",
+        "pid": 70071,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 300,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:26.500Z",
+        "type": "session",
+        "session": "path-finder-87",
+        "folder": "path_finder",
+        "pid": 70144,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 300,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:29.500Z",
+        "type": "session",
+        "session": "path-finder-87",
+        "folder": "path_finder",
+        "pid": 70144,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "message",
+      "data": {
+        "ts": "2026-10-05T21:42:30.500Z",
+        "type": "message",
+        "from": "path-finder-00",
+        "to": "mobile-app-f1",
+        "text": "handoff/webhook/ready.md is up, please review",
+        "notify_on_idle": false
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:31.500Z",
+        "type": "session",
+        "session": "mobile-app-f1",
+        "folder": "mobile_app",
+        "pid": 70267,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 100,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:32.500Z",
+        "type": "session",
+        "session": "mobile-app-f1",
+        "folder": "mobile_app",
+        "pid": 70267,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:34.500Z",
+        "type": "session",
+        "session": "path-finder-87",
+        "folder": "path_finder",
+        "pid": 70144,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 400,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:38.500Z",
+        "type": "session",
+        "session": "path-finder-87",
+        "folder": "path_finder",
+        "pid": 70144,
+        "state": "idle",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 200,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:40.500Z",
+        "type": "session",
+        "session": "data-pipeline-1c",
+        "folder": "data_pipeline",
+        "pid": 70273,
+        "state": "busy",
+        "role": null
+      }
+    },
+    {
+      "delayMs": 300,
+      "event": "session",
+      "data": {
+        "ts": "2026-10-05T21:42:43.500Z",
+        "type": "session",
+        "session": "data-pipeline-1c",
+        "folder": "data_pipeline",
+        "pid": 70273,
+        "state": "idle",
+        "role": null
+      }
+    }
+  ]
+}

@@ -38,8 +38,9 @@ Then open `http://127.0.0.1:8787/`. Because `/events` returns 404 there, the pag
 | `few` | 5 sessions across 4 folders, roles, an unnamed session that gets its name, a `liveness` end |
 | `messages` | 5 sessions incl. one `waiting`, then: a `notify_on_idle` message whose recipient goes busy then idle (thread snaps back), a plain message, a reply, a notify message to a name not on the ring (placeholder body), a notify message whose recipient ends (thread dropped), and a message with `from: null` |
 | `rename` | 3 sessions; a message, then pid 29248 is renamed `path-finder-0d` → `manager-drives-feature-work`, a message sent under the former name, a notify to the former name that snaps when the renamed body goes idle, and a message to a truly unknown name (placeholder) |
-| `generated-many` | W4 output: 15 sessions built up from an empty snapshot over ~160 s, includes `waiting`, a rename, two deaths via `liveness`, a message to a name that never appears. Regenerate with the commands in `docs/webhook/fake-generator.md` |
-| `generated-mid` | W4 output: 8 sessions with a populated snapshot (mid-run connect), ~95 s of events |
+| `generated-many` | generator output: 15 sessions built up from an empty snapshot over ~160 s, includes `waiting`, a mid-run rename of one PID to `manager-drives-feature-work`, two deaths via `liveness`, a `from: null` message, a message to a name that never appears. Regenerate with the commands in `docs/webhook/fake-generator.md` |
+| `generated-mid` | generator output: 8 sessions with a populated snapshot (mid-run connect), ~95 s of events, same scenarios |
+| `generated-fast` | the 15-session run at `--speed 10`: 16 s total, rename at ~8 s. `node webhook/fake.js --fixture frontend/fixtures/generated-fast.json --speed 10 --start-time 2026-10-05T21:40:00Z` |
 | `many` | 15 sessions across 8 folders, same-folder siblings, a 30-character name, then a restart: one session ends by `liveness` and a new PID appears in the same folder |
 
 Other query parameters: `motion=reduce` or `motion=full` forces the reduced-motion behavior of particles and threads on or off (CSS still follows the OS setting).
