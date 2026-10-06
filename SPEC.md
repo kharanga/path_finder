@@ -61,6 +61,7 @@ User direction 2026-10-06: not a ring. An electrical circuit that passes message
 - `POST /sessions/<pid>/remove` appends a `session` event with state `removed` for that PID (current name, folder, role) to `events.jsonl` and broadcasts it. Returns 204, or 404 when the PID is unknown.
 - `removed` is a sixth session state. The reducer treats it as not live. The page drops the capsule immediately with no footprint. If the session later emits any event, it reappears, which is the intended way to recover a mistaken removal of a live session.
 - Edit mode also offers "Remove all ended" as one action, which removes every session currently in state `ended`.
+- Known note, 2026-10-06: in portrait with 14 or more folder rows, row labels get tight. Not a task unless the user asks.
 - Known limitation, accepted 2026-10-06: the snapshot excludes removed sessions, so a page that connects after a removal has no record of that session. If the removed session keeps sending messages, that page shows a placeholder until a session event for it arrives. A page that was open at removal time reinstates it directly.
 
 ## 5. Current state
@@ -171,7 +172,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **F12: removal polish.** (1) A message from or to the name of a removed session reinstates that capsule in its last known state instead of creating a placeholder, since any event from a removed session brings it back (§4.1). (2) In portrait, ended footprints must not overlap re-flowed capsules; drop the footprint when its slot is reused. Old `orbit` identifiers in ids and css stay as they are.
   Acceptance: demo server removed scenario shows the chatty removed session returning as a capsule, no placeholder; portrait at 15 sessions with two ended shows no overlap. Docs updated.
 
-- [~] path-finder-18 **F13: distinct trace lanes.** No two traces share a segment. Assign each capsule pair a lane: parallel traces in the same corridor are offset by a fixed gap, and each trace enters its destination at its own pin spread along the capsule edge, so two sources into one destination are visibly separate routes end to end. Lane assignment is a pure function in `layout.js`, deterministic for a given set of pairs, stable when a new pair is added (existing lanes do not shuffle). Pulses and charged threads follow their own lane.
+- [~] path-finder-18 (in review) **F13: distinct trace lanes.** No two traces share a segment. Assign each capsule pair a lane: parallel traces in the same corridor are offset by a fixed gap, and each trace enters its destination at its own pin spread along the capsule edge, so two sources into one destination are visibly separate routes end to end. Lane assignment is a pure function in `layout.js`, deterministic for a given set of pairs, stable when a new pair is added (existing lanes do not shuffle). Pulses and charged threads follow their own lane.
   Acceptance: W4 output where three sessions all message a fourth shows three separate traces into it with no overlap at any zoom; 15 sessions with dense messaging shows no shared segments; adding a message between a new pair does not move existing traces. Docs updated with the lane rule.
 
 ### 8.3 validator
@@ -185,7 +186,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 
 - [x] **V7: v2 verification.** Update V3 layout tests for the board layout, add unit tests for the `removed` state in both reducers, an integration test for the removal endpoint including persistence across restart, and re-run all docs examples.
 
-- [ ] **V8: trace lane tests.** Unit tests for lane assignment: no shared segments for a fan-in of three, stability when a pair is added, deterministic output. Re-run docs examples.
+- [~] path-finder-e5 **V8: trace lane tests.** Unit tests for lane assignment: no shared segments for a fan-in of three, stability when a pair is added, deterministic output. Re-run docs examples.
 
 ### 8.4 manager
 

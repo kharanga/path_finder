@@ -1,8 +1,8 @@
 export const BOARD = { width: 1360, height: 1000, marginX: 60, marginTop: 70, marginBottom: 70, labelWidth: 170, labelAbove: 0 };
 export const BOARD_PORTRAIT = { width: 760, height: 1100, marginX: 60, marginTop: 60, marginBottom: 60, labelWidth: 0, labelAbove: 30 };
 export const CAPSULE = { width: 220, height: 56, gapX: 36, rowGap: 64, cornerRadius: 14 };
-const CHANNEL_GAP = 22;
 const DEFAULT_PITCH = CAPSULE.height + CAPSULE.rowGap;
+export const LANE = { gap: 6, pinGap: 20 };
 
 // Returns the board constants for the landscape or the portrait (phone) orientation.
 export function boardFor(portrait) {
@@ -45,10 +45,83 @@ export function boardLayout(sessions, { portrait = false, width, height } = {}) 
   return { capsules, rows: rowBoxes, lineCount: lines.length, perLine, board: { width: boardWidth, height: boardHeight, portrait } };
 }
 
-// Routes an orthogonal trace from one capsule box to another and returns its path, corner points, and length.
-export function tracePath(from, to, { cornerRadius = 12 } = {}) {
-  const points = routePoints(from, to);
+// Routes an orthogonal trace between two boxes along its lanes and pins; returns the path, corner points, and length.
+export function tracePath(from, to, { cornerRadius = 12, laneShift = 0, shifts = {}, fromPinShift = 0, toPinShift = 0 } = {}) {
+  const points = routePoints(from, to, (corridorId) => shifts[corridorId] ?? laneShift, fromPinShift, toPinShift);
   return { d: roundedPath(points, cornerRadius), points, length: pathLength(points, cornerRadius) };
+}
+
+// Lists the corridors a trace between two boxes runs through: gaps below a line ("gap:<line>") and column gaps ("col:<gap>").
+export function traceCorridors(from, to) {
+  if (from.line === to.line) return [`gap:${from.line}`];
+  const upper = Math.min(from.line, to.line);
+  if (Math.abs(from.line - to.line) === 1) return [`gap:${upper}`];
+  const lower = Math.max(from.line, to.line);
+  return [`gap:${from.line < to.line ? from.line : from.line - 1}`, `col:${Math.max(from.index, to.index) + 1}`, `gap:${from.line < to.line ? to.line - 1 : to.line}`];
+}
+
+// Assigns every capsule pair a lane per corridor it uses and a pin per endpoint column, in order of first appearance so earlier pairs never move.
+export function assignLanes(pairKeys, { columnOf = (pid) => pid, corridorsOf = () => [] } = {}) {
+  const lanes = new Map();
+  const pins = new Map();
+  const corridorLanes = new Map();
+  const columns = new Map();
+  const perColumn = new Map();
+  const perCorridor = new Map();
+  for (const key of pairKeys) {
+    if (lanes.has(key)) continue;
+    lanes.set(key, lanes.size);
+    const pinEntry = {};
+    for (const endpoint of key.split("|")) {
+      const column = String(columnOf(endpoint));
+      const count = perColumn.get(column) ?? 0;
+      perColumn.set(column, count + 1);
+      pinEntry[endpoint] = count;
+      columns.set(endpoint, column);
+    }
+    pins.set(key, pinEntry);
+    const laneEntry = {};
+    for (const corridor of new Set(corridorsOf(key))) {
+      const count = perCorridor.get(corridor) ?? 0;
+      perCorridor.set(corridor, count + 1);
+      laneEntry[corridor] = count;
+    }
+    corridorLanes.set(key, laneEntry);
+  }
+  return { lanes, pins, corridorLanes, columns, perColumn, perCorridor };
+}
+
+// Converts a lane or pin index into a signed offset: 0, +gap, -gap, +2·gap, -2·gap, …
+export function laneOffset(index, gap = LANE.gap) {
+  if (index <= 0) return 0;
+  const magnitude = Math.ceil(index / 2) * gap;
+  return index % 2 === 1 ? magnitude : -magnitude;
+}
+
+// The gap between lanes that lets `count` lanes fit inside a corridor of the given half-width: the standard gap, or a smaller one when crowded.
+export function fittedGap(halfWidth, count, gap = LANE.gap) {
+  const sides = Math.ceil(Math.max(count - 1, 0) / 2);
+  if (sides === 0) return gap;
+  return Math.max(Math.min(gap, (halfWidth - 2) / sides), 1);
+}
+
+// Returns the tracePath options for one pair: per-corridor lane shifts and the two pin shifts, with gaps shrunk only where a corridor or column is crowded.
+export function laneOptions(assignment, key, from, to) {
+  const pins = assignment.pins.get(key) ?? {};
+  const laneEntry = assignment.corridorLanes?.get(key) ?? {};
+  const halfGap = Math.max(((from.pitch ?? CAPSULE.height + CAPSULE.rowGap) - from.height) / 2, 4);
+  const shifts = {};
+  for (const [corridor, index] of Object.entries(laneEntry)) {
+    const count = assignment.perCorridor?.get(corridor) ?? 1;
+    const halfWidth = corridor.startsWith("col:") ? CAPSULE.gapX / 2 : halfGap;
+    shifts[corridor] = laneOffset(index, fittedGap(halfWidth, count));
+  }
+  const pinShift = (box) => {
+    const column = assignment.columns?.get(String(box.pid));
+    const count = column === undefined ? 1 : assignment.perColumn?.get(column) ?? 1;
+    return laneOffset(pins[String(box.pid)] ?? 0, fittedGap(box.width / 2 - 10, count, LANE.pinGap));
+  };
+  return { shifts, fromPinShift: pinShift(from), toPinShift: pinShift(to) };
 }
 
 // Returns the order-independent key that identifies the trace between two PIDs.
@@ -91,32 +164,35 @@ function folderSortKey(folder) {
   return String(folder).replace(/_/g, "-");
 }
 
-function routePoints(from, to) {
+function routePoints(from, to, shiftFor, fromPinShift, toPinShift) {
   const lineGap = Math.max((from.pitch ?? DEFAULT_PITCH) - from.height, 8);
-  const channelGap = Math.min(CHANNEL_GAP, lineGap / 2);
+  const halfGap = lineGap / 2;
+  const fromX = from.cx + fromPinShift;
+  const toX = to.cx + toPinShift;
+  const corridors = traceCorridors(from, to);
   if (from.line === to.line) {
-    if (Math.abs(from.cx - to.cx) < 1) return [{ x: from.cx, y: from.cy }, { x: to.cx, y: to.cy }];
-    const channelY = from.y + from.height + channelGap;
-    return [{ x: from.cx, y: from.y + from.height }, { x: from.cx, y: channelY }, { x: to.cx, y: channelY }, { x: to.cx, y: to.y + to.height }];
+    if (Math.abs(fromX - toX) < 1) return [{ x: fromX, y: from.cy }, { x: toX, y: to.cy }];
+    const channelY = from.y + from.height + halfGap + shiftFor(corridors[0]);
+    return [{ x: fromX, y: from.y + from.height }, { x: fromX, y: channelY }, { x: toX, y: channelY }, { x: toX, y: to.y + to.height }];
   }
   const downward = to.cy > from.cy;
   const startY = downward ? from.y + from.height : from.y;
   const endY = downward ? to.y : to.y + to.height;
   if (Math.abs(from.line - to.line) === 1) {
-    if (Math.abs(from.cx - to.cx) < 1) return [{ x: from.cx, y: startY }, { x: to.cx, y: endY }];
-    const channelY = (startY + endY) / 2;
-    return [{ x: from.cx, y: startY }, { x: from.cx, y: channelY }, { x: to.cx, y: channelY }, { x: to.cx, y: endY }];
+    if (Math.abs(fromX - toX) < 1) return [{ x: fromX, y: startY }, { x: toX, y: endY }];
+    const channelY = (startY + endY) / 2 + shiftFor(corridors[0]);
+    return [{ x: fromX, y: startY }, { x: fromX, y: channelY }, { x: toX, y: channelY }, { x: toX, y: endY }];
   }
-  const nearChannelY = downward ? startY + channelGap : startY - channelGap;
-  const farChannelY = downward ? endY - channelGap : endY + channelGap;
-  const busX = columnGapX(from.columnOrigin ?? BOARD.marginX + BOARD.labelWidth, Math.max(from.index, to.index) + 1);
+  const nearChannelY = (downward ? startY + halfGap : startY - halfGap) + shiftFor(corridors[0]);
+  const farChannelY = (downward ? endY - halfGap : endY + halfGap) + shiftFor(corridors[2]);
+  const busX = columnGapX(from.columnOrigin ?? BOARD.marginX + BOARD.labelWidth, Math.max(from.index, to.index) + 1) + shiftFor(corridors[1]);
   return [
-    { x: from.cx, y: startY },
-    { x: from.cx, y: nearChannelY },
+    { x: fromX, y: startY },
+    { x: fromX, y: nearChannelY },
     { x: busX, y: nearChannelY },
     { x: busX, y: farChannelY },
-    { x: to.cx, y: farChannelY },
-    { x: to.cx, y: endY },
+    { x: toX, y: farChannelY },
+    { x: toX, y: endY },
   ];
 }
 

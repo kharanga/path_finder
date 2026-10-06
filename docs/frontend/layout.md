@@ -1,8 +1,8 @@
 # layout.js
 
-Pure geometry for the Circuit board. No DOM, runs in Node. Exports three constant objects and six functions.
+Pure geometry for the Circuit board. No DOM, runs in Node. Exports four constant objects and eleven functions.
 
-Constants: `BOARD = { width: 1360, height: 1000, marginX: 60, marginTop: 70, marginBottom: 70, labelWidth: 170, labelAbove: 0 }` (landscape: the viewBox and the space reserved on the left for folder labels), `BOARD_PORTRAIT = { width: 760, height: 1100, marginX: 60, marginTop: 60, marginBottom: 60, labelWidth: 0, labelAbove: 30 }` (phone: labels above each row), and `CAPSULE = { width: 220, height: 56, gapX: 36, rowGap: 64, cornerRadius: 14 }`.
+Constants: `BOARD = { width: 1360, height: 1000, marginX: 60, marginTop: 70, marginBottom: 70, labelWidth: 170, labelAbove: 0 }` (landscape: the viewBox and the space reserved on the left for folder labels), `BOARD_PORTRAIT = { width: 760, height: 1100, marginX: 60, marginTop: 60, marginBottom: 60, labelWidth: 0, labelAbove: 30 }` (phone: labels above each row), `CAPSULE = { width: 220, height: 56, gapX: 36, rowGap: 64, cornerRadius: 14 }`, and `LANE = { gap: 6, pinGap: 20 }` (standard distance between parallel lanes in a corridor, and between pins on a capsule edge; both shrink only where a corridor or column is crowded, see `fittedGap`).
 
 A capsule box is `{ pid, folder, x, y, width, height, cx, cy, line, index, pitch, columnOrigin }`: top-left corner, size, center, which line of the board it sits on (0 at the top), its position in that line, the vertical distance between lines in this layout (used to keep trace channels inside the gaps), and the x where column 0 starts (used to find column gaps and the row edge).
 
@@ -52,11 +52,13 @@ boardLayout([]).capsules.size              // 0
 
 With `many.json` (15 sessions, 8 folders): 8 lines, every folder on one line; `add-semantic-similarity-scores` is the first row, its label at `labelX` 60, `labelY` 98 (vertically centered on the capsule). In portrait: `perLine` 2, `lineCount` 10, `board` `{ width: 760, height: 1100, portrait: true }`, every capsule inside the board (right edge at most 536, bottom at most 1040), and the first row's label at `labelX` 60, `labelY` 80, ten units above its capsule at `y` 90.
 
-## tracePath(from, to, { cornerRadius })
+## tracePath(from, to, { cornerRadius, shifts, laneShift, fromPinShift, toPinShift })
 
-What it does: routes an orthogonal trace between two boxes so that it never crosses another capsule. Same line: down from the sender's bottom edge to a channel below the line (22 units, or half the gap to the next line when lines are packed), across, and up into the recipient's bottom edge. Adjacent lines: out of the facing edge, to the channel midway between the two lines, across, and into the facing edge of the recipient; vertically aligned boxes get a straight run. Lines further apart: out of the facing edge into the channel next to the sender's line, across to a vertical bus in the column gap right of the rightmost of the two capsules, along the bus to the channel next to the recipient's line, across, and in. Corners are rounded with quadratic curves of `cornerRadius` (12 by default, reduced when a segment is too short).
+What it does: routes an orthogonal trace between two boxes so that it never crosses another capsule, along the trace's own lanes. Every horizontal run lies in the gap between two lines, at the gap's center plus that corridor's shift (`shifts[corridorId]`, falling back to `laneShift`). Same line: down from the sender's bottom edge into the gap below the line, across, and up into the recipient's bottom edge. Adjacent lines: out of the facing edge into the gap between them, across, and into the facing edge of the recipient; vertically aligned pins get a straight run. Lines further apart: out of the facing edge into the gap next to the sender's line, across to a vertical bus in the column gap right of the rightmost of the two capsules (shifted by that column corridor's shift), along the bus to the gap next to the recipient's line, across, and in. The vertical runs at the two capsules sit at `cx + fromPinShift` and `cx + toPinShift`. Corners are rounded with quadratic curves of `cornerRadius` (12 by default, reduced when a segment is too short).
 
-Inputs: `from`, `to` (capsule boxes), `cornerRadius` (number, optional).
+Lane rule (SPEC §4): with the options from `laneOptions`, no two traces share a segment and no trace crosses a capsule. Horizontals in the same gap differ by their lane in that corridor; verticals at capsules differ by their pin, unique per column; bus verticals sit in column gaps, each on its own lane. Checked over every fixture in both orientations: 0 shared segments and 0 crossings (the same fixtures without lanes have up to 31 shared segments).
+
+Inputs: `from`, `to` (capsule boxes), `cornerRadius` (number, optional), `shifts` (object `{ [corridorId]: number }`, optional, from `laneOptions`), `laneShift` (number, default 0, used for corridors missing from `shifts`), `fromPinShift`, `toPinShift` (number, default 0, added to the x of the vertical run at each capsule).
 
 Output: `{ d, points, length }`. `d` is the SVG path (coordinates rounded to one decimal), `points` the unrounded corner points, `length` the path length accounting for the rounded corners.
 
@@ -66,16 +68,129 @@ Example, boxes from the `few.json` layout above (`a` = pid 30222, `b` = pid 3033
 
 ```js
 tracePath(a, b).d
-// "M 340 468 L 340 479 Q 340 490 351 490 L 585 490 Q 596 490 596 479 L 596 468"
+// "M 340 468 L 340 488 Q 340 500 352 500 L 584 500 Q 596 500 596 488 L 596 468"
 tracePath(a, b).points
-// [{ x: 340, y: 468 }, { x: 340, y: 490 }, { x: 596, y: 490 }, { x: 596, y: 468 }]
-Math.round(tracePath(a, b).length)   // 290
+// [{ x: 340, y: 468 }, { x: 340, y: 500 }, { x: 596, y: 500 }, { x: 596, y: 468 }], channel at the gap center 32 below the line
+Math.round(tracePath(a, b).length)   // 310
+tracePath(a, b, { laneShift: 6, fromPinShift: 20, toPinShift: -20 }).points
+// [{ x: 360, y: 468 }, { x: 360, y: 506 }, { x: 576, y: 506 }, { x: 576, y: 468 }]
+tracePath(c, d, { shifts: { "gap:0": 6, "col:1": -6, "gap:2": 12 } }).points
+// [{ x: 340, y: 348 }, { x: 340, y: 386 }, { x: 462, y: 386 }, { x: 462, y: 632 }, { x: 340, y: 632 }, { x: 340, y: 652 }]
 tracePath(c, a).d                    // "M 340 348 L 340 412", straight down
 Math.round(tracePath(c, a).length)   // 64
 // d = pid 30111 (tag-analyzer, line 3, same column as c): two lines apart, so the route uses the bus in the gap right of column 0
 tracePath(c, d).points.length        // 6
 tracePath(c, d).points[2].x          // 468, the gap between column 0 and column 1
 ```
+
+## traceCorridors(from, to)
+
+What it does: names the corridors a trace between two boxes runs through, in travel order. Horizontal runs use the gap below a line, `gap:<line>`; the vertical bus of a far route uses a column gap, `col:<gapIndex>` (gap 1 is between column 0 and column 1).
+
+Inputs: `from`, `to` (capsule boxes).
+
+Output: `string[]` with one id for a same-line or adjacent-line route, three (`gap`, `col`, `gap`) for a far route.
+
+Errors: throws `TypeError` if a box is missing.
+
+Example, boxes from the `few.json` layout (`c` line 0, `a` and `b` line 1, `d` line 3, all in column 0):
+
+```js
+traceCorridors(a, b) // ["gap:1"]
+traceCorridors(c, a) // ["gap:0"]
+traceCorridors(c, d) // ["gap:0", "col:1", "gap:2"]
+traceCorridors(d, c) // ["gap:2", "col:1", "gap:0"]
+```
+
+## assignLanes(pairKeys, { columnOf, corridorsOf })
+
+What it does: in order of first appearance gives every capsule pair a global lane number (0, 1, 2, …, used only for `data-lane`), a lane index in each corridor it uses (counted per corridor, so only traces sharing a gap or a column gap compete), and a pin index at each endpoint that is unique within the endpoint's column (all capsules sharing an x position across rows). Later keys never change earlier assignments, so adding a pair does not move existing traces. Duplicate keys are ignored.
+
+Inputs:
+- `pairKeys` (string[]): `traceKey` values in creation order.
+- `columnOf` (function(pidString) → column id, optional): the renderer passes the capsule's `index` in its line; default identity (every capsule its own column).
+- `corridorsOf` (function(key) → string[], optional): the renderer passes `traceCorridors` of the two boxes; default none.
+
+Output: `{ lanes: Map<key, laneIndex>, pins: Map<key, { [pid]: pinIndex }>, corridorLanes: Map<key, { [corridorId]: laneIndex }>, columns: Map<pid, columnId>, perColumn: Map<columnId, count>, perCorridor: Map<corridorId, count> }`.
+
+Errors: none.
+
+Example:
+
+```js
+const first = assignLanes(["1|2", "1|3", "2|3"]);
+[...first.lanes]            // [["1|2", 0], ["1|3", 1], ["2|3", 2]]
+first.pins.get("1|3")       // { "1": 1, "3": 0 }   second trace at capsule 1, first at capsule 3
+const next = assignLanes(["1|2", "1|3", "2|3", "1|4"]);
+next.lanes.get("1|2")       // 0, unchanged
+next.pins.get("1|4")        // { "1": 2, "4": 0 }
+assignLanes(["1|2", "3|4"], { columnOf: () => "c" }).pins.get("3|4") // { "3": 2, "4": 3 }, pins shared per column
+const corridors = assignLanes(["1|2", "1|3", "2|3"], { corridorsOf: (k) => (k === "2|3" ? ["gap:1"] : ["gap:0"]) });
+[...corridors.corridorLanes] // [["1|2", { "gap:0": 0 }], ["1|3", { "gap:0": 1 }], ["2|3", { "gap:1": 0 }]]
+[...corridors.perCorridor]   // [["gap:0", 2], ["gap:1", 1]]
+```
+
+## fittedGap(halfWidth, count, gap)
+
+What it does: the distance between lanes that lets `count` lanes fit inside a corridor of the given half-width: the standard `gap` while they fit, a smaller one (never below 1) when the corridor is crowded.
+
+Inputs: `halfWidth` (number: half the free width of the corridor, with 2 units of margin kept), `count` (number of lanes in it), `gap` (number, default `LANE.gap`).
+
+Output: number.
+
+Errors: none.
+
+Example:
+
+```js
+fittedGap(32, 3)       // 6
+fittedGap(32, 11)      // 6, eleven lanes still fit in a 64-unit gap
+fittedGap(32, 13)      // 5
+fittedGap(12, 5)       // 5
+fittedGap(100, 3, 20)  // 20
+fittedGap(100, 13, 20) // 16.33…, thirteen pins on one capsule edge
+```
+
+## laneOffset(index, gap)
+
+What it does: turns a lane or pin index into a signed offset that alternates sides: 0, +gap, −gap, +2·gap, −2·gap, …
+
+Inputs: `index` (number ≥ 0), `gap` (number, default `LANE.gap`).
+
+Output: number.
+
+Errors: none.
+
+Example:
+
+```js
+[0, 1, 2, 3, 4, 5].map(i => laneOffset(i))  // [0, 6, -6, 12, -12, 18]
+[0, 1, 2].map(i => laneOffset(i, 20))        // [0, 20, -20]
+```
+
+## laneOptions(assignment, key, from, to)
+
+What it does: builds the `tracePath` options for one pair: a shift per corridor from its corridor lane (`laneOffset` with `fittedGap` of that corridor: half the line gap for `gap:` corridors, half the column gap for `col:` corridors) and the pin shifts at the two endpoints (`laneOffset` with `fittedGap` of the capsule's half-width minus 10 for the number of traces in that column). The same geometry results whichever direction a pulse travels.
+
+Inputs: `assignment` (from `assignLanes`), `key` (string), `from`, `to` (capsule boxes in travel order).
+
+Output: `{ shifts: { [corridorId]: number }, fromPinShift, toPinShift }`.
+
+Errors: none; an unknown key gives empty shifts and zero pins.
+
+Example, `frontend/fixtures/fanin.json` with every pair routed in message order (`columnOf` = capsule index, `corridorsOf` = `traceCorridors`):
+
+```js
+keys // ["51001|51004", "51002|51004", "51003|51004", "51004|51005", "51001|51005"]
+[...assignment.perColumn]   // [["0", 8], ["1", 2]]   eight trace ends in column 0, two in column 1
+[...assignment.perCorridor] // [["gap:0", 2], ["col:1", 2], ["gap:2", 4], ["gap:1", 1], ["gap:3", 1], ["col:2", 1]]
+laneOptions(assignment, "51001|51004", billing, manager) // { shifts: { "gap:0": 0, "col:1": 0, "gap:2": 0 }, fromPinShift: 0, toPinShift: 20 }
+laneOptions(assignment, "51002|51004", docs, manager)    // { shifts: { "gap:1": 0, "col:1": 6, "gap:2": 6 }, fromPinShift: -20, toPinShift: 40 }
+laneOptions(assignment, "51003|51004", infra, manager)   // { shifts: { "gap:2": -6 }, fromPinShift: -40, toPinShift: 60 }
+// the three fan-in traces end at x 360, 380, 400 on the manager's top edge; the fifth trace (billing → path-finder-18) shares gap:0 and gap:2 with the first and runs 6 and 12 units beside it
+```
+
+Routing only the first four pairs and then all five gives identical paths for the first four. Over every fixture (`fanin`, `generated-many`, `generated-mid`, `generated-fast`, `messages`, `rename`, `removed`, `many`) in both orientations, lanes give 0 shared segments and 0 capsule crossings, against up to 31 shared segments without lanes.
 
 ## traceKey(pidA, pidB)
 
