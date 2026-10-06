@@ -3,7 +3,9 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { SESSION_STATES } from "./schema.js";
 
+/** Claude Code messaging socket directory, an undocumented internal used only as a hint. */
 export const SOCKET_DIR = "/tmp/cc-socks";
+/** Claude Code session registry directory holding one <pid>.json per live session. */
 export const DEFAULT_SESSIONS_DIR = join(homedir(), ".claude", "sessions");
 
 /** Returns true when a process with this PID exists, using signal 0 and treating EPERM as alive. */

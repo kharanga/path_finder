@@ -1,25 +1,27 @@
-# Ready: F5 timeline strip (plus placeholder bodies from the F4 decision)
+# Ready: F4 round 2 (null sender) and F6 side panel
 
 ## Done
 
-`frontend/timeline.js` (new)
-- `createTimeline()`: records every snapshot entry and incremental event with its event timestamp and arrival time, sorted by time. `range()`, `messageTimes()`, `stateAt(tsMs)` (rebuilds a state from scratch by replaying entries at or before `tsMs`, with a unique negative `snapshotSeq` so the renderer never animates a replay), `size`.
-- `mountTimelineStrip(container, timeline, { onScrub, onLive })`: binds the footer in `index.html` (Live button, range input, tick marks per message, clock label). Slider input leaves live mode and calls `onScrub`; Live calls `onLive`. `refresh()` grows the range as events arrive; in live mode the knob follows the end, in scrub mode it stays put. Disabled with fewer than two distinct timestamps.
-- `formatClock(tsMs)`.
+`frontend/panel.js` (new)
+- `describeMessage(message)` → `{ from, fromKnown, to, time, iso, text, notify }`; a `null` sender becomes `unknown sender` with `fromKnown: false`. `formatTimestamp(ts)` → local `YYYY-MM-DD HH:MM:SS` or `unknown time`.
+- `createPanel(element, { onClose })` → `{ show(message, index), hide(), selectedIndex }`. Fills the `<aside id="panel">` fields, italic sender when unknown, `notify on idle` badge only when set, ISO timestamp as tooltip on the time, focuses the close button on open.
 
-`frontend/app.js`: keeps the live state and the timeline in step. Live mode draws the live state on every event; scrub mode draws `timeline.stateAt(ts)` with `instant: true` and keeps recording, so nothing is lost; Live redraws the live state instantly and resumes. Prunes placeholders every 5 s.
+`frontend/render.js`
+- Particles are focusable buttons (`role="button"`, `tabindex="0"`, `aria-label`) with a transparent 16-unit hit circle at the recipient, enabled on arrival. Click, Enter, or Space calls the new `onSelect(message, index)` option. `draw.select(index)` toggles class `selected` (visible ring) on the matching particle; `null` clears.
+- Default `lingerMs` raised from 6 s to 15 s so a particle stays clickable long enough.
+- Null sender: particle starts at the ring center; title and label say `unknown sender`.
 
-`frontend/render.js`: `draw(state, { instant })`. Instant removes non-live bodies at once (no ghosts), skips fade-in, shows threads fully drawn. Fade-in and thread draw-on now use a synchronous style flush instead of `requestAnimationFrame`, which Chrome pauses in background tabs (bodies were stuck invisible when the tab was not in front). Placeholder bodies: hollow dashed circle, italic label, explanatory title.
+`frontend/state.js` (F4 review failure 1): `applyMessageEvent` keeps messages with `from: null` or absent `from` (stored as `null`), still requires string `to`, drops other `from` types. No placeholder for a null sender. `sessionByName(state, null)` returns `undefined`.
 
-`frontend/state.js` (F4 decision, manager 2026-10-05): a message `from` or `to` a name with no session creates a placeholder `{ name, folder: folderFromName(name), createdAtMs }`. Placeholders appear in `liveSessions` as pseudo-sessions `{ pid: "placeholder:<name>", state: "placeholder" }` at the folder slot guessed by stripping the trailing `-<id>`, are found by `sessionByName` so particles and threads route to them, are merged (deleted) when a session event with that name arrives, and are removed by `prunePlaceholders(state, nowMs, maxAgeMs = 60000)`. `applySnapshot`, `applyEvent`, `applyMessageEvent` take an optional `receivedAtMs` (default `Date.now()`) so tests control the clock. Folder sorting treats `_` and `-` as equal so a guessed `path-finder` sits beside `path_finder`.
+`frontend/app.js`: creates the panel, passes `onSelect` to the renderer, Escape closes the panel, closing clears the highlight.
 
-`frontend/index.html`, `frontend/orbit.css`: footer strip markup and styles; placeholder style.
+`frontend/index.html`, `frontend/orbit.css`: panel markup (header with close button, From/To/Time list, badge, text) and styles. Floats top-right over the ring at desktop width, docks to the bottom under 600 px. `[hidden]` inside the panel is forced to `display: none` so the badge really hides.
 
-Fixtures: `generated-many.json` and `generated-mid.json` written from W4 with the commands in `docs/webhook/fake-generator.md`; both load and run in the page (see test 6). `messages.json` unchanged, its `nobody-99` message now produces a placeholder body instead of routing to the center.
+`frontend/fixtures/messages.json`: one more event at the end, a message with `from: null` to `path-finder-18` (now 10 events, 8 messages, 7 ticks).
 
-Docs: `docs/frontend/timeline.md` (new), `state.md`, `render.md`, `app.md`, `README.md` updated.
+Docs: `docs/frontend/panel.md` (new); `render.md` (onSelect, select, hit area, linger, null sender, selection example), `state.md` (null sender rules and examples, counts), `timeline.md` (counts), `app.md` (panel), `README.md`.
 
-SPEC.md §8.2 F5 marked `[~] path-finder-18`.
+SPEC.md §8.2 F6 marked `[~] path-finder-18`.
 
 ## How to test
 
@@ -27,18 +29,18 @@ SPEC.md §8.2 F5 marked `[~] path-finder-18`.
 python3 -m http.server 8787 --bind 127.0.0.1 --directory frontend
 ```
 
-1. `?fixture=messages`, wait 15 s. Strip at the bottom: Live button (disabled, green), slider knob at the right, 6 ticks, label `Live`. `nobody-99` is a dashed hollow body at the top of the ring with an italic label and the thread from `path-finder-0d` ends on it, not at the center. After 60 s from its message it disappears.
-2. Drag the knob left. Label shows a clock time, border above the strip turns yellow, Live button enables, the ring shows that instant's state with no fades or particles. Early in this fixture (before 22:00:00Z event time) only the snapshot message exists, so the ring shows two placeholders, `path-finder-0d` and `path-finder-18`, which is the faithful state at that moment.
-3. While scrubbed, events keep arriving: the range grows (knob proportionally moves left) but the ring does not change. Click Live: current state appears at once, label `Live`.
-4. Reload while the tab is in the background (open it, switch tabs, come back after 10 s): bodies are fully visible, not stuck faded.
-5. Node, `docs/frontend/timeline.md` example: `size` 15, range, 6 message times, `stateAt` at 22:00:13Z and at the end, `stateAt(0)` empty. `docs/frontend/state.md` placeholder examples: create, merge, prune at +59 s (0) and +60 s (1), `folderFromName` cases.
-6. `?fixture=generated-mid` (8 sessions, snapshot) and `?fixture=generated-many` (15 sessions from empty, ~160 s): bodies appear, messages fly, strip fills with ticks, scrubbing works. One generated message has `from: null`; the reducer drops it per the §3 schema (see Requests 2).
+1. `?fixture=messages`, wait 17 s. At ~16 s a particle flies from the ring center to `path-finder-18` (null sender). Click the small dot resting on `path-finder-18`: the panel opens top-right with From `unknown sender` (italic), To `path-finder-18`, local time with the ISO on hover, no badge, full text. The particle gets a highlighted ring.
+2. Click the dot resting on the `nobody-99` placeholder at the top: panel shows From `path-finder-0d`, the `notify on idle` badge, and the text. Two `path-finder-0d` notify particles rest there (the one to `nobody-99`, and the one to `listings-bc`, which landed at that spot before `listings-bc` ended and `nobody-99` slid into its slot); arrived particles stay where they landed, so the later one is on top. Particles are clickable from arrival for 15 s; a click during flight does nothing.
+3. Press Escape or the × button: panel closes, highlight clears. Tab to a particle and press Enter: panel opens (keyboard path).
+4. Narrow the window under 600 px: the panel docks to the bottom instead of the right.
+5. Node: `docs/frontend/panel.md` examples (`describeMessage` for a null and a known sender, `formatTimestamp(null)`), `state.md` null-sender examples (`from: null` kept, `from: 5` dropped, thread list unchanged after the tenth event, 8 messages), `timeline.md` counts (16 entries, 7 message times, end 22:00:29Z).
+6. DOM stub: `render.md` selection example (title text with `unknown sender`, click dispatch calls `onSelect` with index 7, `draw.select(7)` / `draw.select(null)` toggles `selected`).
+7. `?fixture=generated-mid`: the generator's `from: null` message now produces a particle from the center and is clickable.
 
 ## Requests
 
-1. Validator: `docs/frontend/timeline.md` `formatClock` example is timezone dependent; compare against `new Date(ts).getHours()` etc. in the test's own zone.
-2. webhook-builder (via manager): the generator emits one message with `from: null`. §3 says `from` is a string, so the page drops it. If a sender can really be unknown, the contract should say so and I will render it from a placeholder or the center; otherwise the generator should not emit it.
-3. Manager: the generator's 15-session run takes 160 s real time; a `--speed` for `--fixture` output would make validator checks faster if W4 does not already support it.
+1. Validator: `describeMessage(...).time` and `formatTimestamp` are local-time strings; compare against `new Date(ts)` components in the test's zone.
+2. Manager: when the user scrubs the timeline, particles are not shown (replays never animate), so there is nothing to click for historical messages. If history should be browsable, F7 or a later task could make the timeline ticks clickable to open the same panel. Not done, awaiting your call.
 
 ## Blocked
 

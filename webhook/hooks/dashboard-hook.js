@@ -4,7 +4,9 @@ import { homedir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
+/** Where the hook appends events when CC_DASHBOARD_EVENTS is not set. */
 export const DEFAULT_EVENTS_PATH = join(homedir(), ".claude", "dashboard", "events.jsonl");
+/** Claude Code session registry directory used to map session_id to PID and display name. */
 export const DEFAULT_SESSIONS_DIR = join(homedir(), ".claude", "sessions");
 
 const STATE_BY_HOOK_EVENT = {

@@ -10,7 +10,7 @@ The state object:
 
 `Placeholder` is `{ name, folder, createdAtMs }`: a body for a name that appeared in a message but has no session event yet. `folder` is guessed by `folderFromName`. Placeholders are merged away when a session event with that name arrives and pruned by `prunePlaceholders` after 60 s.
 
-`Session` is `{ pid, session, folder, role, state, ts, firstSeen }`. `state` is one of `started`, `busy`, `waiting`, `idle`, `ended`. `Message` is `{ ts, from, to, text, notify_on_idle }`. `Thread` is `{ id, from, to, ts, status, resolvedTs }` where `id` is the index of the message in `messages` and `status` is `waiting`, `snapped`, or `dropped`. `snapshotSeq` counts snapshots so the renderer can tell a rebuild from incremental growth.
+`Session` is `{ pid, session, folder, role, state, ts, firstSeen }`. `state` is one of `started`, `busy`, `waiting`, `idle`, `ended`. `Message` is `{ ts, from, to, text, notify_on_idle }`; `from` is a string or `null` (the hook could not resolve the sender's name). `Thread` is `{ id, from, to, ts, status, resolvedTs }` where `id` is the index of the message in `messages` and `status` is `waiting`, `snapped`, or `dropped`. `snapshotSeq` counts snapshots so the renderer can tell a rebuild from incremental growth.
 
 ## createState()
 
@@ -39,7 +39,7 @@ Inputs:
 
 Output: the same `state` object, mutated.
 
-Errors: none. Malformed entries (session without numeric `pid`, message without string `from` and `to`) are skipped.
+Errors: none. Malformed entries (session without numeric `pid`, message without string `to`) are skipped.
 
 Example:
 
@@ -105,8 +105,10 @@ state.threads.map(t => `${t.id}:${t.to}:${t.status}`) // ["1:path-finder-e5:wait
 // after event 2 (path-finder-e5 busy): unchanged, still waiting
 // after event 5 (path-finder-e5 idle)
 state.threads.map(t => `${t.id}:${t.to}:${t.status}`) // ["1:path-finder-e5:snapped"]
-// after all 9 events
+// after all 10 events (the tenth is a message with from: null, no thread)
 state.threads.map(t => `${t.id}:${t.to}:${t.status}`) // ["1:path-finder-e5:snapped", "4:nobody-99:waiting", "5:listings-bc:dropped"]
+state.messages.length // 8
+state.messages.at(-1).from // null
 ```
 
 ## applyMessageEvent(state, event, receivedAtMs)
@@ -115,7 +117,7 @@ What it does: appends a message to `state.messages`, oldest first. When `notify_
 
 Inputs:
 - `state` (object).
-- `event` (object): a `message` event. Requires string `from` and `to`; otherwise ignored. Missing `text` becomes `""`, missing `notify_on_idle` becomes `false`.
+- `event` (object): a `message` event. Requires string `to`; `from` may be a string, `null`, or absent (stored as `null`), any other type drops the event. Missing `text` becomes `""`, missing `notify_on_idle` becomes `false`. No placeholder is created for a `null` sender.
 - `receivedAtMs` (number, default `Date.now()`): wall-clock arrival time used for placeholder expiry.
 
 Output: the same `state`.
@@ -127,6 +129,9 @@ Example:
 ```js
 applyMessageEvent(state, { ts: "2026-10-05T21:44:05Z", type: "message", from: "path-finder-e5", to: "path-finder-18", text: "F1 spec updated" });
 state.messages.at(-1) // { ts: "2026-10-05T21:44:05Z", from: "path-finder-e5", to: "path-finder-18", text: "F1 spec updated", notify_on_idle: false }
+applyMessageEvent(state, { ts: "2026-10-05T22:00:29Z", type: "message", from: null, to: "path-finder-18", text: "sender unknown" });
+state.messages.at(-1).from // null
+applyMessageEvent(state, { from: 5, to: "x", text: "t" }).messages.length // unchanged, numeric from is dropped
 ```
 
 Placeholders:
@@ -211,9 +216,9 @@ liveSessions(state).map(sessionLabel)
 
 ## sessionByName(state, name)
 
-What it does: finds the session whose display name equals `name`, or the placeholder pseudo-session with that name.
+What it does: finds the session whose display name equals `name`, or the placeholder pseudo-session with that name. A non-string `name` (such as a `null` sender) gives `undefined`.
 
-Inputs: `state` (object), `name` (string).
+Inputs: `state` (object), `name` (string or null).
 
 Output: the `Session` or placeholder pseudo-session, or `undefined`.
 

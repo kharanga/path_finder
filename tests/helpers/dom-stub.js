@@ -26,7 +26,14 @@ class StubElement {
     this.parentNode = null;
     this.textContent = "";
     this.classList = new ClassList();
-    this.dataset = {};
+    const attributes = this.attributes;
+    this.dataset = new Proxy({}, {
+      set(target, key, value) {
+        target[key] = String(value);
+        attributes[`data-${String(key).replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`] = String(value);
+        return true;
+      },
+    });
     this.style = { setProperty(name, value) { this[name] = value; } };
     this.listeners = new Map();
     this.disabled = false;
@@ -59,6 +66,7 @@ class StubElement {
   }
   setAttribute(name, value) {
     this.attributes[name] = String(value);
+    if (name.startsWith("data-")) this.dataset[name.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = value;
     if (name === "class") this.classList.add(...String(value).split(/\s+/).filter(Boolean));
   }
   getAttribute(name) {

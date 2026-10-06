@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
+/** Where the catch-all writes when no path argument or CC_DASHBOARD_RAW_LOG is given. */
 export const DEFAULT_RAW_LOG = "/tmp/cc-dashboard-raw.jsonl";
 
 const KEPT_TOP_LEVEL_FIELDS = ["session_id", "hook_event_name", "cwd", "tool_name", "source", "reason", "stop_hook_active", "permission_mode"];

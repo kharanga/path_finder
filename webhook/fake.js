@@ -6,10 +6,14 @@ import { pathToFileURL } from "node:url";
 import { validateEvent } from "./schema.js";
 import { createState, applyEvent, snapshot } from "./state.js";
 
+/** The real hooks output file; the generator refuses to write here. */
 export const REAL_EVENTS_PATH = join(homedir(), ".claude", "dashboard", "events.jsonl");
+/** Recipient name used for the message whose session never appears on the ring. */
 export const GHOST_RECIPIENT = "ghost-session-00";
+/** Virtual seconds between a silent death and its liveness entry in fixture mode. */
 export const DEFAULT_LIVENESS_DELAY_SECONDS = 5;
 
+/** Start folders for the fake sessions, in start order; repeats make same-folder siblings. */
 export const FOLDERS = [
   "listings", "listings", "listings",
   "tag_analyzer",
