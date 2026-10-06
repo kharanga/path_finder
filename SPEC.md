@@ -141,10 +141,10 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **F5: timeline strip.** Scrub through history. Scrubbing replays state at that moment without losing the live stream.
 - [~] path-finder-18 (in review) **F6: side panel.** Click a particle to show from, to, time, and full text.
 - [x] **F7: accessibility and responsiveness.** `prefers-reduced-motion` disables pulse, particles become instant markers. Works at phone width. Decision 2026-10-05: message ticks on the timeline open the same side panel, so past messages are reachable while scrubbing.
-- [~] path-finder-18 **F8: documentation standard.** One-line docstring on each public function. `docs/frontend/` has one file per module with what, inputs, output, errors, example.
+- [~] path-finder-18 (in review) **F8: documentation standard.** One-line docstring on each public function. `docs/frontend/` has one file per module with what, inputs, output, errors, example.
   Acceptance for F3 to F8: validator confirms against W4 output and the docs examples.
 
-- [ ] **F9: session renames.** A session can be renamed mid-run (see §6). Resolve message endpoints to bodies by PID when the name matches no live body but matches a former name of one; keep a per-PID list of former names from session events; never create a placeholder body for a former name of a live session. Label updates in place with a brief highlight.
+- [~] path-finder-18 **F9: session renames.** A session can be renamed mid-run (see §6). Resolve message endpoints to bodies by PID when the name matches no live body but matches a former name of one; keep a per-PID list of former names from session events; never create a placeholder body for a former name of a live session. Label updates in place with a brief highlight.
   Acceptance: W4 rename scenario shows one body throughout with the label changing, messages before and after the rename attach to it, no placeholder appears. Docs updated.
 
 ### 8.3 validator

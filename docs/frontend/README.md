@@ -2,15 +2,22 @@
 
 Owner: frontend-builder.
 
-One markdown file per module in `frontend/`:
+Files in `frontend/` and where each is documented:
 
-- `state.md`: snapshot and event reducer (`frontend/state.js`).
-- `layout.md`: ring placement keyed by folder (`frontend/layout.js`).
-- `connect.md`: SSE connection with fixture fallback (`frontend/connect.js`).
-- `render.md`: bodies, labels, empty ring (`frontend/render.js`).
-- `timeline.md`: event recording, state at an instant, scrubber strip (`frontend/timeline.js`).
-- `panel.md`: message detail panel (`frontend/panel.js`).
-- `app.md`: page bootstrap (`frontend/app.js`, `frontend/index.html`).
+| File | Role | Docs |
+|---|---|---|
+| `index.html` | the only page: top bar, `<svg id="orbit">`, message panel, timeline strip | `app.md` |
+| `orbit.css` | all styles, state colors, reduced-motion and phone-width rules | `render.md` (styling hooks), `app.md` (responsive notes) |
+| `app.js` | bootstrap, wires connect → state → render, timeline, panel | `app.md` |
+| `connect.js` | SSE client with fixture fallback | `connect.md` |
+| `state.js` | pure reducer: sessions, placeholders, messages, threads | `state.md` |
+| `layout.js` | pure geometry: ring slots, label placement, message curves | `layout.md` |
+| `render.js` | SVG renderer: bodies, particles, threads, selection | `render.md` |
+| `timeline.js` | event recorder, state at an instant, scrubber strip | `timeline.md` |
+| `panel.js` | message detail panel | `panel.md` |
+| `fixtures/*.json` | page fixtures, table below | this file |
+
+Pure modules (`state.js`, `layout.js`, `panel.js` except `createPanel`, `timeline.js` except `mountTimelineStrip`) import nothing from the DOM and run in Node as is. The rest need a DOM; a stub that implements `createElement`, `createElementNS`, `setAttribute`/`getAttribute`, `classList`, `dataset`, `style`, `appendChild`/`remove`, `querySelector(All)` with class, attribute, and descendant selectors, `textContent`, `addEventListener`/`dispatchEvent`, `hidden`, `click`, and `focus` is enough to run every example in these docs.
 
 Each public function is documented with What it does, Inputs, Output, Errors, and Example. Docs are updated in the same task as the code. The validator checks every example.
 

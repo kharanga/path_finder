@@ -1,42 +1,40 @@
-# Ready: F7 accessibility and responsiveness
+# Ready: F8 documentation standard, with the F4 round 2 / F6 docs fix
 
 ## Done
 
-Reduced motion
-- CSS `@media (prefers-reduced-motion: reduce)`: busy halo pulse off (static glow stays), no body/particle/thread transitions. Already present since F3/F4, unchanged.
-- JavaScript: `createRenderer` defaults `reducedMotion` from the media query and now listens for changes (`watchReducedMotion`). With it on, particles appear at the recipient as instant markers, threads appear fully drawn, snaps remove at once.
-- `app.js`: `?motion=reduce` / `?motion=full` force the JavaScript behavior for testing (CSS keeps following the OS).
+F4 round 2 and F6 review failure (one cause, two places): the null-sender message is index 6 of 7. Fixed in `docs/frontend/state.md` (`state.messages.length // 7`) and `docs/frontend/render.md` (selection example uses index 6). No code change.
 
-Keyboard and screen readers
-- Bodies: `tabindex="0"`, `role="img"`, `aria-label` "`<name>`, `<state>`, `<role>`, folder `<folder>`", visible focus ring (`.body:focus-visible .core`).
-- Particles: already focusable buttons from F6 (Enter/Space open the panel).
-- Timeline ticks: now `<button class="tick">` with `aria-label` "Message from X to Y at HH:MM:SS" and tooltip; click or Enter opens the side panel for that message (`onTick`, new `timeline.messages()`), so history is browsable while scrubbed. Focus style on ticks. Slider and Live button are native controls. Status badge has `aria-live="polite"`.
+F8 sweep over `frontend/` and `docs/frontend/`:
 
-Phone width
-- `html, body { overflow-x: hidden }`, `.stage { overflow: hidden }` so SVG labels that stick out never cause horizontal scroll. 16 px gutters everywhere.
-- Under 600 px: panel docks to the bottom (F6), ring labels grow (name 30, role 23, empty label 40 viewBox units), tighter top bar and strip. Orbit height budget accounts for the strip.
-- Measured in a 390 px iframe: `scrollWidth === clientWidth === 386`, stage padding 16 px, name font 30 px. Both `messages` and `many` (15 sessions) fixtures render without overflow.
+- Inventory: 25 exports across 7 modules. Every one has exactly one one-line summary comment above it (checked by script) and a docs section (`##`, or `###` for the `createTimeline` methods).
+- Every section now has all five labels: What it does, Inputs, Output, Errors, Example. Added the missing Errors lines (`folderFromName` throws `TypeError` on a non-string, `formatClock`, `formatTimestamp`, `recordSnapshot`, `record`), Inputs/Errors on the no-argument timeline methods, and a full What/Inputs/Output/Errors block for the `size` getter. The timeline methods share one example, labeled as such.
+- Every example run as written: 144 checks, 0 failures, against the real modules in Node with a small DOM stub (see Requests 1). Covers `state.md`, `layout.md`, `timeline.md` (including `mountTimelineStrip` with the footer markup), `panel.md` (including `createPanel`), `render.md` (bodies, ghosts, revive, `many.json` truncation, particles, threads, selection, placeholder, SMIL attributes), and the `app.js` import guard. `connect.md` and the browser-only paragraphs were checked by reading against the code; they match.
+- Time-zone dependent outputs (`formatClock`, `formatTimestamp`, `describeMessage(...).time`) are stated as local time in the docs with a UTC and a US Pacific rendering.
+- `docs/frontend/README.md`: table of every real file in `frontend/` with its role and docs file, the list of pure modules, what a DOM stub needs, query parameters, fixture table (now includes `generated-*`).
+- F9 forward note in `state.md` `sessionByName`: resolution is by current name only until F9 adds former names, so the docs do not promise what F9 will change.
 
-Docs: `docs/frontend/timeline.md` (`messages()`, `onTick`, tick buttons), `render.md` (focusable bodies, aria-label example, reduced-motion watcher and override), `app.md` (motion override, tick → panel, responsive notes), `README.md` (query parameters).
-
-SPEC.md §8.2 F7 marked `[~] path-finder-18`.
+SPEC.md §8.2 F8 marked `[~] path-finder-18`.
 
 ## How to test
 
+1. Export inventory and comment check (from repo root):
+
 ```
-python3 -m http.server 8787 --bind 127.0.0.1 --directory frontend
+cd frontend && for f in *.js; do echo "== $f"; awk '/^export (async )?function|^export const/ { name=$0; sub(/^export (async )?function /,"",name); sub(/^export const /,"",name); sub(/\(.*/,"",name); sub(/ =.*/,"",name); c = (prev ~ /^\/\/ /) ? "ok" : "MISSING"; print "  " name " " c } { prev=$0 }' "$f"; done
 ```
 
-1. `?fixture=messages&motion=reduce`: particles never fly; each appears as a resting dot at the recipient the moment the message arrives. The notify thread appears fully drawn at once and vanishes at once when `path-finder-e5` goes idle. (The halo still pulses because CSS follows the OS setting; enable "Reduce motion" in System Settings → Accessibility → Display to see the pulse stop and the transitions go away.)
-2. Keyboard: press Tab from the page start. Order: status is skipped, bodies in ring order (focus ring on the body, label lights up), then arrived particles, then Live, ticks, slider, and the panel close button when open. Enter on a particle or tick opens the panel; Escape closes it.
-3. Ticks: click the second tick (index 1): panel shows `path-finder-18` → `path-finder-e5` with the badge. Scrub the slider first, then click a tick: the panel still opens and the ring stays at the scrubbed instant.
-4. Phone width: with DevTools device toolbar at 390×844 (or any viewport under 600 px): no horizontal scrollbar, 16 px gutters, panel docked at the bottom when a particle or tick is clicked, labels readable. Check `document.documentElement.scrollWidth === document.documentElement.clientWidth`.
-5. Node: `timeline.md` example additions (`messages().at(-1).data.from` is `null`). DOM stub: a body has `tabindex="0"` and the documented `aria-label`; `button.tick` count is 7 after recording `messages.json` with `mountTimelineStrip` (needs the footer markup from `index.html`).
+Expected: 25 names, all `ok`.
+
+2. Label check: every `##`/`###` section in `docs/frontend/*.md` except README has lines starting with `What it does`, `Inputs`, `Output`, `Errors`, and an `Example` (the `createTimeline` sub-sections share the example under `size`).
+
+3. Examples: run each example in the docs as written. For the pure modules plain Node suffices. For `render.md`, `createPanel`, and `mountTimelineStrip`, use a DOM stub (Requests 1 has a ready one). Expected outputs are the ones in the docs; local-time strings should be compared against `new Date(...)` components.
+
+4. `docs/frontend/README.md` table matches `ls frontend frontend/fixtures`.
 
 ## Requests
 
-1. Validator: the DOM-stub check of `mountTimelineStrip` needs `document.createElement`, `querySelector`, `addEventListener`, and `style` on elements; if the stub lacks those, test `timeline.messages()` in Node and the ticks in a browser.
-2. Manager: F8 is next per your message. Everything public already has a one-line comment and a docs section; F8 will be a sweep for drift plus the DOM-stub-friendly notes the validator asked for.
+1. Validator: a DOM stub and a runner that executes all 144 example checks exist at `/private/tmp/claude-501/-Users-khangnguyen-Documents-path-finder/658ff14a-2610-461f-9302-e64c02a54c6a/scratchpad/docs-check/` (`dom-stub.js`, `run-examples.mjs`, run with `node run-examples.mjs /path/to/repo`). Copy them into `tests/` if useful for V5; I did not put them in the repo because tests are yours.
+2. Manager: ready for F9 after this passes.
 
 ## Blocked
 
