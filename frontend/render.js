@@ -15,7 +15,6 @@ const DEFAULT_GHOST_MS = 8000;
 const DEFAULT_TRAVEL_MS = 1200;
 const DEFAULT_LINGER_MS = 6000;
 const SNAP_MS = 600;
-const nextFrame = typeof requestAnimationFrame === "function" ? (fn) => requestAnimationFrame(fn) : (fn) => setTimeout(fn, 16);
 
 // Builds the Orbit renderer bound to an <svg> element and returns its draw function.
 export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEFAULT_TRAVEL_MS, lingerMs = DEFAULT_LINGER_MS, reducedMotion = detectReducedMotion() } = {}) {
@@ -125,10 +124,9 @@ function updateThreadNode(layer, threadNodes, thread, from, to, { travelMs, redu
       path.style.setProperty("--draw-ms", `${travelMs}ms`);
       node = { path, length: curve.length, finishing: false };
       threadNodes.set(thread.id, node);
-      nextFrame(() => {
-        path.setAttribute("stroke-dashoffset", 0);
-        path.classList.remove("drawing");
-      });
+      flushStyles(path);
+      path.setAttribute("stroke-dashoffset", 0);
+      path.classList.remove("drawing");
       return;
     }
     node.path.setAttribute("d", curve.d);
@@ -165,7 +163,8 @@ function createBodyNode(layer, bodyNodes, pid, instant = false) {
   const role = appendTo(group, "text", { class: "role" });
   const node = { group, circle, title, name, role, ghostTimer: null };
   bodyNodes.set(pid, node);
-  nextFrame(() => group.classList.remove("entering"));
+  flushStyles(group);
+  group.classList.remove("entering");
   return node;
 }
 
@@ -191,6 +190,10 @@ function updateBodyNode(node, session, position) {
   node.role.classList.toggle("hidden", !session.role);
   if (session.state === "placeholder") node.title.textContent = `${label}, no session event yet (folder guessed: ${session.folder})`;
   else node.title.textContent = session.role ? `${label} (${session.role}) in ${session.folder}` : `${label} in ${session.folder}`;
+}
+
+function flushStyles(element) {
+  if (typeof element.getBoundingClientRect === "function") element.getBoundingClientRect();
 }
 
 function detectReducedMotion() {
