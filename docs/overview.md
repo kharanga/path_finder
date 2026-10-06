@@ -40,7 +40,7 @@ Session state:
 | `session` | string or null | display name, null until known |
 | `folder` | string | basename of the session's start folder |
 | `pid` | integer | process id, the stable key |
-| `state` | `started`, `busy`, `waiting`, `idle`, `ended` | `waiting` is a permission prompt |
+| `state` | `started`, `busy`, `waiting`, `idle`, `ended`, `removed` | `waiting` is a permission prompt; `removed` is a manual removal written by the server |
 | `role` | string or null | declared role, if any. A session declares one by running `node webhook/declare-role.js <role>`, which appends a session event with the role set. Roles live only in the event log, so they are re-declared after the log is truncated. |
 
 Message:
@@ -64,6 +64,7 @@ Confirmed in W1: `SendMessage` exposes `to`, `message`, and `notify_when_idle`, 
 
 - `GET /` serves `frontend/index.html`. Every other path that is not `/events` is served as a static file from `frontend/` with the correct content type for `.html`, `.js`, `.css`, `.json`, and `.svg`. Paths that escape `frontend/` return 404.
 - `GET /snapshot` returns the current snapshot as plain JSON, the same object the SSE stream sends first. For tests and curl.
+- `POST /sessions/<pid>/remove` appends a `removed` session event and broadcasts it. 204, or 404 for an unknown PID. Snapshot excludes removed sessions.
 - `GET /events` is a Server-Sent Events stream.
   - First event: `event: snapshot`, data `{"sessions":[...],"messages":[...]}` where each session object is the latest `session` event for that PID and `messages` holds recent message events, oldest first.
   - Then `event: session` and `event: message` with the schema above, as they arrive.
