@@ -1,16 +1,21 @@
-import { ringPositions, labelSide } from "./layout.js";
+import { ringPositions, labelPlacement, truncateLabel } from "./layout.js";
 import { liveSessions, sessionLabel } from "./state.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const VIEW_SIZE = 1000;
-const RING_RADIUS = 360;
+const VIEW_WIDTH = 1200;
+const VIEW_HEIGHT = 1000;
+const CENTER_X = VIEW_WIDTH / 2;
+const CENTER_Y = VIEW_HEIGHT / 2;
+const RING_RADIUS = 340;
 const BODY_RADIUS = 18;
+const LINE_HEIGHT = 22;
+const MAX_LABEL_CHARS = 24;
 
 // Builds the Orbit renderer bound to an <svg> element and returns its draw function.
 export function createRenderer(svg) {
-  svg.setAttribute("viewBox", `0 0 ${VIEW_SIZE} ${VIEW_SIZE}`);
-  const ring = appendTo(svg, "circle", { class: "ring", cx: VIEW_SIZE / 2, cy: VIEW_SIZE / 2, r: RING_RADIUS });
-  const emptyLabel = appendTo(svg, "text", { class: "empty-label", x: VIEW_SIZE / 2, y: VIEW_SIZE / 2, "text-anchor": "middle" });
+  svg.setAttribute("viewBox", `0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`);
+  const ring = appendTo(svg, "circle", { class: "ring", cx: CENTER_X, cy: CENTER_Y, r: RING_RADIUS });
+  const emptyLabel = appendTo(svg, "text", { class: "empty-label", x: CENTER_X, y: CENTER_Y, "text-anchor": "middle" });
   emptyLabel.textContent = "No sessions running";
   const bodiesLayer = appendTo(svg, "g", { class: "bodies" });
   const bodyNodes = new Map();
@@ -19,7 +24,7 @@ export function createRenderer(svg) {
     const sessions = liveSessions(state);
     emptyLabel.classList.toggle("hidden", sessions.length > 0);
     ring.classList.toggle("empty", sessions.length === 0);
-    const positions = ringPositions(sessions, { cx: VIEW_SIZE / 2, cy: VIEW_SIZE / 2, radius: RING_RADIUS });
+    const positions = ringPositions(sessions, { cx: CENTER_X, cy: CENTER_Y, radius: RING_RADIUS });
     const seen = new Set();
     for (const session of sessions) {
       seen.add(session.pid);
@@ -38,29 +43,30 @@ export function createRenderer(svg) {
 function createBodyNode(layer, bodyNodes, pid) {
   const group = appendTo(layer, "g", { class: "body", "data-pid": pid });
   const circle = appendTo(group, "circle", { r: BODY_RADIUS });
-  const name = appendTo(group, "text", { class: "name", dy: "0.35em" });
-  const role = appendTo(group, "text", { class: "role", dy: "1.6em" });
-  const node = { group, circle, name, role };
+  const title = appendTo(group, "title", {});
+  const name = appendTo(group, "text", { class: "name" });
+  const role = appendTo(group, "text", { class: "role" });
+  const node = { group, circle, title, name, role };
   bodyNodes.set(pid, node);
   return node;
 }
 
 function updateBodyNode(node, session, position) {
-  node.group.setAttribute("transform", `translate(${position.x.toFixed(1)} ${position.y.toFixed(1)})`);
+  node.group.style.transform = `translate(${position.x.toFixed(1)}px, ${position.y.toFixed(1)}px)`;
   node.group.dataset.state = session.state;
-  const side = labelSide(position.angle);
-  const offset = BODY_RADIUS + 14;
-  const labelX = side === "right" ? offset : side === "left" ? -offset : 0;
-  const labelY = side === "center" ? (Math.sin(position.angle) < 0 ? -offset - 6 : offset + 10) : 0;
-  const anchor = side === "right" ? "start" : side === "left" ? "end" : "middle";
+  node.group.dataset.folder = session.folder;
+  const label = sessionLabel(session);
+  const placement = labelPlacement(position.angle, { bodyRadius: BODY_RADIUS, lineHeight: LINE_HEIGHT, hasRole: Boolean(session.role) });
   for (const text of [node.name, node.role]) {
-    text.setAttribute("x", labelX);
-    text.setAttribute("y", labelY);
-    text.setAttribute("text-anchor", anchor);
+    text.setAttribute("x", placement.x);
+    text.setAttribute("text-anchor", placement.anchor);
   }
-  node.name.textContent = sessionLabel(session);
+  node.name.setAttribute("y", placement.nameY);
+  node.role.setAttribute("y", placement.roleY);
+  node.name.textContent = truncateLabel(label, MAX_LABEL_CHARS);
   node.role.textContent = session.role ?? "";
   node.role.classList.toggle("hidden", !session.role);
+  node.title.textContent = session.role ? `${label} (${session.role}) in ${session.folder}` : `${label} in ${session.folder}`;
 }
 
 function appendTo(parent, tag, attributes) {

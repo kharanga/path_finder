@@ -62,7 +62,7 @@ Field names for `from`, `to`, `text`, and `notify_on_idle` are provisional until
 
 ## Server to page contract
 
-- `GET /` serves `frontend/index.html`.
+- `GET /` serves `frontend/index.html`. Every other path that is not `/events` is served as a static file from `frontend/` with the correct content type for `.html`, `.js`, `.css`, `.json`, and `.svg`. Paths that escape `frontend/` return 404.
 - `GET /events` is a Server-Sent Events stream.
   - First event: `event: snapshot`, data `{"sessions":[...],"messages":[...]}` where each session object is the latest `session` event for that PID and `messages` holds recent message events, oldest first.
   - Then `event: session` and `event: message` with the schema above, as they arrive.
