@@ -1,118 +1,170 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ringPositions, labelSide, labelPlacement, messageCurve, truncateLabel } from "../../../frontend/layout.js";
+import { readFileSync } from "node:fs";
+import { boardLayout, tracePath, traceKey, edgeBox, truncateLabel, BOARD, CAPSULE } from "../../../frontend/layout.js";
+import { createState, applySnapshot, applyEvent, liveSessions } from "../../../frontend/state.js";
 
-const ring = { cx: 500, cy: 500, radius: 360 };
-const near = (actual, expected, tolerance = 0.01) => assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} vs ${expected}`);
+const fixture = (name) => JSON.parse(readFileSync(new URL(`../../../frontend/fixtures/${name}.json`, import.meta.url), "utf8"));
+const liveFrom = (name, replay = false) => {
+  const fx = fixture(name);
+  const state = createState();
+  applySnapshot(state, fx.snapshot, 0);
+  if (replay) for (const step of fx.events) applyEvent(state, step.event, step.data, 0);
+  return liveSessions(state);
+};
+const session = (pid, folder, index = pid) => ({ pid, session: `${folder}-${String(index).padStart(2, "0")}`, folder, state: "idle", firstSeen: `2026-10-06T00:00:${String(index).padStart(2, "0")}Z` });
+const overlaps = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+const insideBoard = (box) => box.x >= 0 && box.y >= 0 && box.x + box.width <= BOARD.width && box.y + box.height <= BOARD.height;
+const segmentCrossesBox = (p, q, box) => {
+  const inset = 0.5;
+  const x0 = box.x + inset;
+  const x1 = box.x + box.width - inset;
+  const y0 = box.y + inset;
+  const y1 = box.y + box.height - inset;
+  if (p.x === q.x) {
+    if (p.x <= x0 || p.x >= x1) return false;
+    return Math.min(p.y, q.y) < y1 && Math.max(p.y, q.y) > y0;
+  }
+  if (p.y <= y0 || p.y >= y1) return false;
+  return Math.min(p.x, q.x) < x1 && Math.max(p.x, q.x) > x0;
+};
 
-test("ringPositions spaces sessions evenly from the top clockwise, grouped by folder then label", () => {
+test("BOARD and CAPSULE constants match the documented geometry", () => {
+  assert.deepEqual(BOARD, { width: 1360, height: 1000, marginX: 60, marginTop: 70, marginBottom: 70, labelWidth: 170 });
+  assert.deepEqual(CAPSULE, { width: 220, height: 56, gapX: 36, rowGap: 64, cornerRadius: 14 });
+});
+
+test("boardLayout on few.json matches the documented rows, lines, and capsule box", () => {
+  const layout = boardLayout(liveFrom("few"));
+  assert.equal(layout.capsules.size, 5);
+  assert.deepEqual(layout.rows.map((r) => r.folder), ["listings", "path_finder", "scratch", "tag-analyzer"]);
+  assert.equal(layout.lineCount, 4);
+  assert.equal(layout.perLine, 4);
+  const a = layout.capsules.get(30222);
+  assert.deepEqual([a.x, a.y, a.cx, a.cy, a.line, a.index], [230, 412, 340, 440, 1, 0]);
+  assert.equal(layout.capsules.get(30333).index, 1);
+  assert.equal(layout.capsules.get(30333).line, 1);
+  assert.deepEqual([a.width, a.height], [CAPSULE.width, CAPSULE.height]);
+  assert.equal(layout.rows[1].cy, a.cy);
+  assert.equal(layout.rows[1].x, BOARD.marginX);
+});
+
+test("boardLayout with no sessions gives nothing", () => {
+  assert.deepEqual([boardLayout([]).capsules.size, boardLayout([]).rows.length, boardLayout([]).lineCount], [0, 0, 0]);
+});
+
+test("boardLayout groups folders with _ and - as one row, sorts rows, and orders a row by firstSeen then label", () => {
   const sessions = [
-    { pid: 30444, session: "scratch-7a", folder: "scratch" },
-    { pid: 30333, session: "path-finder-e5", folder: "path_finder" },
-    { pid: 29904, session: "listings-bc", folder: "listings" },
-    { pid: 30222, session: "path-finder-18", folder: "path_finder" },
+    { pid: 3, session: "zed-03", folder: "zed", firstSeen: "2026-10-06T00:00:03Z" },
+    { pid: 2, session: "path-finder-02", folder: "path_finder", firstSeen: "2026-10-06T00:00:09Z" },
+    { pid: 1, session: "path-finder-01", folder: "path-finder", firstSeen: "2026-10-06T00:00:05Z" },
+    { pid: "placeholder:path-finder-zz", session: "path-finder-zz", folder: "path-finder", firstSeen: null },
+    { pid: 4, session: "alpha-04", folder: "alpha", firstSeen: "2026-10-06T00:00:01Z" },
   ];
-  const positions = ringPositions(sessions, ring);
-  assert.deepEqual([...positions.entries()].map(([pid, p]) => [pid, Math.round(p.x), Math.round(p.y)]), [[29904, 500, 140], [30222, 860, 500], [30333, 500, 860], [30444, 140, 500]]);
-  near(positions.get(29904).angle, -Math.PI / 2);
-  assert.deepEqual(sessions.map((s) => s.pid), [30444, 30333, 29904, 30222]);
+  const layout = boardLayout(sessions);
+  assert.deepEqual(layout.rows.map((r) => r.folder), ["alpha", "path_finder", "zed"]);
+  assert.equal(layout.lineCount, 3);
+  const line1 = [1, 2, "placeholder:path-finder-zz"].map((pid) => layout.capsules.get(pid));
+  assert.deepEqual(line1.map((b) => b.line), [1, 1, 1]);
+  assert.deepEqual(line1.map((b) => b.index), [0, 1, 2]);
 });
 
-test("ringPositions handles zero and one session and unnamed sessions sort by pid", () => {
-  assert.equal(ringPositions([], ring).size, 0);
-  const single = ringPositions([{ pid: 1, session: "a-1", folder: "a" }], ring).get(1);
-  assert.deepEqual([Math.round(single.x), Math.round(single.y)], [500, 140]);
-  const order = [...ringPositions([{ pid: 20, session: null, folder: "a" }, { pid: 3, session: null, folder: "a" }], ring).keys()];
-  assert.deepEqual(order, [20, 3]);
+test("boardLayout keeps a capsule's slot when newer sessions join and wraps at perLine", () => {
+  const first = boardLayout([session(1, "listings"), session(2, "listings"), session(3, "listings")]).capsules.get(2);
+  const later = boardLayout([session(9, "listings"), session(1, "listings"), session(2, "listings"), session(3, "listings")]).capsules.get(2);
+  assert.deepEqual([first.index, first.x, first.line], [later.index, later.x, later.line]);
+  const six = boardLayout(Array.from({ length: 6 }, (_, i) => session(i + 1, "listings")));
+  assert.equal(six.perLine, 4);
+  assert.equal(six.lineCount, 2);
+  assert.equal(six.rows.length, 1);
+  assert.deepEqual([six.capsules.get(4).line, six.capsules.get(5).line, six.capsules.get(5).index], [0, 1, 0]);
+  assert.equal(boardLayout([session(1, "a")], { width: 500 }).perLine, 1);
 });
 
-test("ringPositions keeps every body on the ring for 1 to 15 sessions with no shared positions", () => {
-  for (let count = 1; count <= 15; count += 1) {
-    const sessions = Array.from({ length: count }, (_, i) => ({ pid: i, session: `s-${String(i).padStart(2, "0")}`, folder: `f${i % 4}` }));
-    const positions = ringPositions(sessions, ring);
-    assert.equal(positions.size, count);
-    const seen = new Set();
-    for (const p of positions.values()) {
-      near(Math.hypot(p.x - 500, p.y - 500), 360, 1e-6);
-      const key = `${p.x.toFixed(3)},${p.y.toFixed(3)}`;
-      assert.ok(!seen.has(key));
-      seen.add(key);
-    }
-  }
+test("boardLayout compresses line pitch to fit many lines and keeps every box inside the board", () => {
+  const many = boardLayout(Array.from({ length: 12 }, (_, i) => session(i + 1, `f${String(i).padStart(2, "0")}`)));
+  assert.equal(many.lineCount, 12);
+  const pitch = many.capsules.get(1).pitch;
+  assert.ok(pitch < CAPSULE.height + CAPSULE.rowGap);
+  assert.ok(pitch > CAPSULE.height);
+  for (const box of many.capsules.values()) assert.ok(insideBoard(box));
+  const one = boardLayout([session(1, "a")]);
+  assert.equal(one.capsules.get(1).pitch, CAPSULE.height + CAPSULE.rowGap);
 });
 
-test("ringPositions is independent of arrival order", () => {
-  const a = [{ pid: 1, session: "x-1", folder: "x" }, { pid: 2, session: "y-1", folder: "y" }];
-  const b = [a[1], a[0]];
-  assert.deepEqual([...ringPositions(a, ring)], [...ringPositions(b, ring)]);
-});
-
-test("labelSide picks top, bottom, right, or left by angle", () => {
-  assert.equal(labelSide(-Math.PI / 2), "top");
-  assert.equal(labelSide(Math.PI / 2), "bottom");
-  assert.equal(labelSide(0), "right");
-  assert.equal(labelSide(Math.PI), "left");
-  assert.equal(labelSide(-Math.PI / 2 + 0.19), "top");
-  assert.equal(labelSide(-Math.PI / 2 + 0.21), "right");
-  assert.equal(labelSide(Math.PI / 2 + 0.21), "left");
-});
-
-test("labelPlacement puts text outward and stacks a second line only with a role", () => {
-  const options = { bodyRadius: 18, lineHeight: 22 };
-  const check = (actual, expected) => {
-    assert.equal(actual.anchor, expected.anchor);
-    for (const key of ["x", "nameY", "roleY"]) near(actual[key], expected[key]);
-  };
-  check(labelPlacement(0, { ...options, hasRole: false }), { anchor: "start", x: 32, nameY: 7.7, roleY: 7.7 });
-  check(labelPlacement(0, { ...options, hasRole: true }), { anchor: "start", x: 32, nameY: -3.3, roleY: 18.7 });
-  check(labelPlacement(Math.PI, { ...options, hasRole: true }), { anchor: "end", x: -32, nameY: -3.3, roleY: 18.7 });
-  check(labelPlacement(-Math.PI / 2, { ...options, hasRole: true }), { anchor: "middle", x: 0, nameY: -58, roleY: -36 });
-  check(labelPlacement(-Math.PI / 2, { ...options, hasRole: false }), { anchor: "middle", x: 0, nameY: -36, roleY: -36 });
-  check(labelPlacement(Math.PI / 2, { ...options, hasRole: false }), { anchor: "middle", x: 0, nameY: 54, roleY: 76 });
-});
-
-test("labels never overlap for 1 to 15 bodies with the longest names and roles", () => {
-  const maxWidth = 24 * 22 * 0.55;
-  for (let count = 1; count <= 15; count += 1) {
-    const sessions = Array.from({ length: count }, (_, i) => ({ pid: i, session: "x".repeat(24), folder: `f${String(i).padStart(2, "0")}` }));
-    const boxes = [...ringPositions(sessions, { cx: 680, cy: 500, radius: 340 }).values()].map((p) => {
-      const placement = labelPlacement(p.angle, { bodyRadius: 18, lineHeight: 22, hasRole: true });
-      const x0 = placement.anchor === "start" ? p.x + placement.x : placement.anchor === "end" ? p.x + placement.x - maxWidth : p.x - maxWidth / 2;
-      return { x0, x1: x0 + maxWidth, y0: p.y + placement.nameY - 22, y1: p.y + placement.roleY };
-    });
+test("capsules never overlap and traces never cross a capsule for 1, 5, 15 sessions and the generator fixtures", () => {
+  for (const [name, replay] of [["one", false], ["few", false], ["many", false], ["generated-many", true], ["generated-mid", true]]) {
+    const boxes = [...boardLayout(liveFrom(name, replay)).capsules.values()];
     for (let i = 0; i < boxes.length; i += 1) {
-      for (let j = i + 1; j < boxes.length; j += 1) {
-        const a = boxes[i];
-        const b = boxes[j];
-        assert.ok(!(a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1), `overlap at ${count} bodies`);
+      assert.ok(insideBoard(boxes[i]), `${name}: box outside board`);
+      for (let j = i + 1; j < boxes.length; j += 1) assert.ok(!overlaps(boxes[i], boxes[j]), `${name}: capsules overlap`);
+    }
+    for (const from of boxes) {
+      for (const to of boxes) {
+        if (from === to) continue;
+        const { points } = tracePath(from, to);
+        for (let k = 1; k < points.length; k += 1) {
+          for (const other of boxes) {
+            if (other === from || other === to) continue;
+            assert.ok(!segmentCrossesBox(points[k - 1], points[k], other), `${name}: trace ${from.pid}->${to.pid} crosses ${other.pid}`);
+          }
+        }
       }
-      assert.ok(boxes[i].x0 >= 0 && boxes[i].x1 <= 1360, `label outside the 1360 viewBox at ${count} bodies`);
     }
   }
 });
 
-test("messageCurve bows toward the center with a side offset, mirrors on reversal, and reports length", () => {
-  const curve = messageCurve({ x: 680, y: 160 }, { x: 1020, y: 500 }, { x: 680, y: 500 });
-  assert.equal(curve.d, "M 680 160 Q 728.2 451.8 1020 500");
-  assert.equal(Math.round(curve.length), 519);
-  near(curve.control.x, 728.2157, 0.001);
-  near(curve.control.y, 451.7843, 0.001);
-  const reverse = messageCurve({ x: 1020, y: 500 }, { x: 680, y: 160 }, { x: 680, y: 500 });
-  near(reverse.control.x, 784.7843, 0.001);
-  near(reverse.control.y, 395.2157, 0.001);
-  const straight = messageCurve({ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 50, y: 0 }, { bow: 0, sideOffset: 0 });
-  assert.deepEqual(straight.control, { x: 50, y: 0 });
-  near(straight.length, 100, 1e-9);
-  const degenerate = messageCurve({ x: 1, y: 1 }, { x: 1, y: 1 }, { x: 680, y: 500 });
-  assert.ok(degenerate.d.startsWith("M 1 1 Q"));
-  assert.ok(Number.isFinite(degenerate.length));
+test("tracePath routes on the same line through a channel below, with the documented path and length", () => {
+  const layout = boardLayout(liveFrom("few"));
+  const a = layout.capsules.get(30222);
+  const b = layout.capsules.get(30333);
+  const route = tracePath(a, b);
+  assert.equal(route.d, "M 340 468 L 340 479 Q 340 490 351 490 L 585 490 Q 596 490 596 479 L 596 468");
+  assert.deepEqual(route.points, [{ x: 340, y: 468 }, { x: 340, y: 490 }, { x: 596, y: 490 }, { x: 596, y: 468 }]);
+  assert.equal(Math.round(route.length), 290);
+  assert.equal(tracePath(b, a).points[0].x, 596);
 });
 
-test("truncateLabel cuts to maxChars with an ellipsis and leaves short labels alone", () => {
-  assert.equal(truncateLabel("add-semantic-similarity-scores-4a", 24), "add-semantic-similarity…");
-  assert.equal(truncateLabel("listings-bc", 24), "listings-bc");
+test("tracePath goes straight between vertically aligned adjacent lines and uses the bus for lines further apart", () => {
+  const layout = boardLayout(liveFrom("few"));
+  const a = layout.capsules.get(30222);
+  const c = layout.capsules.get(29904);
+  const d = layout.capsules.get(30111);
+  assert.equal(tracePath(c, a).d, "M 340 348 L 340 412");
+  assert.equal(Math.round(tracePath(c, a).length), 64);
+  const far = tracePath(c, d);
+  assert.equal(far.points.length, 6);
+  assert.equal(far.points[2].x, 468);
+  assert.equal(far.points[1].x, c.cx);
+  assert.equal(far.points.at(-1).y, d.y);
+  assert.ok(far.points.every((p, i, all) => i === 0 || p.x === all[i - 1].x || p.y === all[i - 1].y), "every segment is horizontal or vertical");
+});
+
+test("tracePath to an adjacent line with a horizontal offset uses the midway channel", () => {
+  const from = { x: 230, y: 100, width: 220, height: 56, cx: 340, cy: 128, line: 0, index: 0, pitch: 120 };
+  const to = { x: 486, y: 220, width: 220, height: 56, cx: 596, cy: 248, line: 1, index: 1, pitch: 120 };
+  const route = tracePath(from, to);
+  assert.deepEqual(route.points, [{ x: 340, y: 156 }, { x: 340, y: 188 }, { x: 596, y: 188 }, { x: 596, y: 220 }]);
+  assert.ok(route.d.includes(" Q "));
+  assert.equal(tracePath(from, to, { cornerRadius: 0 }).d.includes(" Q "), true);
+  assert.throws(() => tracePath(null, to), TypeError);
+});
+
+test("traceKey is order independent and edgeBox sits at the row edge", () => {
+  assert.equal(traceKey(30333, 30222), "30222|30333");
+  assert.equal(traceKey(30222, 30333), "30222|30333");
+  assert.equal(traceKey("placeholder:x", 5), "5|placeholder:x");
+  const a = boardLayout(liveFrom("few")).capsules.get(30222);
+  const edge = edgeBox(a);
+  assert.deepEqual([edge.cx, edge.x, edge.width, edge.line, edge.index, edge.pid], [194, 194, 0, 1, -1, null]);
+  assert.deepEqual([edge.y, edge.cy, edge.height, edge.folder], [a.y, a.cy, a.height, a.folder]);
+  assert.throws(() => edgeBox(undefined), TypeError);
+});
+
+test("truncateLabel cuts at maxChars with an ellipsis", () => {
+  assert.equal(truncateLabel("add-semantic-similarity-scores-4a", 21), "add-semantic-similar…");
+  assert.equal(truncateLabel("listings-bc", 21), "listings-bc");
   assert.equal(truncateLabel("abcdefghij", 5), "abcd…");
   assert.equal(truncateLabel("ab", 1), "a…");
   assert.equal(truncateLabel("", 5), "");
-  assert.equal(truncateLabel("abcde", 5), "abcde");
 });

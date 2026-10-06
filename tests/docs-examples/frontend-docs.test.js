@@ -15,7 +15,7 @@ const root = fileURLToPath(new URL("../..", import.meta.url));
 const F = (p) => path.join(root, "frontend", p);
 const fixture = (n) => JSON.parse(fs.readFileSync(F(`fixtures/${n}.json`), "utf8"));
 const { createState, applySnapshot, applyEvent, applySessionEvent, applyMessageEvent, prunePlaceholders, folderFromName, waitingThreads, liveSessions, sessionByName, sessionLabel } = await import(F("state.js"));
-const { ringPositions, labelSide, labelPlacement, messageCurve, truncateLabel } = await import(F("layout.js"));
+const { boardLayout, tracePath, traceKey, edgeBox, truncateLabel } = await import(F("layout.js"));
 const { createTimeline, mountTimelineStrip, formatClock } = await import(F("timeline.js"));
 const { describeMessage, formatTimestamp, createPanel } = await import(F("panel.js"));
 const { createRenderer } = await import(F("render.js"));
@@ -115,44 +115,48 @@ let threw = false; try { folderFromName(null); } catch (e) { threw = e instanceo
   // render
   const svg = new Element("svg"); const r = applySnapshot(createState(), fx.snapshot, now); const draw = createRenderer(svg, { reducedMotion: true, lingerMs: 60000 }); draw(r);
   applyEvent(r, fx.events[0].event, fx.events[0].data, now); draw(r); applyEvent(r, fx.events[1].event, fx.events[1].data, now); draw(r);
-  const body = svg.querySelector('.body[data-pid="29248"]');
-  check("render rename name", body.querySelector(".name").textContent, "manager-drives-feature-…");
+  const body = svg.querySelector('.capsule[data-pid="29248"]');
+  check("render rename name", body.querySelector(".name").textContent, "manager-drives-featu…");
   check("render rename class", body.classList.contains("renamed"), true);
   check("render rename title", body.querySelector("title").textContent, "manager-drives-feature-work (manager) in path_finder, formerly path-finder-0d");
-  check("render rename no placeholder body", svg.querySelector('.body[data-pid="placeholder:path-finder-0d"]'), null);
-  check("render rename body count", svg.querySelectorAll(".body").length, 3);
+  check("render rename no placeholder capsule", svg.querySelector('.capsule[data-pid="placeholder:path-finder-0d"]'), null);
+  check("render rename capsule count", svg.querySelectorAll(".capsule").length, 3);
   applyEvent(r, fx.events[2].event, fx.events[2].data, now); draw(r);
-  const particlePath = svg.querySelector('.particle[data-message-index="1"] .particle-path').getAttribute("d");
-  const bodyTransform = body.style.transform;
-  const [, bx, by] = bodyTransform.match(/translate\(([\d.]+)px, ([\d.]+)px\)/);
-  check("render former-name particle starts at body", particlePath.startsWith(`M ${Math.round(+bx * 10) / 10} ${Math.round(+by * 10) / 10}`), true);
+  const pulsePath = svg.querySelector('.pulse[data-message-index="1"] .pulse-path').getAttribute("d");
+  const [, bx, by] = body.style.transform.match(/translate\(([\d.]+)px, ([\d.]+)px\)/);
+  check("render former-name pulse starts at capsule", pulsePath.startsWith(`M ${+bx + 110} ${+by + 56}`), true);
 }
 check("sessionLabel pid", sessionLabel({ pid: 30444, session: null }), "pid 30444");
 check("sessionLabel name", sessionLabel({ pid: 30444, session: "scratch-7a" }), "scratch-7a");
 
 // ---------- layout.md ----------
 {
-  const sessions = [{ pid: 29904, session: "listings-bc", folder: "listings" }, { pid: 30222, session: "path-finder-18", folder: "path_finder" }, { pid: 30333, session: "path-finder-e5", folder: "path_finder" }, { pid: 30444, session: "scratch-7a", folder: "scratch" }];
-  const copy = JSON.stringify(sessions);
-  const positions = ringPositions(sessions, { cx: 500, cy: 500, radius: 360 });
-  check("ringPositions", [...positions.entries()].map(([pid, p]) => [pid, Math.round(p.x), Math.round(p.y)]), [[29904, 500, 140], [30222, 860, 500], [30333, 500, 860], [30444, 140, 500]]);
-  check("ringPositions no mutation", JSON.stringify(sessions), copy);
-  check("ringPositions empty", ringPositions([], { cx: 500, cy: 500, radius: 360 }).size, 0);
+  const state = applySnapshot(createState(), fixture("few").snapshot);
+  const layout = boardLayout(liveSessions(state));
+  check("board size", layout.capsules.size, 5);
+  check("board rows", layout.rows.map((r) => r.folder), ["listings", "path_finder", "scratch", "tag-analyzer"]);
+  check("board lines", layout.lineCount, 4);
+  check("board perLine", layout.perLine, 4);
+  const a = layout.capsules.get(30222), b = layout.capsules.get(30333), c = layout.capsules.get(29904), d = layout.capsules.get(30111);
+  check("board a", [a.x, a.y, a.cx, a.cy, a.line, a.index], [230, 412, 340, 440, 1, 0]);
+  check("board b index", b.index, 1);
+  check("board empty", boardLayout([]).capsules.size, 0);
+  const many = boardLayout(liveSessions(applySnapshot(createState(), fixture("many").snapshot)));
+  check("board many lines", many.lineCount, 8);
+  check("board many first row", many.rows[0].folder, "add-semantic-similarity-scores");
+  check("trace same line d", tracePath(a, b).d, "M 340 468 L 340 479 Q 340 490 351 490 L 585 490 Q 596 490 596 479 L 596 468");
+  check("trace same line points", tracePath(a, b).points, [{ x: 340, y: 468 }, { x: 340, y: 490 }, { x: 596, y: 490 }, { x: 596, y: 468 }]);
+  check("trace same line length", Math.round(tracePath(a, b).length), 290);
+  check("trace adjacent straight", tracePath(c, a).d, "M 340 348 L 340 412");
+  check("trace adjacent length", Math.round(tracePath(c, a).length), 64);
+  check("trace far points", tracePath(c, d).points.length, 6);
+  check("trace far bus x", tracePath(c, d).points[2].x, 468);
+  let threw = false; try { tracePath(a, undefined); } catch (e) { threw = e instanceof TypeError; } check("trace throws", threw, true);
+  check("traceKey", [traceKey(30333, 30222), traceKey(30222, 30333)], ["30222|30333", "30222|30333"]);
+  check("edgeBox", [edgeBox(a).cx, edgeBox(a).line, edgeBox(a).width], [194, 1, 0]);
 }
-check("labelSide top", labelSide(-Math.PI / 2), "top"); check("labelSide bottom", labelSide(Math.PI / 2), "bottom"); check("labelSide right", labelSide(0), "right"); check("labelSide left", labelSide(Math.PI), "left");
-function checkPlacement(name, actual, expected) { check(name + " anchor", actual.anchor, expected.anchor); check(name + " x", actual.x, expected.x, 0.01); check(name + " nameY", actual.nameY, expected.nameY, 0.01); check(name + " roleY", actual.roleY, expected.roleY, 0.01); }
-checkPlacement("placement right", labelPlacement(0, { bodyRadius: 18, lineHeight: 22, hasRole: false }), { anchor: "start", x: 32, nameY: 7.7, roleY: 7.7 });
-checkPlacement("placement right role", labelPlacement(0, { bodyRadius: 18, lineHeight: 22, hasRole: true }), { anchor: "start", x: 32, nameY: -3.3, roleY: 18.7 });
-checkPlacement("placement top role", labelPlacement(-Math.PI / 2, { bodyRadius: 18, lineHeight: 22, hasRole: true }), { anchor: "middle", x: 0, nameY: -58, roleY: -36 });
-checkPlacement("placement bottom", labelPlacement(Math.PI / 2, { bodyRadius: 18, lineHeight: 22, hasRole: false }), { anchor: "middle", x: 0, nameY: 54, roleY: 76 });
-{
-  const curve = messageCurve({ x: 680, y: 160 }, { x: 1020, y: 500 }, { x: 680, y: 500 });
-  check("messageCurve d", curve.d, "M 680 160 Q 728.2 451.8 1020 500");
-  check("messageCurve length", Math.round(curve.length), 519);
-  check("messageCurve control x", curve.control.x, 728.2157, 0.001); check("messageCurve control y", curve.control.y, 451.7842, 0.001);
-}
-check("truncate long", truncateLabel("add-semantic-similarity-scores-4a", 24), "add-semantic-similarity…");
-check("truncate short", truncateLabel("listings-bc", 24), "listings-bc");
+check("truncate long", truncateLabel("add-semantic-similarity-scores-4a", 21), "add-semantic-similar…");
+check("truncate short", truncateLabel("listings-bc", 21), "listings-bc");
 check("truncate 5", truncateLabel("abcdefghij", 5), "abcd…");
 check("truncate 1", truncateLabel("ab", 1), "a…");
 
@@ -213,81 +217,98 @@ check("formatTimestamp null", formatTimestamp(null), "unknown time"); check("for
   const svg = new Element("svg"); const state = applySnapshot(createState(), fixture("few").snapshot);
   const draw = createRenderer(svg, { ghostMs: 10 }); draw(state);
   const q = (s) => svg.querySelector(s);
-  check("render bodies", svg.querySelectorAll(".body").length, 5);
-  check("render 30111 state", q('.body[data-pid="30111"]').dataset.state, "busy");
-  check("render 30111 folder", q('.body[data-pid="30111"]').dataset.folder, "tag-analyzer");
-  check("render 30111 role", q('.body[data-pid="30111"] .role').textContent, "validator");
-  check("render 30111 title", q('.body[data-pid="30111"] title').textContent, "tag-analyzer-63 (validator) in tag-analyzer");
-  check("render 30111 aria", q('.body[data-pid="30111"]').getAttribute("aria-label"), "tag-analyzer-63, busy, validator, folder tag-analyzer");
-  check("render 30111 tabindex", q('.body[data-pid="30111"]').getAttribute("tabindex"), "0");
   check("render viewBox", svg.getAttribute("viewBox"), "0 0 1360 1000");
+  check("render capsules", svg.querySelectorAll(".capsule").length, 5);
+  check("render row labels", svg.querySelectorAll(".row-label").length, 4);
+  check("render 30111 state", q('.capsule[data-pid="30111"]').dataset.state, "busy");
+  check("render 30111 folder", q('.capsule[data-pid="30111"]').dataset.folder, "tag-analyzer");
+  check("render 30111 role", q('.capsule[data-pid="30111"] .role').textContent, "validator");
+  check("render 30111 title", q('.capsule[data-pid="30111"] title').textContent, "tag-analyzer-63 (validator) in tag-analyzer");
+  check("render 30111 aria", q('.capsule[data-pid="30111"]').getAttribute("aria-label"), "tag-analyzer-63, busy, validator, folder tag-analyzer");
+  check("render 30111 tabindex", q('.capsule[data-pid="30111"]').getAttribute("tabindex"), "0");
+  check("render 30222 transform", q('.capsule[data-pid="30222"]').style.transform, "translate(230.0px, 412.0px)");
+  check("render 29904 role hidden", q('.capsule[data-pid="29904"] .role').classList.contains("hidden"), true);
+  check("render 30444 label", q('.capsule[data-pid="30444"] .name').textContent, "pid 30444");
+  check("render 30444 powering", q('.capsule[data-pid="30444"]').classList.contains("powering"), true);
   check("render empty hidden", q(".empty-label").classList.contains("hidden"), true);
-  check("render 29904 role hidden", q('.body[data-pid="29904"] .role').classList.contains("hidden"), true);
-  check("render 30444 label", q('.body[data-pid="30444"] .name').textContent, "pid 30444");
-  check("render halo+core", [svg.querySelectorAll('.body[data-pid="30111"] .halo').length, svg.querySelectorAll('.body[data-pid="30111"] .core').length], [1, 1]);
   draw(createState());
-  check("render ghosts", svg.querySelectorAll(".body").length, 5);
-  check("render ghost state", q('.body[data-pid="30111"]').dataset.state, "ended");
-  check("render ghost leaving", q('.body[data-pid="30111"]').classList.contains("leaving"), true);
+  check("render footprints", svg.querySelectorAll(".capsule").length, 5);
+  check("render footprint state", q('.capsule[data-pid="30111"]').dataset.state, "ended");
+  check("render footprint leaving", q('.capsule[data-pid="30111"]').classList.contains("leaving"), true);
   check("render empty shown", q(".empty-label").classList.contains("hidden"), false);
-  check("render ring empty", q(".ring").classList.contains("empty"), true);
+  check("render board empty", q(".board").classList.contains("empty"), true);
   await sleep(30);
-  check("render ghosts removed", svg.querySelectorAll(".body").length, 0);
+  check("render footprints removed", svg.querySelectorAll(".capsule").length, 0);
+  check("render row labels removed", svg.querySelectorAll(".row-label").length, 0);
 }
 {
   const svg = new Element("svg"); const state = applySnapshot(createState(), fixture("few").snapshot);
   const draw = createRenderer(svg, { ghostMs: 10000 }); draw(state); draw(createState()); draw(state);
-  check("revive bodies", svg.querySelectorAll(".body").length, 5);
-  check("revive none leaving", svg.querySelectorAll(".body.leaving").length, 0);
-  check("revive busy", svg.querySelector('.body[data-pid="30111"]').dataset.state, "busy");
+  check("revive capsules", svg.querySelectorAll(".capsule").length, 5);
+  check("revive none leaving", svg.querySelectorAll(".capsule.leaving").length, 0);
+  check("revive busy", svg.querySelector('.capsule[data-pid="30111"]').dataset.state, "busy");
+}
+{
+  const fx = fixture("removed"); const svg = new Element("svg"); const state = applySnapshot(createState(), fx.snapshot); const draw = createRenderer(svg, { ghostMs: 10000 }); draw(state);
+  check("removed trace from snapshot", svg.querySelector(".trace")?.dataset.trace, "30111|30222");
+  applyEvent(state, "session", fx.events[0].data); draw(state);
+  check("removed after ended", [svg.querySelectorAll(".capsule").length, svg.querySelector('.capsule[data-pid="29904"]').dataset.state, svg.querySelector('.capsule[data-pid="29904"]').classList.contains("leaving")], [4, "ended", true]);
+  applyEvent(state, "session", fx.events[1].data); draw(state);
+  check("removed gone", svg.querySelector('.capsule[data-pid="40707"]'), null);
+  check("removed footprint kept", svg.querySelector('.capsule[data-pid="29904"]').classList.contains("leaving"), true);
+  applyEvent(state, "session", fx.events[2].data); draw(state);
+  check("removed back", svg.querySelector('.capsule[data-pid="40707"]').dataset.state, "busy");
 }
 {
   const svg = new Element("svg"); const draw = createRenderer(svg, {}); draw(applySnapshot(createState(), fixture("many").snapshot));
-  check("many 41008 name", svg.querySelector('.body[data-pid="41008"] .name').textContent, "add-semantic-similarity…");
-  check("many 41008 title", svg.querySelector('.body[data-pid="41008"] title').textContent, "add-semantic-similarity-scores-28 in add-semantic-similarity-scores");
+  check("many 41008 name", svg.querySelector('.capsule[data-pid="41008"] .name').textContent, "add-semantic-similar…");
+  check("many 41008 title", svg.querySelector('.capsule[data-pid="41008"] title').textContent, "add-semantic-similarity-scores-28 in add-semantic-similarity-scores");
 }
 {
   const fx = fixture("messages"); const svg = new Element("svg"); const state = createState();
   const selected = []; const draw = createRenderer(svg, { reducedMotion: true, lingerMs: 60000, onSelect: (m, i) => selected.push([m, i]) });
   draw(applySnapshot(state, fx.snapshot));
-  check("msg particles after snapshot", svg.querySelectorAll(".particle").length, 0);
-  check("msg threads after snapshot", svg.querySelectorAll(".thread").length, 0);
+  check("msg pulses after snapshot", svg.querySelectorAll(".pulse").length, 0);
+  check("msg traces after snapshot", svg.querySelectorAll(".trace").length, 1);
+  check("msg charges after snapshot", svg.querySelectorAll(".charge").length, 0);
   applyEvent(state, "message", fx.events[0].data); draw(state);
-  const p = svg.querySelector(".particle");
-  check("msg particle count", svg.querySelectorAll(".particle").length, 1);
-  check("msg particle index", p.dataset.messageIndex, "1");
-  check("msg particle notify", p.classList.contains("notify"), true);
-  check("msg particle arrived", p.classList.contains("arrived"), true);
-  check("msg thread count", svg.querySelectorAll(".thread").length, 1);
-  check("msg thread id", svg.querySelector(".thread").dataset.threadId, "1");
-  check("30111 waiting before e3", svg.querySelector('.body[data-pid="30111"]').dataset.state, "waiting");
+  const p = svg.querySelector(".pulse");
+  check("msg pulse count", svg.querySelectorAll(".pulse").length, 1);
+  check("msg pulse index", p.dataset.messageIndex, "1");
+  check("msg pulse notify", p.classList.contains("notify"), true);
+  check("msg pulse arrived", p.classList.contains("arrived"), true);
+  check("msg traces", svg.querySelectorAll(".trace").length, 2);
+  check("msg charge count", svg.querySelectorAll(".charge").length, 1);
+  check("msg charge id", svg.querySelector(".charge").dataset.threadId, "1");
+  check("30111 waiting before e3", svg.querySelector('.capsule[data-pid="30111"]').dataset.state, "waiting");
   applyEvent(state, "session", fx.events[1].data); draw(state);
-  check("msg thread still waiting", svg.querySelectorAll(".thread").length, 1);
+  check("msg charge still waiting", svg.querySelectorAll(".charge").length, 1);
   applyEvent(state, fx.events[2].event, fx.events[2].data); applyEvent(state, fx.events[3].event, fx.events[3].data); draw(state);
-  check("30111 busy after e4", svg.querySelector('.body[data-pid="30111"]').dataset.state, "busy");
+  check("30111 busy after e4", svg.querySelector('.capsule[data-pid="30111"]').dataset.state, "busy");
   applyEvent(state, "session", fx.events[4].data); draw(state);
-  check("msg thread snapping", svg.querySelector(".thread").classList.contains("snapping"), true);
+  check("msg charge draining", svg.querySelector(".charge").classList.contains("draining"), true);
   await sleep(5);
-  check("msg thread removed", svg.querySelectorAll(".thread").length, 0);
+  check("msg charge removed", svg.querySelectorAll(".charge").length, 0);
   for (let i = 5; i < fx.events.length; i++) applyEvent(state, fx.events[i].event, fx.events[i].data);
   draw(state);
-  const particle = svg.querySelector('.particle[data-message-index="6"]');
-  check("select title", particle.querySelector("title").textContent, "unknown sender → path-finder-18: sender unknown: hook could not resolve the session name");
-  particle.dispatchEvent(new Event("click"));
+  const pulse = svg.querySelector('.pulse[data-message-index="6"]');
+  check("select title", pulse.querySelector("title").textContent, "unknown sender → path-finder-18: sender unknown: hook could not resolve the session name");
+  check("select edge start", pulse.querySelector(".pulse-path").getAttribute("d").startsWith("M 194 "), true);
+  pulse.dispatchEvent(new Event("click"));
   check("select onSelect", [selected.at(-1)[0] === state.messages[6], selected.at(-1)[1]], [true, 6]);
-  draw.select(6); check("select on", particle.classList.contains("selected"), true);
-  draw.select(null); check("select off", particle.classList.contains("selected"), false);
-  const placeholder = svg.querySelector('.body[data-pid="placeholder:nobody-99"]');
+  draw.select(6); check("select on", pulse.classList.contains("selected"), true);
+  draw.select(null); check("select off", pulse.classList.contains("selected"), false);
+  const placeholder = svg.querySelector('.capsule[data-pid="placeholder:nobody-99"]');
   check("placeholder state", placeholder.dataset.state, "placeholder");
   check("placeholder title", placeholder.querySelector("title").textContent, "nobody-99, no session event yet (folder guessed: nobody)");
 }
 {
   const svg = new Element("svg"); const state = applySnapshot(createState(), fixture("few").snapshot); const draw = createRenderer(svg, {});
-  draw(state); check("entering removed synchronously", svg.querySelectorAll(".body.entering").length, 0);
+  draw(state); check("entering removed synchronously", svg.querySelectorAll(".capsule.entering").length, 0);
   const fx = fixture("messages"); const s2 = applySnapshot(createState(), fx.snapshot); draw(s2); applyEvent(s2, "message", fx.events[0].data); draw(s2);
-  const dot = svg.querySelector(".particle-dot"); check("animateMotion present", dot.querySelectorAll("animateMotion").length, 1);
-  const mpath = svg.querySelector("mpath"); const pathId = svg.querySelector(".particle-path").getAttribute("id");
+  const dot = svg.querySelector(".pulse-dot"); check("animateMotion present", dot.querySelectorAll("animateMotion").length, 1);
+  const mpath = svg.querySelector("mpath"); const pathId = svg.querySelector(".pulse-path").getAttribute("id");
   check("mpath href", mpath.getAttribute("href"), `#${pathId}`);
-  const thread = svg.querySelector(".thread"); check("thread dashoffset 0 after flush", thread.getAttribute("stroke-dashoffset"), "0");
+  const charge = svg.querySelector(".charge"); check("charge dashoffset 0 after flush", charge.getAttribute("stroke-dashoffset"), "0");
 }
 const appModule = await import(F("app.js")); check("app import", Object.keys(appModule), ["start"]);

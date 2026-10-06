@@ -40,6 +40,9 @@ check("state findByName", () => { assert.equal(st.findSessionByName(state, "list
 check("state snapshot", () => assert.equal(J(st.snapshot(state)), '{"sessions":[{"ts":"2026-10-05T21:40:02Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"idle","role":null}],"messages":[{"ts":"2026-10-05T21:41:01Z","type":"message","from":"a","to":"b","text":"m1","notify_on_idle":false},{"ts":"2026-10-05T21:41:02Z","type":"message","from":"a","to":"b","text":"m2","notify_on_idle":false}]}'));
 
 const lv = await import(`${R}/webhook/liveness.js`);
+check("state live/removed", () => { const s2 = st.createState(); st.applyEvent(s2, { ts: "2026-10-05T21:40:00Z", type: "session", session: "a", folder: "a", pid: 1, state: "idle", role: null }); st.applyEvent(s2, { ts: "2026-10-05T21:40:01Z", type: "session", session: "b", folder: "b", pid: 2, state: "ended", role: null }); st.applyEvent(s2, { ts: "2026-10-05T21:40:02Z", type: "session", session: "c", folder: "c", pid: 3, state: "removed", role: null });
+  assert.deepEqual(st.liveSessions(s2).map((x) => x.pid), [1]); assert.deepEqual(st.snapshot(s2).sessions.map((x) => x.pid), [1, 2]); assert.equal(st.isLive({ state: "busy" }), true); assert.equal(st.isLive({ state: "removed" }), false); assert.equal(st.findSessionByName(s2, "c"), undefined);
+  st.applyEvent(s2, { ts: "2026-10-05T21:40:03Z", type: "session", session: "c", folder: "c", pid: 3, state: "busy", role: null }); assert.deepEqual(st.snapshot(s2).sessions.map((x) => x.pid), [1, 2, 3]); });
 check("liveness pid", () => { assert.equal(lv.isPidAlive(process.pid), true); assert.equal(lv.isPidAlive(2147483646), false); });
 check("liveness socket", () => assert.equal(lv.hasSocket(1, "/tmp/definitely-missing-dir"), false));
 mkdirSync(`${T}/registry-example`, { recursive: true });

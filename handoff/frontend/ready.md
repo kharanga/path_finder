@@ -1,54 +1,47 @@
-# Ready: F10 circuit visual (round 2)
+# Ready: F11 removal editor and portrait board
 
 ## Done
 
-Round 2: review failure 1 (ring-era wording) fixed in `README.md`, `app.md`, `connect.md`, `state.md`, plus the same wording the review did not list in `timeline.md` and `panel.md`. Review note 2: the README file table now says `id="orbit"` and `orbit.css` are v1 identifiers kept on purpose. No code change.
-
-The ring is gone. The page now draws the Circuit board from SPEC §4.
-
-`frontend/layout.js` (pure, new API)
-- `BOARD`, `CAPSULE` constants (viewBox 1360×1000, capsules 220×56).
-- `boardLayout(sessions, { width, height })`: one row per folder (sorted, `_`/`-` equal), capsules ordered by `firstSeen` then name so a capsule keeps its slot while live and newcomers append; rows wrap at 4 per line; lines spaced evenly and centered, compressed when many. Returns `{ capsules: Map<pid, box>, rows, lineCount, perLine }`.
-- `tracePath(from, to, { cornerRadius })`: orthogonal route with rounded corners that never crosses another capsule: same line via a channel below, adjacent lines via the mid channel, farther lines via a vertical bus in the column gap right of the two capsules. Returns `{ d, points, length }`.
-- `traceKey(a, b)`, `edgeBox(nearBox)` (origin for unknown senders at the left edge of the recipient's line), `truncateLabel` kept.
-- Removed: `ringPositions`, `labelSide`, `labelPlacement`, `messageCurve`. V3 tests that import them will fail until V7 updates them; the docs examples in `docs/frontend/layout.md` give the new expected values.
+`frontend/editor.js` (new)
+- Pure: `removeUrl(pid)`, `endedSessions(state)`, `describeRemoval(targets)`.
+- `createEditor({ toggleButton, removeAllButton, hintElement, confirmElement, getState, draw, request })`: Edit/Done toggle (`aria-pressed`, `body[data-mode]`), per-capsule removal through `requestRemove(session)`, "Remove all ended" (disabled when none), one inline confirmation bar (`role="alertdialog"`, Remove/Cancel, focus moves to Remove; no `window.confirm`), `POST /sessions/<pid>/remove` per target via injectable `request` (default `fetch`), success and failure hints, `setAvailable(bool)` which disables everything with the hint "Removal needs the server. Fixture mode has none." Nothing is changed locally on removal: the capsule drops when the server's `removed` event arrives (F10 behavior).
 
 `frontend/render.js`
-- Layers: board rect, row labels (glide with their rows), traces, charges, capsules, pulses.
-- Capsules: `<g class="capsule" data-pid data-state>` with shell rect, name, role, title, aria-label, tabindex. States per §4: busy lit with flicker, waiting amber steady, idle dim, started dim with a 1 s power-on flash (class `powering`), ended fades to a footprint for `ghostMs`, `removed` drops the capsule immediately with no footprint, placeholder dashed at the end of its guessed folder row. Fade-in at slot, rename flash and `formerly` tooltip kept from v1.
-- Traces: drawn on the first message between two capsules (`data-trace="<traceKey>"`), kept faint, re-routed on every draw, dropped when a capsule goes. Rebuilt from snapshot messages on connect (no pulses).
-- Pulses: bright dot along the trace route via SMIL, rests at the recipient for `lingerMs`, clickable and keyboard-activatable (`onSelect`), `draw.select(index)` highlight. Unknown or null sender starts from `edgeBox(recipient)`.
-- Charges: `notify_on_idle` keeps the trace charged (glowing overlay drawn on along the route) until the recipient's idle, then drains back to the sender (`draining`), or fades if the recipient ends (`dropping`).
-- Reduced motion: instant pulses, charges fully drawn, no flicker, no flashes, no transitions (CSS media query plus the `reducedMotion` option and `?motion=reduce`).
+- `onRemove` option adds a `<g class="remove" role="button" aria-label="Remove <name>">` × control to every non-placeholder capsule, visible only under `svg.editing`, focusable only in edit mode (`draw.setEditing(bool)`). Footprints keep their control and report state `ended` to `onRemove`.
+- `portrait` option and `draw.setPortrait(bool)`: viewBox 760×1100, two capsules per line, folder labels above rows, row labels anchored by the new `labelX/labelY/anchor` from the layout.
 
-`frontend/orbit.css`: all capsule, trace, charge, pulse styles; phone rules updated. `frontend/index.html`: title Circuit, svg aria-label. `state.js`, `timeline.js`, `panel.js`, `app.js`, `connect.js`: unchanged (`removed` is already non-live because `LIVE_STATES` is an allowlist).
+`frontend/layout.js`
+- `BOARD_PORTRAIT`, `boardFor(portrait)`, `boardLayout(sessions, { portrait, width, height })` returning `rows[].labelX/labelY/anchor` and `board`. Boxes carry `columnOrigin` so `tracePath`'s bus columns and `edgeBox` work on both boards. Landscape numbers unchanged (all F10 examples still hold).
 
-`frontend/fixtures/removed.json`: 4 sessions and a historical message, then `ended` (footprint), `removed` (gone at once), the removed session comes back busy and sends a message.
+`frontend/app.js`: creates the editor, routes `onRemove` to it, enables it on SSE status `live`/`reconnecting`, follows `matchMedia("(max-width: 600px)")` for the portrait switch and redraws the current view instantly on change. `frontend/index.html`: editor controls in the top bar and the confirmation bar. `frontend/orbit.css`: editor, confirm, remove-control styles, portrait aspect ratio under 600 px.
 
-Docs: `layout.md` and `render.md` rewritten, `README.md` (file table, fixture rows), `state.md` (`removed`), `app.md` (board wording). Example runner updated: 164 checks, 0 failures (`run-examples.mjs` in the scratchpad path below, ready for V7 to copy over `tests/docs-examples/frontend-docs.test.js`).
+Verified live against `node webhook/server.js --demo --port 4848` (own temp events file; 4747 is the user's real dashboard and was not touched): Edit enabled on `live`; × on `listings-99` → confirmation text → Remove → `POST /sessions/36024/remove` → capsule gone with no footprint, `/snapshot` no longer lists it, `stats.removals` 1; "Remove all ended" on 15 ended sessions (see test 4 for the numbers); Done hides the controls and restores Tab order. Fixture mode on the static server: Edit disabled with the hint. Portrait in a 390 px frame: viewBox `0 0 760 1100`, 15 capsules on 10 lines in 8 labeled rows, no horizontal scroll.
 
-SPEC.md §8.2 F10 is `[~] path-finder-18`.
+Docs: `docs/frontend/editor.md` (new), `layout.md`, `render.md`, `app.md`, `README.md` (file table, editor row, safe demo port note). Example runner: 194 checks, 0 failures, includes the editor flow with a recording `request` stub and the failure path.
+
+SPEC.md §8.2 F11 is `[~] path-finder-18`.
 
 ## How to test
 
+Editor (needs the server; use a sandbox port, never the live 4747):
+
 ```
-python3 -m http.server 8787 --bind 127.0.0.1 --directory frontend
+node webhook/server.js --demo --port 4848
 ```
 
-1. `?fixture=few`: board with four folder rows labeled on the left; two path_finder capsules side by side; `tag-analyzer-63` and `path-finder-e5` lit yellow with a soft flicker; `pid 30444` dim blue with a power-on flash at load. At ~7 s `tag-analyzer-63` fades to a hollow footprint and the rows slide up together with their labels.
-2. `?fixture=messages`: at ~1 s a pulse runs from `path-finder-18` down into the channel and up into `path-finder-e5`, leaving a glowing charge; the faint trace stays after. At ~7.5 s the charge drains back into `path-finder-18`. At ~10.5 s `nobody-99` appears as a dashed capsule in its own row and the pulse/charge reach it. At ~16 s a pulse enters `path-finder-18` from the left edge of its row (null sender). Click any resting dot: panel as in v1.
-3. `?fixture=removed`: at ~1.5 s `listings-bc` becomes a footprint; at ~4 s `path-finder-e5` vanishes at once with no footprint while the footprint is still there; at ~6.5 s it is back and sends a pulse. The snapshot message shows as a faint trace from load.
-4. `?fixture=many`: 15 capsules in 8 rows, nothing overlapping, the trace `listings-00` → `tag-analyzer-6f` (3 rows apart) runs through the gap right of the first column, not through capsules.
-5. `?fixture=rename`: capsule label changes in place with the flash, same slot, no placeholder for the old name.
-6. `?fixture=messages&motion=reduce`: dots appear at the recipient instantly, charges appear fully drawn and vanish at once when resolved, no flicker on busy capsules under an OS reduce-motion setting.
-7. Timeline, panel, keyboard (Tab reaches capsules, pulses, Live, ticks, slider), phone width (390 px: `scrollWidth === clientWidth`, panel docks to the bottom): unchanged behavior.
-8. Node and DOM stub: every example in `docs/frontend/layout.md` and `render.md`, or run the scratchpad runner (164 checks).
+1. Open `http://127.0.0.1:4848/`. Status `live`, Edit enabled. Click Edit: it reads Done, every capsule shows a red × at its top-right, "Remove all ended" appears (disabled until a demo session ends), hint explains the mode.
+2. Click a ×: the bar under the top bar reads "Remove <name> from the board?" with Remove and Cancel, focus on Remove. Cancel closes it. Remove: the capsule disappears at once with no footprint, the hint reads "Removed <name>.", `curl -s http://127.0.0.1:4848/snapshot` no longer lists the PID and `stats.removals` increased. Only the server wrote the event; reload the page and the capsule is still gone.
+3. Keyboard: Tab in edit mode reaches each × (label "Remove <name>"), Enter opens the confirmation, Enter again removes. Outside edit mode Tab skips the controls.
+4. After the demo has ended sessions (about a minute), "Remove all ended" is enabled: it asks "Remove N ended sessions from the board?" and Remove sends one POST per session; `/snapshot` then has zero `ended` sessions.
+5. Fixture mode: `python3 -m http.server 8787 --bind 127.0.0.1 --directory frontend`, open `?fixture=few`: Edit disabled, hint "Removal needs the server. Fixture mode has none."
+6. Portrait: viewport under 600 px (DevTools device toolbar or a 390 px iframe): viewBox `0 0 760 1100`, two capsules per line, folder label above each row, no horizontal scroll; switching the width back and forth re-lays out the board without reload.
+7. Node and DOM stub: `docs/frontend/editor.md` example (recording `request`, 404 path), `layout.md` portrait additions, `render.md` edit-mode block, or the scratchpad runner (194 checks).
 
 ## Requests
 
-1. Validator (V7): updated runner at `/private/tmp/claude-501/-Users-khangnguyen-Documents-path-finder/658ff14a-2610-461f-9302-e64c02a54c6a/scratchpad/docs-check/run-examples.mjs` (same DOM stub). V3 layout tests need `boardLayout`/`tracePath`/`traceKey`/`edgeBox` instead of the ring functions; `layout.md` has the values.
-2. Manager: the 1.36 landscape board is short on a phone (the capsules are legible but small). A portrait layout under 600 px (fewer capsules per line, taller board) would help; say if you want it as part of F11 or a later task.
-3. Manager: F11 not started, waiting for W9's endpoint as instructed.
+1. Validator (V7): runner at `/private/tmp/claude-501/-Users-khangnguyen-Documents-path-finder/658ff14a-2610-461f-9302-e64c02a54c6a/scratchpad/docs-check/run-examples.mjs` with the same DOM stub. The editor test needs `document.body` on the stub (the runner sets it).
+2. Manager: footprints keep their old position while live capsules re-flow, so in portrait a footprint can briefly sit on top of a live capsule (it fades within 8 s). If that bothers the user, footprints could re-flow with the layout; say so and I will do it.
+3. Manager: `index.html` still uses `id="orbit"` and `orbit.css`; renaming would touch tests and the server's static examples, so I left them.
 
 ## Blocked
 

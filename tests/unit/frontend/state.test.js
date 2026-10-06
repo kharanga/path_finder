@@ -176,3 +176,25 @@ test("sessionLabel falls back to the pid while the name is unknown", () => {
   assert.equal(sessionLabel({ pid: 30444, session: null }), "pid 30444");
   assert.equal(sessionLabel({ pid: 30444, session: "scratch-7a" }), "scratch-7a");
 });
+
+test("removed sessions are not live, keep their entry, and reappear on any later event", () => {
+  const state = createState();
+  applySessionEvent(state, session({ pid: 1, session: "a-1", role: "validator", state: "busy" }));
+  applySessionEvent(state, session({ pid: 1, session: "a-1", role: "validator", state: "removed", ts: "2026-10-05T21:41:00Z" }));
+  assert.deepEqual(labels(state), []);
+  assert.equal(state.sessions.get(1).state, "removed");
+  assert.equal(sessionByName(state, "a-1").pid, 1);
+  applySessionEvent(state, session({ pid: 1, session: null, role: null, state: "idle", ts: "2026-10-05T21:42:00Z" }));
+  assert.deepEqual(liveSessions(state).map((s) => [s.pid, s.session, s.role, s.state]), [[1, "a-1", "validator", "idle"]]);
+});
+
+test("a removed recipient does not resolve a waiting thread and a removed name still gets no placeholder on a later message", () => {
+  const state = createState();
+  applySessionEvent(state, session({ pid: 1, session: "r-1", state: "busy" }));
+  applyMessageEvent(state, message({ to: "r-1", notify_on_idle: true }), NOW);
+  applySessionEvent(state, session({ pid: 1, session: "r-1", state: "removed", ts: "2026-10-05T21:41:00Z" }));
+  assert.deepEqual(waitingThreads(state).map((t) => t.to), ["r-1"]);
+  applyMessageEvent(state, message({ from: "x-9", to: "r-1" }), NOW);
+  assert.deepEqual([...state.placeholders.keys()], ["x-9"]);
+});
+

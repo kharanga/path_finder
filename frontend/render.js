@@ -1,4 +1,4 @@
-import { boardLayout, tracePath, traceKey, edgeBox, truncateLabel, BOARD, CAPSULE } from "./layout.js";
+import { boardLayout, tracePath, traceKey, edgeBox, truncateLabel, boardFor, CAPSULE } from "./layout.js";
 import { liveSessions, sessionLabel, sessionByName } from "./state.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -13,10 +13,11 @@ const POWER_ON_MS = 1000;
 const RENAME_HIGHLIGHT_MS = 1800;
 
 // Builds the Circuit renderer bound to an <svg> element and returns its draw function.
-export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEFAULT_TRAVEL_MS, lingerMs = DEFAULT_LINGER_MS, reducedMotion = detectReducedMotion(), onSelect = null } = {}) {
-  svg.setAttribute("viewBox", `0 0 ${BOARD.width} ${BOARD.height}`);
-  const board = appendTo(svg, "rect", { class: "board", x: 0, y: 0, width: BOARD.width, height: BOARD.height });
-  const emptyLabel = appendTo(svg, "text", { class: "empty-label", x: BOARD.width / 2, y: BOARD.height / 2, "text-anchor": "middle" });
+export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEFAULT_TRAVEL_MS, lingerMs = DEFAULT_LINGER_MS, reducedMotion = detectReducedMotion(), onSelect = null, onRemove = null, portrait = false } = {}) {
+  let activeBoard = boardFor(portrait);
+  svg.setAttribute("viewBox", `0 0 ${activeBoard.width} ${activeBoard.height}`);
+  const board = appendTo(svg, "rect", { class: "board", x: 0, y: 0, width: activeBoard.width, height: activeBoard.height });
+  const emptyLabel = appendTo(svg, "text", { class: "empty-label", x: activeBoard.width / 2, y: activeBoard.height / 2, "text-anchor": "middle" });
   emptyLabel.textContent = "No sessions running";
   const rowsLayer = appendTo(svg, "g", { class: "rows" });
   const tracesLayer = appendTo(svg, "g", { class: "traces" });
@@ -28,7 +29,7 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
   const chargeNodes = new Map();
   const lastBoxes = new Map();
   const rowLabelNodes = new Map();
-  const options = { ghostMs, travelMs, lingerMs, reducedMotion, onSelect };
+  const options = { ghostMs, travelMs, lingerMs, reducedMotion, onSelect, onRemove, portrait, editing: false };
   watchReducedMotion((reduce) => { options.reducedMotion = reduce; });
   let drawnMessageCount = 0;
   let drawnSnapshotSeq = null;
@@ -45,7 +46,7 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
     if (to && from) return { from, to, real: true };
     if (to) return { from: edgeBox(to), to, real: false };
     if (from) return { from, to: edgeBox(from), real: false };
-    const fallback = { pid: null, folder: "", x: BOARD.width / 2, y: BOARD.height / 2 - CAPSULE.height / 2, width: 0, height: CAPSULE.height, cx: BOARD.width / 2, cy: BOARD.height / 2, line: -1, index: -1 };
+    const fallback = { pid: null, folder: "", x: activeBoard.width / 2, y: activeBoard.height / 2 - CAPSULE.height / 2, width: 0, height: CAPSULE.height, cx: activeBoard.width / 2, cy: activeBoard.height / 2, line: -1, index: -1 };
     return { from: fallback, to: fallback, real: false };
   }
 
@@ -77,15 +78,15 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
     const sessions = liveSessions(state);
     emptyLabel.classList.toggle("hidden", sessions.length > 0);
     board.classList.toggle("empty", sessions.length === 0);
-    const layout = boardLayout(sessions);
+    const layout = boardLayout(sessions, { portrait: options.portrait });
     drawRowLabels(rowsLayer, rowLabelNodes, layout.rows);
     const seen = new Set();
     for (const session of sessions) {
       seen.add(session.pid);
       const box = layout.capsules.get(session.pid);
       lastBoxes.set(session.pid, box);
-      const node = capsuleNodes.get(session.pid) ?? createCapsuleNode(capsulesLayer, capsuleNodes, session, box, instant);
-      updateCapsuleNode(node, session, box);
+      const node = capsuleNodes.get(session.pid) ?? createCapsuleNode(capsulesLayer, capsuleNodes, session, box, instant, options);
+      updateCapsuleNode(node, session, box, options);
     }
     for (const [pid, node] of capsuleNodes) {
       if (seen.has(pid)) continue;
@@ -123,6 +124,25 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
     }
   }
 
+  // Switches between the landscape and the portrait board; the next draw re-lays everything out.
+  draw.setPortrait = function setPortrait(portrait) {
+    if (options.portrait === portrait) return;
+    options.portrait = portrait;
+    activeBoard = boardFor(portrait);
+    svg.setAttribute("viewBox", `0 0 ${activeBoard.width} ${activeBoard.height}`);
+    board.setAttribute("width", activeBoard.width);
+    board.setAttribute("height", activeBoard.height);
+    emptyLabel.setAttribute("x", activeBoard.width / 2);
+    emptyLabel.setAttribute("y", activeBoard.height / 2);
+  };
+
+  // Shows or hides the per-capsule remove controls.
+  draw.setEditing = function setEditing(editing) {
+    options.editing = editing;
+    svg.classList.toggle("editing", editing);
+    for (const node of capsuleNodes.values()) syncRemoveControl(node, editing);
+  };
+
   // Marks the pulse for one message index as selected, or clears the selection with null.
   draw.select = function select(index) {
     for (const pulse of pulsesLayer.querySelectorAll(".pulse")) {
@@ -141,11 +161,12 @@ function drawRowLabels(layer, rowLabelNodes, rows) {
     if (!text) {
       text = appendTo(layer, "text", { class: "row-label", x: 0, y: 0, dy: "0.35em", "data-folder": row.folder });
       text.textContent = truncateLabel(row.label, 14);
-      text.style.transform = `translate(${row.x}px, ${row.cy.toFixed(1)}px)`;
+      text.style.transform = `translate(${row.labelX}px, ${row.labelY.toFixed(1)}px)`;
       flushStyles(text);
       rowLabelNodes.set(row.folder, text);
     }
-    text.style.transform = `translate(${row.x}px, ${row.cy.toFixed(1)}px)`;
+    text.setAttribute("text-anchor", row.anchor);
+    text.style.transform = `translate(${row.labelX}px, ${row.labelY.toFixed(1)}px)`;
   }
   for (const [folder, text] of rowLabelNodes) {
     if (seen.has(folder)) continue;
@@ -226,6 +247,7 @@ function updateChargeNode(layer, chargeNodes, thread, from, to, { travelMs, redu
 }
 
 function startFootprint(node, capsuleNodes, lastBoxes, pid, ghostMs) {
+  node.session = { ...node.session, state: "ended" };
   node.group.dataset.state = "ended";
   node.group.classList.add("leaving");
   node.ghostTimer = setTimeout(() => removeCapsule(node, capsuleNodes, lastBoxes, pid), ghostMs);
@@ -240,14 +262,31 @@ function removeCapsule(node, capsuleNodes, lastBoxes, pid) {
   lastBoxes.delete(pid);
 }
 
-function createCapsuleNode(layer, capsuleNodes, session, box, instant = false) {
+function createCapsuleNode(layer, capsuleNodes, session, box, instant = false, options = {}) {
   const group = appendTo(layer, "g", { class: instant ? "capsule" : "capsule entering", "data-pid": session.pid, tabindex: "0", role: "img" });
   group.style.transform = translateTo(box);
   const shell = appendTo(group, "rect", { class: "shell", x: 0, y: 0, width: box.width, height: box.height, rx: CAPSULE.cornerRadius, ry: CAPSULE.cornerRadius });
   const title = appendTo(group, "title", {});
   const name = appendTo(group, "text", { class: "name", x: box.width / 2, "text-anchor": "middle" });
   const role = appendTo(group, "text", { class: "role", x: box.width / 2, "text-anchor": "middle" });
-  const node = { group, shell, title, name, role, ghostTimer: null, powerTimer: null, lastLabel: null, renameTimer: null };
+  const node = { group, shell, title, name, role, remove: null, session, ghostTimer: null, powerTimer: null, lastLabel: null, renameTimer: null };
+  if (options.onRemove && session.state !== "placeholder") {
+    const remove = appendTo(group, "g", { class: "remove", role: "button", tabindex: "-1" });
+    appendTo(remove, "circle", { cx: box.width, cy: 0, r: 13 });
+    const cross = appendTo(remove, "text", { x: box.width, y: 0, dy: "0.35em", "text-anchor": "middle" });
+    cross.textContent = "×";
+    const activate = (event) => {
+      event.preventDefault();
+      event.stopPropagation?.();
+      options.onRemove(node.session);
+    };
+    remove.addEventListener("click", activate);
+    remove.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") activate(event);
+    });
+    node.remove = remove;
+    syncRemoveControl(node, options.editing);
+  }
   capsuleNodes.set(session.pid, node);
   flushStyles(group);
   group.classList.remove("entering");
@@ -255,7 +294,8 @@ function createCapsuleNode(layer, capsuleNodes, session, box, instant = false) {
   return node;
 }
 
-function updateCapsuleNode(node, session, box) {
+function updateCapsuleNode(node, session, box, options = {}) {
+  node.session = session;
   if (node.ghostTimer) {
     clearTimeout(node.ghostTimer);
     node.ghostTimer = null;
@@ -277,6 +317,13 @@ function updateCapsuleNode(node, session, box) {
   if (session.state === "placeholder") node.title.textContent = `${label}, no session event yet (folder guessed: ${session.folder})`;
   else node.title.textContent = `${hasRole ? `${label} (${session.role})` : label} in ${session.folder}${formerly}`;
   node.group.setAttribute("aria-label", `${label}, ${session.state}${hasRole ? `, ${session.role}` : ""}, folder ${session.folder}`);
+  if (node.remove) node.remove.setAttribute("aria-label", `Remove ${label}`);
+}
+
+function syncRemoveControl(node, editing) {
+  if (!node.remove) return;
+  node.remove.setAttribute("tabindex", editing ? "0" : "-1");
+  node.remove.setAttribute("aria-hidden", editing ? "false" : "true");
 }
 
 function powerOn(node) {

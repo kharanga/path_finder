@@ -10,7 +10,17 @@
 <header class="topbar">
   <h1>Circuit</h1>
   <span id="status" class="status" data-status="connecting" aria-live="polite">connecting</span>
+  <div class="editor">
+    <button id="edit-toggle" type="button" aria-pressed="false" disabled>Edit</button>
+    <button id="remove-ended" type="button" hidden>Remove all ended</button>
+    <span id="edit-hint" class="hint" aria-live="polite" hidden></span>
+  </div>
 </header>
+<div id="confirm" class="confirm" role="alertdialog" aria-live="assertive" hidden>
+  <span data-role="confirm-text"></span>
+  <button data-role="confirm-yes" type="button">Remove</button>
+  <button data-role="confirm-no" type="button">Cancel</button>
+</div>
 <main class="stage">
   <svg id="orbit" class="orbit" role="img" aria-label="Claude Code sessions as capsules on a circuit board"></svg>
   <aside id="panel" class="panel" hidden aria-label="Message details">

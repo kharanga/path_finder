@@ -20,186 +20,182 @@ const setup = (options = {}) => {
   const draw = createRenderer(svg, { ghostMs: 100, lingerMs: 200, ...options });
   return { svg, draw, q: (s) => svg.querySelector(s), qa: (s) => svg.querySelectorAll(s) };
 };
-const replay = (draw, name, state = createState()) => {
-  const fx = fixture(name);
-  applySnapshot(state, fx.snapshot, NOW);
-  draw(state);
-  for (const step of fx.events) {
+const loaded = (name) => {
+  const state = createState();
+  applySnapshot(state, fixture(name).snapshot, NOW);
+  return state;
+};
+const stepThrough = (draw, state, name, from = 0, to = Infinity) => {
+  for (const step of fixture(name).events.slice(from, to)) {
     applyEvent(state, step.event, step.data, NOW);
     draw(state);
   }
-  return state;
 };
 
-test("empty state shows the dashed ring and the empty label; bodies hide it", () => {
+test("empty state shows the empty board and label; capsules and row labels appear for sessions", () => {
   const { svg, draw, q, qa } = setup({ reducedMotion: true });
   assert.equal(svg.getAttribute("viewBox"), "0 0 1360 1000");
   draw(createState());
   assert.equal(q(".empty-label").textContent, "No sessions running");
   assert.equal(q(".empty-label").classList.contains("hidden"), false);
-  assert.equal(q(".ring").classList.contains("empty"), true);
-  const state = createState();
-  applySnapshot(state, fixture("few").snapshot, NOW);
+  assert.equal(q(".board").classList.contains("empty"), true);
+  const state = loaded("few");
   draw(state);
-  assert.equal(qa(".body").length, 5);
+  assert.equal(qa(".capsule").length, 5);
+  assert.equal(qa(".row-label").length, 4);
+  assert.deepEqual(qa(".row-label").map((t) => t.getAttribute("data-folder")), ["listings", "path_finder", "scratch", "tag-analyzer"]);
   assert.equal(q(".empty-label").classList.contains("hidden"), true);
-  assert.equal(q(".ring").classList.contains("empty"), false);
+  assert.equal(q(".board").classList.contains("empty"), false);
 });
 
-test("bodies carry state, folder, labels, roles, tooltips, and accessibility attributes", () => {
+test("capsules carry state, folder, position, labels, roles, tooltips, accessibility, and power-on", () => {
   const { draw, q } = setup({ reducedMotion: true });
-  const state = createState();
-  applySnapshot(state, fixture("few").snapshot, NOW);
-  draw(state);
-  const body = q('.body[data-pid="30111"]');
-  assert.equal(body.dataset.state, "busy");
-  assert.equal(body.dataset.folder, "tag-analyzer");
-  assert.equal(body.querySelector(".role").textContent, "validator");
-  assert.equal(body.querySelector("title").textContent, "tag-analyzer-63 (validator) in tag-analyzer");
-  assert.equal(body.getAttribute("aria-label"), "tag-analyzer-63, busy, validator, folder tag-analyzer");
-  assert.equal(body.getAttribute("tabindex"), "0");
-  assert.equal(q('.body[data-pid="29904"] .role').classList.contains("hidden"), true);
-  assert.equal(q('.body[data-pid="30444"] .name').textContent, "pid 30444");
+  draw(loaded("few"));
+  const capsule = q('.capsule[data-pid="30111"]');
+  assert.equal(capsule.dataset.state, "busy");
+  assert.equal(capsule.dataset.folder, "tag-analyzer");
+  assert.equal(capsule.querySelector(".role").textContent, "validator");
+  assert.equal(capsule.querySelector("title").textContent, "tag-analyzer-63 (validator) in tag-analyzer");
+  assert.equal(capsule.getAttribute("aria-label"), "tag-analyzer-63, busy, validator, folder tag-analyzer");
+  assert.equal(capsule.getAttribute("tabindex"), "0");
+  assert.equal(capsule.getAttribute("role"), "img");
+  assert.equal(capsule.querySelector(".shell").getAttribute("rx"), "14");
+  assert.equal(q('.capsule[data-pid="30222"]').style.transform, "translate(230.0px, 412.0px)");
+  assert.equal(q('.capsule[data-pid="29904"] .role').classList.contains("hidden"), true);
+  assert.equal(q('.capsule[data-pid="30444"] .name').textContent, "pid 30444");
+  assert.equal(q('.capsule[data-pid="30444"]').classList.contains("powering"), true);
+  assert.equal(q('.capsule[data-pid="30111"]').classList.contains("powering"), false);
 });
 
-test("reduced motion: particles appear arrived at the recipient and threads appear fully drawn, then vanish at once", async () => {
-  const { draw, q, qa } = setup({ reducedMotion: true, lingerMs: 200 });
-  const state = createState();
-  const fx = fixture("messages");
-  applySnapshot(state, fx.snapshot, NOW);
-  draw(state);
-  assert.equal(qa(".particle").length, 0);
-  applyEvent(state, "message", fx.events[0].data, NOW);
-  draw(state);
-  const particle = q(".particle");
-  assert.equal(particle.dataset.messageIndex, "1");
-  assert.equal(particle.classList.contains("notify"), true);
-  assert.equal(particle.classList.contains("arrived"), true);
-  assert.equal(particle.querySelector("animateMotion"), null);
-  assert.equal(q(".thread").getAttribute("data-thread-id"), "1");
-  assert.equal(q(".thread").getAttribute("stroke-dashoffset"), "0");
-  applyEvent(state, "session", fx.events[4].data, NOW);
-  draw(state);
-  assert.equal(q(".thread").classList.contains("snapping"), true);
-  await sleep(5);
-  assert.equal(qa(".thread").length, 0);
-});
-
-test("full motion: particles animate along their own path and threads draw on from the sender", async () => {
-  const { draw, q } = setup({ reducedMotion: false, travelMs: 5, lingerMs: 200 });
-  const state = createState();
-  const fx = fixture("messages");
-  applySnapshot(state, fx.snapshot, NOW);
-  draw(state);
-  applyEvent(state, "message", fx.events[0].data, NOW);
-  draw(state);
-  const motion = q(".particle-dot").children[0];
-  assert.equal(motion.tagName, "animateMotion");
-  assert.equal(motion.getAttribute("dur"), "5ms");
-  assert.equal(motion.children[0].getAttribute("href"), `#${q(".particle-path").getAttribute("id")}`);
-  assert.equal(q(".particle").classList.contains("arrived"), false);
-  const thread = q(".thread");
-  assert.ok(Number(thread.getAttribute("stroke-dasharray")) > 0);
-  assert.equal(thread.getAttribute("stroke-dashoffset"), "0");
-  assert.equal(thread.classList.contains("drawing"), false);
-  await sleep(40);
-  assert.equal(q(".particle").classList.contains("arrived"), true);
-});
-
-test("reduced motion defaults from matchMedia when no override is given", () => {
-  const { draw, q } = setup({ media: { reducedMotion: true }, lingerMs: 200 });
-  const state = createState();
-  applySnapshot(state, fixture("messages").snapshot, NOW);
-  draw(state);
-  applyEvent(state, "message", fixture("messages").events[0].data, NOW);
-  draw(state);
-  assert.equal(q(".particle").classList.contains("arrived"), true);
-  assert.equal(q(".thread").getAttribute("stroke-dashoffset"), "0");
-});
-
-test("ghosts linger for ghostMs, are revived when the pid returns, and vanish immediately under instant draws", async () => {
+test("footprints linger for ghostMs, revive when the pid returns, and vanish at once under instant draws", async () => {
   const { draw, q, qa } = setup({ reducedMotion: true, ghostMs: 10 });
-  const state = createState();
-  applySnapshot(state, fixture("few").snapshot, NOW);
+  const state = loaded("few");
   draw(state);
   draw(createState());
-  assert.equal(qa(".body").length, 5);
-  assert.equal(q('.body[data-pid="30111"]').dataset.state, "ended");
-  assert.equal(q('.body[data-pid="30111"]').classList.contains("leaving"), true);
+  assert.equal(qa(".capsule").length, 5);
+  assert.equal(q('.capsule[data-pid="30111"]').dataset.state, "ended");
+  assert.equal(q('.capsule[data-pid="30111"]').classList.contains("leaving"), true);
+  assert.equal(qa(".row-label").length, 0);
   draw(state);
   assert.equal(qa(".leaving").length, 0);
-  assert.equal(q('.body[data-pid="30111"]').dataset.state, "busy");
+  assert.equal(q('.capsule[data-pid="30111"]').dataset.state, "busy");
   draw(createState(), { instant: true });
-  assert.equal(qa(".body").length, 0);
+  assert.equal(qa(".capsule").length, 0);
   draw(state);
   draw(createState());
   await sleep(30);
-  assert.equal(qa(".body").length, 0);
+  assert.equal(qa(".capsule").length, 0);
 });
 
-test("instant draws skip fade-in and never spawn particles for replayed states", () => {
+test("removed sessions disappear at once with no footprint and come back on a later event", () => {
+  const { draw, q, qa } = setup({ reducedMotion: true, ghostMs: 2000, lingerMs: 200 });
+  const state = loaded("removed");
+  draw(state);
+  assert.equal(qa(".capsule").length, 4);
+  assert.deepEqual(qa(".trace").map((t) => t.getAttribute("data-trace")), ["30111|30222"]);
+  assert.equal(qa(".pulse").length, 0);
+  stepThrough(draw, state, "removed", 0, 1);
+  assert.equal(qa(".capsule").length, 4);
+  assert.equal(q('.capsule[data-pid="29904"]').dataset.state, "ended");
+  stepThrough(draw, state, "removed", 1, 2);
+  assert.equal(q('.capsule[data-pid="40707"]'), null);
+  assert.equal(q('.capsule[data-pid="29904"]').dataset.state, "ended");
+  assert.equal(qa(".capsule").length, 3);
+  stepThrough(draw, state, "removed", 2, 3);
+  assert.equal(q('.capsule[data-pid="40707"]').dataset.state, "busy");
+  assert.equal(qa(".capsule").length, 4);
+  stepThrough(draw, state, "removed", 3, 4);
+  assert.equal(qa(".pulse").length, 1);
+  assert.equal(qa(".trace").length, 2);
+  draw(createState(), { instant: true });
+  assert.equal(qa(".capsule").length, 0);
+});
+
+test("reduced motion: pulses rest at the recipient, charges are fully drawn, and a charge drains on idle", async () => {
+  const { draw, q, qa } = setup({ reducedMotion: true, lingerMs: 200 });
+  const state = loaded("messages");
+  draw(state);
+  assert.equal(qa(".pulse").length, 0);
+  assert.equal(qa(".trace").length, 1);
+  assert.equal(qa(".charge").length, 0);
+  stepThrough(draw, state, "messages", 0, 1);
+  const pulse = q(".pulse");
+  assert.equal(pulse.dataset.messageIndex, "1");
+  assert.equal(pulse.classList.contains("notify"), true);
+  assert.equal(pulse.classList.contains("arrived"), true);
+  assert.equal(pulse.getAttribute("role"), "button");
+  assert.equal(pulse.querySelector("animateMotion"), null);
+  assert.equal(qa(".trace").length, 2);
+  assert.equal(q(".charge").getAttribute("data-thread-id"), "1");
+  assert.equal(q(".charge").getAttribute("stroke-dashoffset"), "0");
+  stepThrough(draw, state, "messages", 1, 2);
+  assert.equal(qa(".charge").length, 1);
+  stepThrough(draw, state, "messages", 2, 5);
+  assert.equal(q(".charge").classList.contains("draining"), true);
+  await sleep(5);
+  assert.equal(qa(".charge").length, 0);
+  stepThrough(draw, state, "messages", 5);
+  assert.equal(qa(".pulse").length, 6);
+  assert.equal(q('.capsule[data-pid="placeholder:nobody-99"]').dataset.state, "placeholder");
+  assert.ok(qa(".pulse").at(-1).querySelector(".pulse-path").getAttribute("d").startsWith("M 194 "));
+  assert.equal(qa(".pulse").at(-1).querySelector("title").textContent.startsWith("unknown sender → path-finder-18"), true);
+});
+
+test("full motion: pulses animate along their own route and charges draw on; matchMedia sets the default", async () => {
+  const { draw, q } = setup({ reducedMotion: false, travelMs: 5, lingerMs: 200 });
+  const state = loaded("messages");
+  draw(state);
+  stepThrough(draw, state, "messages", 0, 1);
+  const motion = q(".pulse-dot").children[0];
+  assert.equal(motion.tagName, "animateMotion");
+  assert.equal(motion.getAttribute("dur"), "5ms");
+  assert.equal(motion.children[0].getAttribute("href"), `#${q(".pulse-path").getAttribute("id")}`);
+  assert.equal(q(".pulse").classList.contains("arrived"), false);
+  assert.ok(Number(q(".charge").getAttribute("stroke-dasharray")) > 0);
+  assert.equal(q(".charge").getAttribute("stroke-dashoffset"), "0");
+  await sleep(40);
+  assert.equal(q(".pulse").classList.contains("arrived"), true);
+  const viaMedia = setup({ media: { reducedMotion: true }, lingerMs: 200 });
+  const other = loaded("messages");
+  viaMedia.draw(other);
+  stepThrough(viaMedia.draw, other, "messages", 0, 1);
+  assert.equal(viaMedia.q(".pulse").classList.contains("arrived"), true);
+});
+
+test("instant draws skip power-on and fade-in and never spawn pulses; a new snapshot rebuilds traces without pulses", () => {
   const { draw, qa } = setup({ reducedMotion: true, lingerMs: 200 });
-  const state = replay(draw, "messages");
-  const live = qa(".particle").length;
-  assert.ok(live > 0);
-  const replayed = createState();
-  applySnapshot(replayed, fixture("messages").snapshot, NOW);
+  const state = loaded("messages");
+  draw(state);
+  stepThrough(draw, state, "messages");
+  assert.ok(qa(".pulse").length > 0);
+  const replayed = loaded("few");
   replayed.snapshotSeq = -1;
   draw(replayed, { instant: true });
-  assert.equal(qa(".particle").length, 0);
-  assert.equal(qa(".body").every((b) => !b.classList.contains("entering")), true);
-});
-
-test("a new snapshot clears particles and threads and redraws waiting threads from it", () => {
-  const { draw, qa } = setup({ reducedMotion: true, lingerMs: 200 });
-  const state = replay(draw, "messages");
+  assert.equal(qa(".pulse").length, 0);
+  assert.equal(qa(".capsule").every((c) => !c.classList.contains("entering") && !c.classList.contains("powering")), true);
   applySnapshot(state, { sessions: fixture("messages").snapshot.sessions, messages: [fixture("messages").events[0].data] }, NOW);
   draw(state);
-  assert.equal(qa(".particle").length, 0);
-  assert.equal(qa(".thread").length, 1);
+  assert.equal(qa(".pulse").length, 0);
+  assert.equal(qa(".trace").length, 1);
+  assert.equal(qa(".charge").length, 1);
 });
 
-test("placeholders render as placeholder bodies and messages route to them; null senders start at the center", () => {
+test("renames update the label in place with a flash and tooltip, and route former names to the capsule", () => {
   const { draw, q, qa } = setup({ reducedMotion: true, lingerMs: 200 });
-  const state = createState();
-  applySnapshot(state, { sessions: [{ ts: "2026-10-05T22:00:00Z", type: "session", session: "a-1", folder: "a", pid: 1, state: "idle", role: null }], messages: [] }, NOW);
+  const state = loaded("rename");
   draw(state);
-  applyEvent(state, "message", { ts: "2026-10-05T22:00:01Z", type: "message", from: "a-1", to: "b-22", text: "x", notify_on_idle: true }, NOW);
-  draw(state);
-  const placeholder = q('.body[data-pid="placeholder:b-22"]');
-  assert.equal(placeholder.dataset.state, "placeholder");
-  assert.equal(placeholder.querySelector("title").textContent, "b-22, no session event yet (folder guessed: b)");
-  const [x, y] = placeholder.style.transform.match(/[\d.]+/g);
-  assert.equal(q(".particle-dot").getAttribute("cx"), String(Number(x)));
-  assert.equal(q(".particle-dot").getAttribute("cy"), String(Number(y)));
-  applyEvent(state, "message", { ts: "2026-10-05T22:00:02Z", type: "message", from: null, to: "a-1", text: "y", notify_on_idle: false }, NOW);
-  draw(state);
-  const last = qa(".particle").at(-1);
-  assert.ok(last.querySelector(".particle-path").getAttribute("d").startsWith("M 680 500 Q"));
-  assert.equal(last.querySelector("title").textContent, "unknown sender → a-1: y");
-});
-
-test("renames update the label in place with a flash and a tooltip, and route former names to the body", () => {
-  const { draw, q, qa } = setup({ reducedMotion: true, lingerMs: 200 });
-  const state = createState();
-  const fx = fixture("rename");
-  applySnapshot(state, fx.snapshot, NOW);
-  draw(state);
-  const before = q('.body[data-pid="29248"]').style.transform;
-  for (const step of fx.events.slice(0, 2)) {
-    applyEvent(state, step.event, step.data, NOW);
-    draw(state);
-  }
-  const body = q('.body[data-pid="29248"]');
-  assert.equal(qa(".body").length, 3);
-  assert.equal(body.querySelector(".name").textContent, "manager-drives-feature-…");
-  assert.equal(body.classList.contains("renamed"), true);
-  assert.equal(body.querySelector("title").textContent, "manager-drives-feature-work (manager) in path_finder, formerly path-finder-0d");
-  assert.equal(body.style.transform, before);
-  applyEvent(state, "message", fx.events[2].data, NOW);
-  draw(state);
-  const [x, y] = before.match(/[\d.]+/g);
-  assert.ok(qa(".particle").at(-1).querySelector(".particle-path").getAttribute("d").startsWith(`M ${Number(x)} ${Number(y)} Q`));
+  const before = q('.capsule[data-pid="29248"]').style.transform;
+  stepThrough(draw, state, "rename", 0, 2);
+  const capsule = q('.capsule[data-pid="29248"]');
+  assert.equal(qa(".capsule").length, 3);
+  assert.equal(capsule.querySelector(".name").textContent, "manager-drives-featu…");
+  assert.equal(capsule.classList.contains("renamed"), true);
+  assert.equal(capsule.querySelector("title").textContent, "manager-drives-feature-work (manager) in path_finder, formerly path-finder-0d");
+  assert.equal(capsule.style.transform, before);
+  assert.equal(q('.capsule[data-pid="placeholder:path-finder-0d"]'), null);
+  stepThrough(draw, state, "rename", 2, 3);
+  const [x, y] = before.match(/[\d.]+/g).map(Number);
+  assert.ok(qa(".pulse").at(-1).querySelector(".pulse-path").getAttribute("d").startsWith(`M ${x + 110} ${y + 56}`));
 });
 
 test("selection toggles the selected class and onSelect fires on click, Enter, and Space only", () => {
@@ -208,18 +204,17 @@ test("selection toggles the selected class and onSelect fires on click, Enter, a
   const state = createState();
   applySnapshot(state, { sessions: [], messages: [] }, NOW);
   draw(state);
-  applyEvent(state, "message", { ts: "2026-10-05T22:00:01Z", type: "message", from: "a", to: "b", text: "t", notify_on_idle: false }, NOW);
+  applyEvent(state, "message", { ts: "2026-10-05T22:00:01Z", type: "message", from: "a-1", to: "b-2", text: "t", notify_on_idle: false }, NOW);
   draw(state);
-  const particle = q(".particle");
-  assert.equal(particle.getAttribute("role"), "button");
+  const pulse = q(".pulse");
   const event = { preventDefault() {} };
-  particle.dispatchEvent({ type: "click", ...event });
-  particle.dispatchEvent({ type: "keydown", key: "Enter", ...event });
-  particle.dispatchEvent({ type: "keydown", key: " ", ...event });
-  particle.dispatchEvent({ type: "keydown", key: "x", ...event });
+  pulse.dispatchEvent({ type: "click", ...event });
+  pulse.dispatchEvent({ type: "keydown", key: "Enter", ...event });
+  pulse.dispatchEvent({ type: "keydown", key: " ", ...event });
+  pulse.dispatchEvent({ type: "keydown", key: "x", ...event });
   assert.deepEqual(selected, [[0, "t"], [0, "t"], [0, "t"]]);
   draw.select(0);
-  assert.equal(particle.classList.contains("selected"), true);
+  assert.equal(pulse.classList.contains("selected"), true);
   draw.select(null);
-  assert.equal(particle.classList.contains("selected"), false);
+  assert.equal(pulse.classList.contains("selected"), false);
 });

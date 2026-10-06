@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createState, applyEvent, findSessionByName, snapshot, DEFAULT_MESSAGE_LIMIT } from "../../../webhook/state.js";
+import { createState, applyEvent, findSessionByName, snapshot, isLive, liveSessions, DEFAULT_MESSAGE_LIMIT } from "../../../webhook/state.js";
 
 const sessionEvent = (overrides) => ({ ts: "2026-10-05T21:40:00Z", type: "session", session: "listings-bc", folder: "listings", pid: 29904, state: "started", role: null, ...overrides });
 const messageEvent = (overrides) => ({ ts: "2026-10-05T21:41:00Z", type: "message", from: "a", to: "b", text: "m", notify_on_idle: false, ...overrides });
@@ -86,3 +86,36 @@ test("snapshot sorts sessions by ts ascending and copies the message list", () =
   assert.notEqual(snap.messages, state.messages);
   assert.deepEqual(snapshot(createState()), { sessions: [], messages: [] });
 });
+
+test("isLive and liveSessions treat ended and removed as off the board", () => {
+  assert.equal(isLive({ state: "busy" }), true);
+  assert.equal(isLive({ state: "waiting" }), true);
+  assert.equal(isLive({ state: "ended" }), false);
+  assert.equal(isLive({ state: "removed" }), false);
+  const state = createState();
+  applyEvent(state, sessionEvent({ pid: 1, ts: "2026-10-05T21:40:03Z", state: "idle" }));
+  applyEvent(state, sessionEvent({ pid: 2, ts: "2026-10-05T21:40:02Z", state: "ended" }));
+  applyEvent(state, sessionEvent({ pid: 3, ts: "2026-10-05T21:40:01Z", state: "removed" }));
+  applyEvent(state, sessionEvent({ pid: 4, ts: "2026-10-05T21:40:00Z", state: "started" }));
+  assert.deepEqual(liveSessions(state).map((s) => s.pid), [4, 1]);
+});
+
+test("snapshot keeps ended sessions, drops removed ones, and a later event brings a removed pid back", () => {
+  const state = createState();
+  applyEvent(state, sessionEvent({ pid: 1, state: "idle" }));
+  applyEvent(state, sessionEvent({ pid: 2, session: "b-2", state: "ended" }));
+  applyEvent(state, sessionEvent({ pid: 3, session: "c-3", role: "validator", state: "removed" }));
+  assert.deepEqual(snapshot(state).sessions.map((s) => s.pid), [1, 2]);
+  assert.equal(state.sessions.get(3).state, "removed");
+  applyEvent(state, sessionEvent({ pid: 3, ts: "2026-10-05T21:41:00Z", session: null, role: null, state: "busy" }));
+  assert.deepEqual(snapshot(state).sessions.map((s) => [s.pid, s.session, s.role]).filter(([pid]) => pid === 3), [[3, "c-3", "validator"]]);
+});
+
+test("findSessionByName never returns a removed session but still returns an ended one", () => {
+  const state = createState();
+  applyEvent(state, sessionEvent({ pid: 1, session: "gone-aa", state: "removed" }));
+  applyEvent(state, sessionEvent({ pid: 2, session: "done-bb", state: "ended" }));
+  assert.equal(findSessionByName(state, "gone-aa"), undefined);
+  assert.equal(findSessionByName(state, "done-bb").pid, 2);
+});
+
