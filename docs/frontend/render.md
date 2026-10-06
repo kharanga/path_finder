@@ -81,10 +81,10 @@ Without `reducedMotion`, the dot has an `animateMotion` child whose `mpath` refe
 Selection, with `createRenderer(svg, { reducedMotion: true, onSelect })` and the last event of `messages.json` (sender `null`) applied:
 
 ```js
-const particle = document.querySelector('.particle[data-message-index="7"]');
+const particle = document.querySelector('.particle[data-message-index="6"]');
 particle.querySelector("title").textContent // "unknown sender → path-finder-18: sender unknown: hook could not resolve the session name"
-particle.dispatchEvent(new Event("click")); // onSelect called with (state.messages[7], 7)
-draw.select(7); particle.classList.contains("selected") // true
+particle.dispatchEvent(new Event("click")); // onSelect called with (state.messages[6], 6)
+draw.select(6); particle.classList.contains("selected") // true
 draw.select(null); particle.classList.contains("selected") // false
 ```
 

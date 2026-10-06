@@ -29,6 +29,8 @@ Inputs: `ts` (string or null).
 
 Output: string; `"unknown time"` when `ts` is missing or not a valid date.
 
+Errors: none.
+
 Example:
 
 ```js

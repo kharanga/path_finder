@@ -20,6 +20,8 @@ Inputs: `snapshot` (object, `{ sessions, messages }`), `receivedAtMs` (number, d
 
 Output: none.
 
+Errors: none; a `null` snapshot records nothing.
+
 ### record(name, data, receivedAtMs)
 
 What it does: records one incremental event.
@@ -28,23 +30,37 @@ Inputs: `name` (`"session"`, `"message"`, or `"liveness"`), `data` (object), `re
 
 Output: none.
 
+Errors: none.
+
 ### range()
 
 What it does: returns the span of recorded history.
 
+Inputs: none.
+
 Output: `{ startMs, endMs }`, or `null` when nothing is recorded.
+
+Errors: none.
 
 ### messageTimes()
 
 What it does: lists the timestamps of recorded messages for the tick marks on the strip.
 
+Inputs: none.
+
 Output: `number[]` in ms, oldest first.
+
+Errors: none.
 
 ### messages()
 
 What it does: lists recorded messages with their timestamps, for the clickable tick buttons.
 
+Inputs: none.
+
 Output: `{ tsMs: number, data: Message }[]`, oldest first.
+
+Errors: none.
 
 ### stateAt(tsMs)
 
@@ -58,9 +74,15 @@ Errors: none.
 
 ### size
 
-Number of recorded entries.
+What it does: getter for the number of recorded entries.
 
-Example, with `frontend/fixtures/messages.json` and `now = Date.parse("2026-10-05T22:01:00Z")`:
+Inputs: none.
+
+Output: number.
+
+Errors: none.
+
+Example for all methods above, with `frontend/fixtures/messages.json` and `now = Date.parse("2026-10-05T22:01:00Z")`:
 
 ```js
 const timeline = createTimeline();
@@ -106,6 +128,8 @@ What it does: formats a millisecond timestamp as local `HH:MM:SS`.
 Inputs: `tsMs` (number).
 
 Output: string, or `""` for an invalid timestamp.
+
+Errors: none.
 
 Example:
 
