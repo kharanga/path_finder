@@ -60,6 +60,7 @@ User direction 2026-10-06: not a ring. An electrical circuit that passes message
 - `POST /sessions/<pid>/remove` appends a `session` event with state `removed` for that PID (current name, folder, role) to `events.jsonl` and broadcasts it. Returns 204, or 404 when the PID is unknown.
 - `removed` is a sixth session state. The reducer treats it as not live. The page drops the capsule immediately with no footprint. If the session later emits any event, it reappears, which is the intended way to recover a mistaken removal of a live session.
 - Edit mode also offers "Remove all ended" as one action, which removes every session currently in state `ended`.
+- Known limitation, accepted 2026-10-06: the snapshot excludes removed sessions, so a page that connects after a removal has no record of that session. If the removed session keeps sending messages, that page shows a placeholder until a session event for it arrives. A page that was open at removal time reinstates it directly.
 
 ## 5. Current state
 
@@ -166,7 +167,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **F11: removal editor.** Edit toggle, per-capsule remove control with one confirmation, "Remove all ended", calls `POST /sessions/<pid>/remove`, drops the capsule on the resulting `removed` event with no footprint. Disabled with a hint in fixture mode where no server exists. Also: portrait board layout under 600 px, rows stack vertically and traces route around them.
   Acceptance: remove a live and an ended session on the demo server, both vanish, page reload shows them still gone, a new event for the live one brings it back. Docs updated.
 
-- [~] path-finder-18 **F12: removal polish.** (1) A message from or to the name of a removed session reinstates that capsule in its last known state instead of creating a placeholder, since any event from a removed session brings it back (§4.1). (2) In portrait, ended footprints must not overlap re-flowed capsules; drop the footprint when its slot is reused. Old `orbit` identifiers in ids and css stay as they are.
+- [~] path-finder-18 (in review) **F12: removal polish.** (1) A message from or to the name of a removed session reinstates that capsule in its last known state instead of creating a placeholder, since any event from a removed session brings it back (§4.1). (2) In portrait, ended footprints must not overlap re-flowed capsules; drop the footprint when its slot is reused. Old `orbit` identifiers in ids and css stay as they are.
   Acceptance: demo server removed scenario shows the chatty removed session returning as a capsule, no placeholder; portrait at 15 sessions with two ended shows no overlap. Docs updated.
 
 ### 8.3 validator
