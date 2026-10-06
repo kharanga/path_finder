@@ -17,6 +17,7 @@
 html, body {
   margin: 0;
   height: 100%;
+  overflow-x: hidden;
   background: var(--bg);
   color: var(--text);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -57,14 +58,24 @@ body {
   display: grid;
   place-items: center;
   padding: 0 16px 16px;
+  overflow: hidden;
 }
 
 .orbit {
-  width: min(100%, (100vh - 80px) * 1.36);
+  width: min(100%, (100vh - 140px) * 1.36);
   height: auto;
   aspect-ratio: 1.36;
   overflow: visible;
 }
+
+.body { outline: none; }
+
+.body:focus-visible .core {
+  stroke: var(--particle);
+  stroke-width: 4;
+}
+
+.body:focus-visible .name { fill: var(--particle); }
 
 .body {
   opacity: 1;
@@ -340,12 +351,40 @@ body {
 
 .tick {
   position: absolute;
+  top: 0;
+  width: 10px;
+  height: 14px;
+  margin-left: -5px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.tick::before {
+  content: "";
+  position: absolute;
   top: 2px;
+  left: 4px;
   width: 2px;
   height: 8px;
-  margin-left: -1px;
   background: var(--thread);
   opacity: 0.8;
+}
+
+.tick:hover::before,
+.tick:focus-visible::before {
+  background: var(--busy);
+  opacity: 1;
+  height: 10px;
+  top: 1px;
+}
+
+.tick:focus-visible {
+  outline: 2px solid var(--busy);
+  outline-offset: 1px;
+  border-radius: 2px;
 }
 
 .track input[type="range"] {
@@ -369,5 +408,16 @@ body {
 }
 
 .timeline[data-mode="scrub"] .time { color: var(--busy); }
+
+@media (max-width: 600px) {
+  .topbar { padding: 10px 16px; }
+  .stage { padding: 0 16px 8px; }
+  .orbit { width: 100%; }
+  .body .name { font-size: 30px; }
+  .body .role { font-size: 23px; }
+  .empty-label { font-size: 40px; }
+  .timeline { padding: 8px 16px 12px; gap: 8px; }
+  .time { min-width: 0; }
+}
 
 .hidden { display: none; }

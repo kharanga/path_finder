@@ -12,6 +12,7 @@ export function start({ svg, statusElement, timelineElement, panelElement }) {
   const timeline = createTimeline();
   const panel = createPanel(panelElement, { onClose: () => draw.select(null) });
   const draw = createRenderer(svg, {
+    reducedMotion: forcedReducedMotion(),
     onSelect(message, index) {
       panel.show(message, index);
       draw.select(index);
@@ -26,6 +27,10 @@ export function start({ svg, statusElement, timelineElement, panelElement }) {
     },
     onLive() {
       draw(liveState, { instant: true });
+    },
+    onTick(message) {
+      panel.show(message, null);
+      draw.select(null);
     },
   });
   draw(liveState);
@@ -57,6 +62,14 @@ export function start({ svg, statusElement, timelineElement, panelElement }) {
       statusElement.dataset.status = status;
     },
   });
+}
+
+function forcedReducedMotion() {
+  if (typeof location === "undefined") return undefined;
+  const motion = new URLSearchParams(location.search).get("motion");
+  if (motion === "reduce") return true;
+  if (motion === "full") return false;
+  return undefined;
 }
 
 const orbitElement = typeof document === "undefined" ? null : document.getElementById("orbit");
