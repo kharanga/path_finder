@@ -2,14 +2,24 @@ import { createState, applySnapshot, applyEvent, prunePlaceholders } from "./sta
 import { createRenderer } from "./render.js";
 import { connect } from "./connect.js";
 import { createTimeline, mountTimelineStrip } from "./timeline.js";
+import { createPanel } from "./panel.js";
 
 const PLACEHOLDER_SWEEP_MS = 5000;
 
 // Boots the dashboard: wires the event source to the live state, the timeline, and the renderer.
-export function start({ svg, statusElement, timelineElement }) {
+export function start({ svg, statusElement, timelineElement, panelElement }) {
   const liveState = createState();
   const timeline = createTimeline();
-  const draw = createRenderer(svg);
+  const panel = createPanel(panelElement, { onClose: () => draw.select(null) });
+  const draw = createRenderer(svg, {
+    onSelect(message, index) {
+      panel.show(message, index);
+      draw.select(index);
+    },
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !panelElement.hidden) panel.hide();
+  });
   const strip = mountTimelineStrip(timelineElement, timeline, {
     onScrub(tsMs) {
       draw(timeline.stateAt(tsMs), { instant: true });
@@ -55,5 +65,6 @@ if (orbitElement) {
     svg: orbitElement,
     statusElement: document.getElementById("status"),
     timelineElement: document.getElementById("timeline"),
+    panelElement: document.getElementById("panel"),
   });
 }

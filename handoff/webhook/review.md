@@ -1,45 +1,29 @@
-# Review: W1 2026-10-05 (re-review)
+# Review: W3 2026-10-05
 
 PASS
 
-# Review: W2 2026-10-05
+Live-stream caveat for the manager: since the hook was installed no session has started or ended, so `started` and `ended` were verified at unit level only (`buildEvent` mapping and schema). Starting and exiting one throwaway session should add one `started` and one `ended` line to `~/.claude/dashboard/events.jsonl`. Everything else in the acceptance list was observed live.
 
-PASS
+## What was checked
 
-## What was checked for W1
+Acceptance: two live sessions produce correct events for start, busy, idle, one message, end; hook exits 0 and logs nothing even when the log dir is unwritable; `docs/webhook/hooks.md` covers each exported function.
 
-Acceptance: all four W-U findings filled in with evidence from the raw log, and `docs/webhook/hooks.md` describes the raw hook input shape.
+- Live `events.jsonl`, counts only, no text read: 23 lines, 0 unparseable, 0 rejected by `parseEventLine`; 16 `session` lines (11 `busy`, 5 `idle`) across 4 PIDs, all with names resolved; 7 `message` lines, 0 with `from: null`. This session's PID appears with `busy` events.
+- `hooks.md` examples: `stateForHook` (3 documented plus all five hook names), `lookupSessionRegistry` hit, entry without name, miss, and unreadable dir (temp registry dir with a malformed file and a non-json file skipped), `resolveSession` fallback via injected `findPid` and both-fail `{pid: null, name: null}`, `findClaudeAncestorPid` returns this session's PID, all four `buildEvent` examples, `appendEvent` on an unwritable path returns `false`. Every event `buildEvent` produces (including `waiting` and a `from: null` message) passes `validateEvent`.
+- `schema.md` examples: all `validateEvent` and `parseEventLine` cases match, `waiting` accepted, `from: null` accepted.
+- `main()` with `CC_DASHBOARD_EVENTS` pointing at a temp path: permission-prompt Notification with an unknown session id appends a `waiting` event with `session: null` and the enclosing claude PID; `SendMessage` appends a `message` with `from: null`; a non-permission Notification, garbage input, and empty stdin append nothing; all exit 0 with 0 bytes on stdout and stderr. Unwritable path: exit 0, silent. Runs in about 30 ms.
+- Entry guard uses `realpathSync`, so a symlinked invocation now logs (round 1 note closed). A bare import yields 10 exports and writes nothing.
 
-- SPEC.md §6: W-U1 to W-U4 each carry quoted redacted fragments and timestamps. Every timestamp cited (06:03:57 PostToolUse SendMessage from PID 52134 to path-finder-e5, 06:04:10 UserPromptSubmit for 40707, 06:04:57 Stop for 40707, 06:04:33 Stop and 06:04:49 UserPromptSubmit for 29248, 06:04:09 Notification for 29248, 06:04:48 SendMessage to path-finder-18 and its 06:04:53 UserPromptSubmit) exists in `/tmp/cc-dashboard-raw.jsonl`, checked with the redacted summary script from ready.md.
-- Privacy: 95 records. Zero matches for four phrases taken from this session's own outgoing messages. Longest kept string value is 49 characters (a path), so no prompt or message text is present.
-- `docs/webhook/hooks.md`: raw input shape table rewritten from observed records, with `SessionStart` and `SessionEnd` fields marked as not yet observed. All function examples still produce the documented output (re-run after the entry-point change).
-- Import guard (`capture-raw.js:106`): a bare `import()` with `CC_DASHBOARD_RAW_LOG` pointing at a temp path returns 8 exports and creates no file. Direct runs by absolute path, relative path, and an unnormalized path (`./webhook/hooks/../hooks/capture-raw.js`) all append a record and exit 0.
+# Review: W4 2026-10-05
 
-## Notes, not failures
+1. `docs/webhook/fake-generator.md`, `createRandom` section  input: `createRandom(42).hex2()`  expected (per docs): `"72"`  actual: `"99"`. The first session is still `listings-72` because `allocatePid` draws from the PRNG before the name does, so only the example value is wrong. Replace with `"99"` or document the first `int` draw.
 
-1. `capture-raw.js:106`: when the script is run through a symlink, `process.argv[1]` is the link path while `import.meta.url` is the resolved path, so `main()` is skipped and nothing is logged, exit 0. Verified with a symlink in a temp dir. The installed snippet uses the real absolute path, so it does not bite today, but a packaged plugin (M4) might. Comparing `realpathSync(process.argv[1])` closes it. Same applies to the W3 hook if it copies this guard.
-2. Review note 2 from the first round (package-lock.json) is now a manager request in ready.md. Nothing further from me.
+## What passed
+
+All ready.md expectations: fixture runs byte-identical with `--start-time`; 0 snapshot sessions and 124 events; kinds session 103, message 19, liveness 2; states started 17, waiting 1, ended 3 (busy 44, idle 40); notify 6; null from 1; ghost 1; null-name session events 2; 17 distinct names; first event exactly as documented; every one of the 124 events passes `validateEvent`. Snapshot fold: `8 6 49 4000`, 0 of 63 invalid, snapshot contains the `waiting` session. Zero sessions: the documented empty fixture, pretty-printed. Raw instant: 122 lines, 0 invalid. Error paths all exit 1 with one line: no output, both outputs, the real events path, the real path written unnormalized (`.claude/dashboard/../dashboard/events.jsonl`), unknown flag, bad start time. The real events file was not touched. Live mode, 20x, 8 sessions, 5 s: 9 s wall time, 113 valid lines, exactly one `ended`, zero `sleep 86400` children left. SIGINT after 2 s also leaves zero children.
+
+Docs examples other than failure 1: `parseArgs` fixture example and the `[]` throw, `createGenerator` example, `runScenario` with 0 sessions records 0 entries, `buildFixture` example, `emit` throws on an invalid event.
 
 # V1: test structure 2026-10-05
 
-Created `tests/` at the repo root. Framework is `node:test` with `node:assert/strict`, built into Node 24, no dependencies.
-
-```
-tests/
-  README.md                       layout, run command, conventions
-  unit/harness.test.js            checks the helpers themselves (V2, V3 tests go in unit/webhook/, unit/frontend/)
-  integration/placeholder.test.js todo marker for V4
-  docs-examples/placeholder.test.js todo marker for V5
-  helpers/dom-stub.js             minimal document for render.js tests, no browser or jsdom
-  helpers/tmp-dir.js              temp directory per test, never real data
-```
-
-Run from the repo root:
-
-```
-node --test "tests/**/*.test.js"
-```
-
-Manager: the assigned form `node --test tests/` fails on Node 24, which treats the directory as a single file. The quoted glob is the working command; please record it in `CLAUDE.md` under run tests. Current run: 4 tests, 2 pass, 2 todo, 0 fail.
-
-V2 not started, awaiting assignment.
+Done and committed by the manager. Layout in `tests/README.md`, run with `node --test "tests/**/*.test.js"`.

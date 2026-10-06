@@ -28,6 +28,23 @@ class StubElement {
     this.classList = new ClassList();
     this.dataset = {};
     this.style = { setProperty(name, value) { this[name] = value; } };
+    this.listeners = new Map();
+    this.disabled = false;
+    this.hidden = false;
+  }
+  get className() {
+    return [...this.classList.names].join(" ");
+  }
+  set className(value) {
+    this.classList.names = new Set(String(value).split(/\s+/).filter(Boolean));
+  }
+  addEventListener(type, listener) {
+    if (!this.listeners.has(type)) this.listeners.set(type, []);
+    this.listeners.get(type).push(listener);
+  }
+  dispatchEvent(event) {
+    for (const listener of this.listeners.get(event.type) ?? []) listener(event);
+    return true;
   }
   get firstChild() {
     return this.children[0] ?? null;
@@ -69,6 +86,8 @@ class StubElement {
 
 function matchesSimple(element, simple) {
   if (/^[a-z]+$/i.test(simple)) return element.tagName === simple;
+  const attributeOnly = simple.match(/^\[([\w-]+)="?([^"\]]*)"?\]$/);
+  if (attributeOnly) return element.attributes[attributeOnly[1]] === attributeOnly[2];
   const match = simple.match(/^\.([\w-]+)(?:\[data-([\w-]+)="([^"]*)"\])?$/);
   if (!match) return false;
   if (!element.classList.contains(match[1])) return false;
@@ -87,7 +106,11 @@ function matchesSelector(element, selector) {
 
 /** Installs a minimal document, requestAnimationFrame, and matchMedia on globalThis and returns a fresh root element. */
 export function installDomStub({ reducedMotion = false } = {}) {
-  globalThis.document = { createElementNS: (_namespace, tagName) => new StubElement(tagName) };
+  globalThis.document = {
+    createElementNS: (_namespace, tagName) => new StubElement(tagName),
+    createElement: (tagName) => new StubElement(tagName),
+    addEventListener() {},
+  };
   globalThis.requestAnimationFrame = (callback) => setTimeout(callback, 0);
   globalThis.matchMedia = () => ({ matches: reducedMotion, addEventListener() {} });
   return new StubElement("svg");

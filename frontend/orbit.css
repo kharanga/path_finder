@@ -130,6 +130,25 @@ body {
   transition: opacity 1500ms ease, r 400ms ease;
 }
 
+.particle { cursor: pointer; outline: none; }
+
+.particle-hit {
+  fill: transparent;
+  stroke: none;
+}
+
+.particle.arrived .particle-dot { pointer-events: none; }
+
+.particle:focus-visible .particle-hit,
+.particle.selected .particle-hit {
+  fill: var(--particle);
+  fill-opacity: 0.18;
+  stroke: var(--particle);
+  stroke-width: 1.5;
+}
+
+.particle.selected .particle-dot { opacity: 1; r: 6; }
+
 .particle.notify .particle-dot { fill: var(--thread); filter: drop-shadow(0 0 6px var(--thread)); }
 
 .particle.arrived .particle-dot {
@@ -191,6 +210,92 @@ body {
 .body .role {
   fill: var(--muted);
   font-size: 17px;
+}
+
+.stage { position: relative; }
+
+.panel {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  width: min(340px, calc(100% - 32px));
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  background: #121524;
+  border: 1px solid var(--ring);
+  border-radius: 12px;
+  padding: 14px 16px 16px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.panel[hidden] { display: none; }
+
+.panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.panel h2 {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.panel button {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--ring);
+  border-radius: 999px;
+  width: 28px;
+  height: 28px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.panel dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+}
+
+.panel dt { color: var(--muted); }
+.panel dd { margin: 0; overflow-wrap: anywhere; }
+.panel dd.unknown { font-style: italic; color: var(--muted); }
+
+.panel .badge {
+  display: inline-block;
+  margin-bottom: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(159, 180, 255, 0.15);
+  color: var(--thread);
+  font-size: 0.75rem;
+}
+
+.panel [data-field="text"] {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 600px) {
+  .panel {
+    top: auto;
+    bottom: 12px;
+    left: 16px;
+    right: 16px;
+    width: auto;
+    max-height: 55%;
+  }
 }
 
 .timeline {

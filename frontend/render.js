@@ -13,11 +13,12 @@ const HALO_RADIUS = BODY_RADIUS + 12;
 const PARTICLE_RADIUS = 6;
 const DEFAULT_GHOST_MS = 8000;
 const DEFAULT_TRAVEL_MS = 1200;
-const DEFAULT_LINGER_MS = 6000;
+const DEFAULT_LINGER_MS = 15000;
+const PARTICLE_HIT_RADIUS = 16;
 const SNAP_MS = 600;
 
 // Builds the Orbit renderer bound to an <svg> element and returns its draw function.
-export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEFAULT_TRAVEL_MS, lingerMs = DEFAULT_LINGER_MS, reducedMotion = detectReducedMotion() } = {}) {
+export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEFAULT_TRAVEL_MS, lingerMs = DEFAULT_LINGER_MS, reducedMotion = detectReducedMotion(), onSelect = null } = {}) {
   svg.setAttribute("viewBox", `0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`);
   const ring = appendTo(svg, "circle", { class: "ring", cx: CENTER.x, cy: CENTER.y, r: RING_RADIUS });
   const emptyLabel = appendTo(svg, "text", { class: "empty-label", x: CENTER.x, y: CENTER.y, "text-anchor": "middle" });
@@ -28,7 +29,7 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
   const bodyNodes = new Map();
   const threadNodes = new Map();
   const lastPositions = new Map();
-  const options = { ghostMs, travelMs, lingerMs, reducedMotion };
+  const options = { ghostMs, travelMs, lingerMs, reducedMotion, onSelect };
   let drawnMessageCount = 0;
   let drawnSnapshotSeq = null;
   let particleSerial = 0;
@@ -38,7 +39,7 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
     return (session && lastPositions.get(session.pid)) || null;
   }
 
-  return function draw(state, { instant = false } = {}) {
+  function draw(state, { instant = false } = {}) {
     const sessions = liveSessions(state);
     emptyLabel.classList.toggle("hidden", sessions.length > 0);
     ring.classList.toggle("empty", sessions.length === 0);
@@ -78,7 +79,16 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
       const to = positionForName(state, thread.to) ?? CENTER;
       updateThreadNode(threadsLayer, threadNodes, thread, from, to, threadOptions);
     }
+  }
+
+  // Marks the particle for one message index as selected, or clears the selection with null.
+  draw.select = function select(index) {
+    for (const particle of particlesLayer.querySelectorAll(".particle")) {
+      particle.classList.toggle("selected", index !== null && particle.dataset.messageIndex === String(index));
+    }
   };
+
+  return draw;
 }
 
 function removeBody(node, bodyNodes, lastPositions, pid) {
@@ -88,13 +98,26 @@ function removeBody(node, bodyNodes, lastPositions, pid) {
   lastPositions.delete(pid);
 }
 
-function spawnParticle(layer, message, index, from, to, { travelMs, lingerMs, reducedMotion }, pathId) {
+function spawnParticle(layer, message, index, from, to, { travelMs, lingerMs, reducedMotion, onSelect }, pathId) {
   const curve = messageCurve(from, to, CENTER);
-  const group = appendTo(layer, "g", { class: message.notify_on_idle ? "particle notify" : "particle", "data-message-index": index });
+  const group = appendTo(layer, "g", { class: message.notify_on_idle ? "particle notify" : "particle", "data-message-index": index, role: "button", tabindex: "0" });
   const path = appendTo(group, "path", { id: pathId, class: "particle-path", d: curve.d });
+  const hit = appendTo(group, "circle", { class: "particle-hit", r: PARTICLE_HIT_RADIUS, cx: to.x, cy: to.y });
   const dot = appendTo(group, "circle", { class: "particle-dot", r: PARTICLE_RADIUS });
   const title = appendTo(group, "title", {});
-  title.textContent = `${message.from} → ${message.to}: ${message.text}`;
+  const sender = typeof message.from === "string" ? message.from : "unknown sender";
+  title.textContent = `${sender} → ${message.to}: ${message.text}`;
+  group.setAttribute("aria-label", `Message from ${sender} to ${message.to}`);
+  if (onSelect) {
+    const select = (event) => {
+      event.preventDefault();
+      onSelect(message, index);
+    };
+    group.addEventListener("click", select);
+    group.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") select(event);
+    });
+  }
   const settle = () => {
     group.classList.add("arrived");
     setTimeout(() => group.remove(), lingerMs);
@@ -105,6 +128,8 @@ function spawnParticle(layer, message, index, from, to, { travelMs, lingerMs, re
     settle();
     return group;
   }
+  hit.classList.add("hidden");
+  setTimeout(() => hit.classList.remove("hidden"), travelMs);
   const motion = appendTo(dot, "animateMotion", { dur: `${travelMs}ms`, fill: "freeze", calcMode: "spline", keySplines: "0.4 0 0.2 1", keyTimes: "0;1" });
   const mpath = appendTo(motion, "mpath", {});
   mpath.setAttribute("href", `#${pathId}`);

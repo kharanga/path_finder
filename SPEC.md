@@ -55,11 +55,11 @@ Liveness fallback: the server periodically checks whether each known PID is aliv
 
 ### 5.1 webhook (hooks, server, fake generator)
 
-Folder `webhook/` is empty. Runtime is Node 24. No hooks installed. `~/.claude/settings.json` has an empty `hooks` object. `~/.claude/dashboard/` does not exist.
+Real hook installed in `~/.claude/settings.json`, writing to `~/.claude/dashboard/events.jsonl`. Fake generator and server written, in review. Server smoke-tested by the manager: static files, traversal blocked, snapshot, SSE with demo data.
 
 ### 5.2 frontend (HTML visualization)
 
-Folder `frontend/` is empty.
+F1 to F3 PASS. F4, F5 in review. F6 in progress.
 
 ### 5.3 tests
 
@@ -99,6 +99,7 @@ Defined in `docs/overview.md`. Summary:
 
 - `message.from` may be null when the sender's name lookup fails. The page keeps such messages and draws them from the ring center.
 - `GET /` serves `frontend/index.html`. All other non-`/events` paths are static files from `frontend/` (ES modules, css, json fixtures), no path traversal.
+- `GET /snapshot` returns the same snapshot object as JSON, for tests and curl.
 - `GET /events` is an SSE stream. First event is `snapshot` with the full state. Later events are `session` and `message` with the §3 schema, plus `liveness` when the PID check marks a session ended.
 - Snapshot shape: `{ "sessions": [session objects with current state], "messages": [recent message events] }`.
 
@@ -114,13 +115,13 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
   Acceptance: all four W-U findings filled in with evidence quoted from the raw log. Docs: `docs/webhook/hooks.md` describes the raw hook input shape.
 - [x] **W2: choose runtime.** Runtime is Node 24 (only runtime installed, decided by manager 2026-10-05). Add `webhook/package.json` and write run commands under Requests so the manager updates `CLAUDE.md`.
   Acceptance: a fresh clone can install and run `webhook/` with the documented commands.
-- [~] path-finder-37 (in review) **W3: real hooks.** Hook script that appends `session` events for `started`, `busy`, `idle`, `ended` and `message` events for `SendMessage`, following §3. Creates `~/.claude/dashboard/` if missing. Never blocks or fails a turn. Snippet under Requests.
+- [x] **W3: real hooks.** PASS 2026-10-05; started/ended verified live with a throwaway headless session (started, busy, idle, ended in 2 s, correct name and PID). Hook script that appends `session` events for `started`, `busy`, `idle`, `ended` and `message` events for `SendMessage`, following §3. Creates `~/.claude/dashboard/` if missing. Never blocks or fails a turn. Snippet under Requests.
   Acceptance: two live sessions produce correct events for start, busy, idle, one message, end. Hook exits 0 and logs nothing to the terminal even when the log dir is unwritable. Docs: `docs/webhook/hooks.md` covers each exported function.
-- [~] path-finder-37 (in review) **W4: fake event generator.** Script that writes a realistic stream to a chosen path. Covers zero sessions, ~15 sessions, same-folder siblings, a restarted session with a new ID, a session dying without `ended`, and `notify_on_idle` followed by the recipient going idle. Configurable speed.
+- [~] path-finder-37 (in review, round 2) **W4: fake event generator.** Script that writes a realistic stream to a chosen path. Covers zero sessions, ~15 sessions, same-folder siblings, a restarted session with a new ID, a session dying without `ended`, and `notify_on_idle` followed by the recipient going idle. Configurable speed.
   Acceptance: output validates against §3 schema. frontend-builder can run it against the page with one command. Docs: `docs/webhook/fake-generator.md`.
-- [~] path-finder-37 **W5: server.** Tails `events.jsonl` (path configurable), replays the file on startup, keeps in-memory state, runs the PID liveness check on an interval, serves `GET /`, static files from `frontend/`, and `GET /events` per §7.
+- [~] path-finder-37 (in review) **W5: server.** Tails `events.jsonl` (path configurable), replays the file on startup, keeps in-memory state, runs the PID liveness check on an interval, serves `GET /`, static files from `frontend/`, and `GET /events` per §7.
   Acceptance: browser connecting mid-run receives a correct snapshot. Killing a session process marks it ended within one interval. Server survives malformed lines. Docs: `docs/webhook/server.md`, one entry per public function and endpoint.
-- [ ] **W6: documentation standard.** Every public function has a one-line docstring. Every module has a file in `docs/webhook/` with what, inputs, output, errors, example.
+- [~] path-finder-37 **W6: documentation standard.** Every public function has a one-line docstring. Every module has a file in `docs/webhook/` with what, inputs, output, errors, example.
   Acceptance: validator confirms every documented example produces the documented output.
 
 ### 8.2 frontend-builder
@@ -130,7 +131,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **F2: ring layout.** Decision 2026-10-05: folder-group stability is sufficient, slot order inside a folder follows name order. Sessions placed on a ring keyed by start folder. Same-folder sessions adjacent. Stable position across restart. Handles 1 to ~15 without label overlap.
   Acceptance: checked against W4 output at 1, 5, and 15 sessions.
 - [x] **F3: state visuals.** Busy glow and pulse, idle dim, fade in on start, fade out with brief faint mark on end. Name label, role underneath only when declared.
-- [~] path-finder-18 (in review) **F4: message particles.** Curved path from sender to recipient. `notify_on_idle` thread that snaps back to the sender when the recipient's next state is idle. Decision 2026-10-05: a message to a name not yet on the ring creates a faint placeholder body at the folder slot derived from the name prefix (strip the trailing `-<id>`), labeled with the name; it merges when a real session event arrives and fades after 60 s without one.
+- [~] path-finder-18 (round 2 fix folded into F6) **F4: message particles.** Curved path from sender to recipient. `notify_on_idle` thread that snaps back to the sender when the recipient's next state is idle. Decision 2026-10-05: a message to a name not yet on the ring creates a faint placeholder body at the folder slot derived from the name prefix (strip the trailing `-<id>`), labeled with the name; it merges when a real session event arrives and fades after 60 s without one.
 - [~] path-finder-18 (in review) **F5: timeline strip.** Scrub through history. Scrubbing replays state at that moment without losing the live stream.
 - [~] path-finder-18 **F6: side panel.** Click a particle to show from, to, time, and full text.
 - [ ] **F7: accessibility and responsiveness.** `prefers-reduced-motion` disables pulse, particles become instant markers. Works at phone width.
@@ -140,7 +141,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 ### 8.3 validator
 
 - [x] **V1: test structure.** `node:test`, `tests/` with `unit/`, `integration/`, `docs-examples/`, `helpers/`. Run with `node --test "tests/**/*.test.js"`. Done 2026-10-05.
-- [ ] **V2: unit tests for webhook.** Hook event formatting, state reduction from events, PID liveness with a mocked process check, malformed line handling. Mock the filesystem and process calls.
+- [~] path-finder-e5 **V2: unit tests for webhook.** Hook event formatting, state reduction from events, PID liveness with a mocked process check, malformed line handling. Mock the filesystem and process calls.
 - [ ] **V3: unit tests for frontend.** Ring position function, state reducer, reduced-motion branch. Use a DOM test environment, no real browser needed.
 - [ ] **V4: integration tests.** W4 output through the server into a connected SSE client, using a temp `events.jsonl`. Never the real file.
 - [ ] **V5: docs examples.** Every example in `docs/` runs and produces the documented output. Use the runtime's markdown example runner if one exists, otherwise a small script.

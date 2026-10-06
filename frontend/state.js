@@ -51,15 +51,16 @@ export function applySessionEvent(state, event) {
 
 // Appends a message to history, oldest first, adding placeholder bodies for names not yet on the ring.
 export function applyMessageEvent(state, event, receivedAtMs = Date.now()) {
-  if (!event || typeof event.from !== "string" || typeof event.to !== "string") return state;
+  if (!event || typeof event.to !== "string") return state;
+  if (event.from !== null && event.from !== undefined && typeof event.from !== "string") return state;
   for (const name of [event.from, event.to]) {
-    if (!sessionByName(state, name)) {
+    if (typeof name === "string" && !sessionByName(state, name)) {
       state.placeholders.set(name, { name, folder: folderFromName(name), createdAtMs: receivedAtMs });
     }
   }
   const message = {
     ts: event.ts ?? null,
-    from: event.from,
+    from: event.from ?? null,
     to: event.to,
     text: event.text ?? "",
     notify_on_idle: Boolean(event.notify_on_idle),
@@ -125,6 +126,7 @@ export function liveSessions(state) {
 
 // Finds a session or placeholder by its display name, or undefined when neither has that name.
 export function sessionByName(state, name) {
+  if (typeof name !== "string") return undefined;
   for (const session of state.sessions.values()) {
     if (session.session === name) return session;
   }
