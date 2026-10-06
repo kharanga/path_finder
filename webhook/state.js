@@ -1,3 +1,4 @@
+/** How many recent message events the state keeps for the snapshot. */
 export const DEFAULT_MESSAGE_LIMIT = 500;
 
 /** Creates an empty in-memory dashboard state. */

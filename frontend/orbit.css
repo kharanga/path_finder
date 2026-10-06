@@ -142,9 +142,9 @@ body {
 .particle:focus-visible .particle-hit,
 .particle.selected .particle-hit {
   fill: var(--particle);
-  fill-opacity: 0.18;
+  fill-opacity: 0.2;
   stroke: var(--particle);
-  stroke-width: 1.5;
+  stroke-width: 2.5;
 }
 
 .particle.selected .particle-dot { opacity: 1; r: 6; }
@@ -228,7 +228,8 @@ body {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
 
-.panel[hidden] { display: none; }
+.panel[hidden],
+.panel [hidden] { display: none !important; }
 
 .panel header {
   display: flex;

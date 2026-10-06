@@ -2,14 +2,15 @@
 
 `index.html` is the only page. It has a top bar with the title and a connection status badge, a `<main>` holding `<svg id="orbit">`, a `<footer id="timeline">` with the scrubber strip, and loads `app.js` as an ES module. `orbit.css` holds all styles. No build step.
 
-## start({ svg, statusElement, timelineElement })
+## start({ svg, statusElement, timelineElement, panelElement })
 
-What it does: creates the live state, the timeline recorder, and the renderer, mounts the strip, draws the empty ring at once, then calls `connect`. Every snapshot or event is applied to the live state and recorded in the timeline with the same arrival time. If the strip is in live mode the live state is drawn; in scrub mode the ring keeps showing the scrubbed instant while the strip's range still grows. Scrubbing draws `timeline.stateAt(tsMs)` with `instant: true`; clicking Live draws the live state with `instant: true` and resumes. Every 5 s placeholders older than 60 s are pruned and, if any were, the live view is redrawn. Connection status is written into `statusElement` as text and as `data-status` for styling.
+What it does: creates the live state, the timeline recorder, the message panel, and the renderer (with `onSelect` opening the panel and highlighting the particle), mounts the strip, draws the empty ring at once, then calls `connect`. Every snapshot or event is applied to the live state and recorded in the timeline with the same arrival time. If the strip is in live mode the live state is drawn; in scrub mode the ring keeps showing the scrubbed instant while the strip's range still grows. Scrubbing draws `timeline.stateAt(tsMs)` with `instant: true`; clicking Live draws the live state with `instant: true` and resumes. Every 5 s placeholders older than 60 s are pruned and, if any were, the live view is redrawn. Escape closes the panel when it is open; closing it clears the particle highlight. Connection status is written into `statusElement` as text and as `data-status` for styling.
 
 Inputs:
 - `svg` (SVGSVGElement): the ring target.
 - `statusElement` (HTMLElement): where the status word is shown.
 - `timelineElement` (HTMLElement): the footer with the four `data-role` elements that `mountTimelineStrip` expects.
+- `panelElement` (HTMLElement): the `<aside id="panel">` that `createPanel` expects.
 
 Output: the disconnect function returned by `connect`.
 

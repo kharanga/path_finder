@@ -60,9 +60,9 @@ Example, with `frontend/fixtures/messages.json` and `now = Date.parse("2026-10-0
 const timeline = createTimeline();
 timeline.recordSnapshot(fixture.snapshot, now);
 for (const step of fixture.events) timeline.record(step.event, step.data, now);
-timeline.size                      // 15
-timeline.range()                   // { startMs: Date.parse("2026-10-05T21:59:00Z"), endMs: Date.parse("2026-10-05T22:00:27Z") }
-timeline.messageTimes().length     // 6
+timeline.size                      // 16
+timeline.range()                   // { startMs: Date.parse("2026-10-05T21:59:00Z"), endMs: Date.parse("2026-10-05T22:00:29Z") }
+timeline.messageTimes().length     // 7
 
 const at13 = timeline.stateAt(Date.parse("2026-10-05T22:00:13Z"));
 liveSessions(at13).map(s => `${sessionLabel(s)}:${s.state}`)
@@ -90,7 +90,7 @@ Output: `{ refresh(), isLive }`.
 
 Errors: throws if any of the four `data-role` elements is missing.
 
-Example: open `?fixture=messages`, wait 15 s. The strip shows 6 ticks and the label `Live`. Drag the knob to about a third: the label shows a clock time, the Live button becomes enabled, the ring shows the state at that moment (for example `listings-bc` alive again and a single thread between `path-finder-18` and `path-finder-e5`). Click Live: the current state returns, `listings-bc` is gone, the knob snaps to the right edge.
+Example: open `?fixture=messages`, wait 15 s. The strip shows 7 ticks and the label `Live`. Drag the knob to about a third: the label shows a clock time, the Live button becomes enabled, the ring shows the state at that moment (for example `listings-bc` alive again and a single thread between `path-finder-18` and `path-finder-e5`). Click Live: the current state returns, `listings-bc` is gone, the knob snaps to the right edge.
 
 ## formatClock(tsMs)
 

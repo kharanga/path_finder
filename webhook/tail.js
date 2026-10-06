@@ -1,5 +1,6 @@
 import { closeSync, openSync, readSync, statSync } from "node:fs";
 
+/** How often tailFile checks the events file for new bytes, in milliseconds. */
 export const DEFAULT_POLL_MS = 300;
 
 /** Reads every complete line appended after `offset` and returns {lines, offset, truncated}. */

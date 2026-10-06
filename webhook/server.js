@@ -11,6 +11,7 @@ import { tailFile } from "./tail.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
+/** Default server options; every CLI flag overrides one of these. */
 export const DEFAULTS = {
   eventsPath: join(homedir(), ".claude", "dashboard", "events.jsonl"),
   frontendDir: join(HERE, "..", "frontend"),
@@ -24,6 +25,7 @@ export const DEFAULTS = {
   demo: false,
 };
 
+/** Content-Type by file extension for static files served from the frontend directory. */
 export const CONTENT_TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",

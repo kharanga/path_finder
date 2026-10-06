@@ -1,3 +1,4 @@
+/** The only legal values of a session event's state field. */
 export const SESSION_STATES = ["started", "busy", "waiting", "idle", "ended"];
 
 const SESSION_FIELDS = ["ts", "type", "session", "folder", "pid", "state", "role"];
