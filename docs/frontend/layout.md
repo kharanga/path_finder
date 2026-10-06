@@ -2,7 +2,7 @@
 
 Pure geometry for the Circuit board. No DOM, runs in Node. Exports four constant objects and eleven functions.
 
-Constants: `BOARD = { width: 1360, height: 1000, marginX: 60, marginTop: 70, marginBottom: 70, labelWidth: 170, labelAbove: 0 }` (landscape: the viewBox and the space reserved on the left for folder labels), `BOARD_PORTRAIT = { width: 760, height: 1100, marginX: 60, marginTop: 60, marginBottom: 60, labelWidth: 0, labelAbove: 30 }` (phone: labels above each row), `CAPSULE = { width: 220, height: 56, gapX: 36, rowGap: 64, cornerRadius: 14 }`, and `LANE = { gap: 6, pinGap: 20 }` (standard distance between parallel lanes in a corridor, and between pins on a capsule edge; both shrink only where a corridor or column is crowded, see `fittedGap`).
+Constants: `BOARD = { width: 1360, height: 1000, marginX: 60, marginTop: 70, marginBottom: 70, labelWidth: 170, labelAbove: 0 }` (landscape: the viewBox and the space reserved on the left for folder labels), `BOARD_PORTRAIT = { width: 760, height: 1100, marginX: 60, marginTop: 60, marginBottom: 60, labelWidth: 0, labelAbove: 30 }` (phone: labels above each row), `CAPSULE = { width: 220, height: 56, gapX: 36, rowGap: 64, cornerRadius: 14 }`, and `LANE = { gap: 6, pinGap: 20 }` (standard distance between parallel lanes in a corridor, and between pins on a capsule edge; later lanes interleave at half steps when a corridor is crowded, see `laneSlot`).
 
 A capsule box is `{ pid, folder, x, y, width, height, cx, cy, line, index, pitch, columnOrigin }`: top-left corner, size, center, which line of the board it sits on (0 at the top), its position in that line, the vertical distance between lines in this layout (used to keep trace channels inside the gaps), and the x where column 0 starts (used to find column gaps and the row edge).
 
@@ -130,25 +130,26 @@ const corridors = assignLanes(["1|2", "1|3", "2|3"], { corridorsOf: (k) => (k ==
 [...corridors.perCorridor]   // [["gap:0", 2], ["gap:1", 1]]
 ```
 
-## fittedGap(halfWidth, count, gap)
+## laneSlot(index, gap, halfWidth)
 
-What it does: the distance between lanes that lets `count` lanes fit inside a corridor of the given half-width: the standard `gap` while they fit, a smaller one (never below 1) when the corridor is crowded.
+What it does: places lane number `index` inside a corridor whose free half-width is `halfWidth` (2 units of margin kept). The first lanes alternate outward from the center at the standard `gap` (0, +gap, −gap, +2·gap, …) until the corridor is full; the next lanes interleave at half steps between the existing ones (±gap/2, ±3·gap/2, …), then at quarter steps, and so on. A slot, once assigned, never depends on how many later lanes exist, so existing traces never move; the slots only repeat (two traces share a lane) when the step would fall below 1 unit, which takes 21 lanes in a standard 64-unit gap and 21 pins on a capsule edge.
 
-Inputs: `halfWidth` (number: half the free width of the corridor, with 2 units of margin kept), `count` (number of lanes in it), `gap` (number, default `LANE.gap`).
+Inputs: `index` (number ≥ 0), `gap` (number), `halfWidth` (number).
 
-Output: number.
+Output: number, the signed offset.
 
 Errors: none.
 
 Example:
 
 ```js
-fittedGap(32, 3)       // 6
-fittedGap(32, 11)      // 6, eleven lanes still fit in a 64-unit gap
-fittedGap(32, 13)      // 5
-fittedGap(12, 5)       // 5
-fittedGap(100, 3, 20)  // 20
-fittedGap(100, 13, 20) // 16.33…, thirteen pins on one capsule edge
+Array.from({ length: 13 }, (_, i) => laneSlot(i, 6, 32))
+// [0, 6, -6, 12, -12, 18, -18, 24, -24, 30, -30, 1.5, -1.5]   eleven at the full gap, then half steps
+Array.from({ length: 12 }, (_, i) => laneSlot(i, 20, 100))
+// [0, 20, -20, 40, -40, 60, -60, 80, -80, 5, -5, 15]           pins on a capsule edge
+Array.from({ length: 5 }, (_, i) => laneSlot(i, 6, 12.2))
+// [0, 6, -6, 1.5, -1.5]                                         a compressed 24-unit gap
+new Set(Array.from({ length: 21 }, (_, i) => laneSlot(i, 20, 100))).size // 21, all distinct
 ```
 
 ## laneOffset(index, gap)
@@ -170,7 +171,7 @@ Example:
 
 ## laneOptions(assignment, key, from, to)
 
-What it does: builds the `tracePath` options for one pair: a shift per corridor from its corridor lane (`laneOffset` with `fittedGap` of that corridor: half the line gap for `gap:` corridors, half the column gap for `col:` corridors) and the pin shifts at the two endpoints (`laneOffset` with `fittedGap` of the capsule's half-width minus 10 for the number of traces in that column). The same geometry results whichever direction a pulse travels.
+What it does: builds the `tracePath` options for one pair: a shift per corridor from its corridor lane (`laneSlot` with `LANE.gap` in half the line gap for `gap:` corridors, half the column gap for `col:` corridors) and the pin shifts at the two endpoints (`laneSlot` with `LANE.pinGap` in the capsule's half-width minus 10). The same geometry results whichever direction a pulse travels, and a pair's options never change when later pairs are added.
 
 Inputs: `assignment` (from `assignLanes`), `key` (string), `from`, `to` (capsule boxes in travel order).
 
@@ -190,7 +191,7 @@ laneOptions(assignment, "51003|51004", infra, manager)   // { shifts: { "gap:2":
 // the three fan-in traces end at x 360, 380, 400 on the manager's top edge; the fifth trace (billing → path-finder-18) shares gap:0 and gap:2 with the first and runs 6 and 12 units beside it
 ```
 
-Routing only the first four pairs and then all five gives identical paths for the first four. Over every fixture (`fanin`, `generated-many`, `generated-mid`, `generated-fast`, `messages`, `rename`, `removed`, `many`) in both orientations, lanes give 0 shared segments and 0 capsule crossings, against up to 31 shared segments without lanes.
+Routing only the first four pairs and then all five gives identical paths for the first four. Over every fixture (`fanin`, `generated-many`, `generated-mid`, `generated-fast`, `messages`, `rename`, `removed`, `many`) in both orientations, lanes give 0 shared segments and 0 capsule crossings, against up to 31 shared segments without lanes, and routing every prefix of the pair list moves 0 earlier routes (on `generated-many` column 0 holds 13 pins; the twelfth and thirteenth take half-step slots at ±5 and ±15 while the first eleven stay put).
 
 ## traceKey(pidA, pidB)
 

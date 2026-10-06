@@ -98,29 +98,45 @@ export function laneOffset(index, gap = LANE.gap) {
   return index % 2 === 1 ? magnitude : -magnitude;
 }
 
-// The gap between lanes that lets `count` lanes fit inside a corridor of the given half-width: the standard gap, or a smaller one when crowded.
-export function fittedGap(halfWidth, count, gap = LANE.gap) {
-  const sides = Math.ceil(Math.max(count - 1, 0) / 2);
-  if (sides === 0) return gap;
-  return Math.max(Math.min(gap, (halfWidth - 2) / sides), 1);
+// Places lane `index` inside a corridor of the given half-width: the first lanes alternate outward at the standard gap, later ones interleave at half steps, so earlier lanes never move; wraps only when steps would fall below 1 unit.
+export function laneSlot(index, gap, halfWidth) {
+  const reach = Math.max(halfWidth - 2, 0);
+  const levels = [];
+  let step = gap;
+  let total = 0;
+  while (step >= 1) {
+    const slots = [];
+    if (levels.length === 0) {
+      for (let k = 0; k * step <= reach; k++) slots.push(k === 0 ? [0] : [k * step, -k * step]);
+    } else {
+      for (let k = 0; (k + 0.5) * step <= reach; k++) slots.push([(k + 0.5) * step, -(k + 0.5) * step]);
+    }
+    const flat = slots.flat();
+    if (flat.length === 0) break;
+    levels.push(flat);
+    total += flat.length;
+    step /= 2;
+  }
+  if (total === 0) return 0;
+  let remaining = index % total;
+  for (const level of levels) {
+    if (remaining < level.length) return level[remaining];
+    remaining -= level.length;
+  }
+  return 0;
 }
 
-// Returns the tracePath options for one pair: per-corridor lane shifts and the two pin shifts, with gaps shrunk only where a corridor or column is crowded.
+// Returns the tracePath options for one pair: per-corridor lane shifts and the two pin shifts, each from laneSlot so assigned positions never change.
 export function laneOptions(assignment, key, from, to) {
   const pins = assignment.pins.get(key) ?? {};
   const laneEntry = assignment.corridorLanes?.get(key) ?? {};
   const halfGap = Math.max(((from.pitch ?? CAPSULE.height + CAPSULE.rowGap) - from.height) / 2, 4);
   const shifts = {};
   for (const [corridor, index] of Object.entries(laneEntry)) {
-    const count = assignment.perCorridor?.get(corridor) ?? 1;
     const halfWidth = corridor.startsWith("col:") ? CAPSULE.gapX / 2 : halfGap;
-    shifts[corridor] = laneOffset(index, fittedGap(halfWidth, count));
+    shifts[corridor] = laneSlot(index, LANE.gap, halfWidth);
   }
-  const pinShift = (box) => {
-    const column = assignment.columns?.get(String(box.pid));
-    const count = column === undefined ? 1 : assignment.perColumn?.get(column) ?? 1;
-    return laneOffset(pins[String(box.pid)] ?? 0, fittedGap(box.width / 2 - 10, count, LANE.pinGap));
-  };
+  const pinShift = (box) => laneSlot(pins[String(box.pid)] ?? 0, LANE.pinGap, box.width / 2 - 10);
   return { shifts, fromPinShift: pinShift(from), toPinShift: pinShift(to) };
 }
 
