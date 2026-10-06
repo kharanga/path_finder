@@ -63,7 +63,7 @@ Folder `frontend/` is empty.
 
 ### 5.3 tests
 
-No test framework, no `tests/` folder.
+`node:test`, suite in `tests/`, green with placeholders. See `tests/README.md`.
 
 ### 5.4 docs
 
@@ -138,7 +138,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 
 ### 8.3 validator
 
-- [~] path-finder-e5 **V1: test structure.** Approved 2026-10-05: `node:test`, `tests/` at repo root with `unit/`, `integration/`, `docs-examples/`, run by `node --test tests/`. Create it now.
+- [x] **V1: test structure.** `node:test`, `tests/` with `unit/`, `integration/`, `docs-examples/`, `helpers/`. Run with `node --test "tests/**/*.test.js"`. Done 2026-10-05.
 - [ ] **V2: unit tests for webhook.** Hook event formatting, state reduction from events, PID liveness with a mocked process check, malformed line handling. Mock the filesystem and process calls.
 - [ ] **V3: unit tests for frontend.** Ring position function, state reducer, reduced-motion branch. Use a DOM test environment, no real browser needed.
 - [ ] **V4: integration tests.** W4 output through the server into a connected SSE client, using a temp `events.jsonl`. Never the real file.

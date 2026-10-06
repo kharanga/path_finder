@@ -1,4 +1,4 @@
-export const SESSION_STATES = ["started", "busy", "idle", "ended"];
+export const SESSION_STATES = ["started", "busy", "waiting", "idle", "ended"];
 
 const SESSION_FIELDS = ["ts", "type", "session", "folder", "pid", "state", "role"];
 const MESSAGE_FIELDS = ["ts", "type", "from", "to", "text", "notify_on_idle"];

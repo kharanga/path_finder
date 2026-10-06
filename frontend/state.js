@@ -1,14 +1,17 @@
-const LIVE_STATES = new Set(["started", "busy", "idle"]);
+const LIVE_STATES = new Set(["started", "busy", "waiting", "idle"]);
+const MAX_FINISHED_THREADS = 50;
 
-// Creates an empty dashboard state: sessions keyed by PID plus a message history.
+// Creates an empty dashboard state: sessions keyed by PID, message history, and notify threads.
 export function createState() {
-  return { sessions: new Map(), messages: [], lastEventTs: null };
+  return { sessions: new Map(), messages: [], threads: [], lastEventTs: null, snapshotSeq: 0 };
 }
 
 // Replaces the state with a server snapshot of sessions and recent messages.
 export function applySnapshot(state, snapshot) {
   state.sessions = new Map();
   state.messages = [];
+  state.threads = [];
+  state.snapshotSeq += 1;
   for (const session of snapshot?.sessions ?? []) applySessionEvent(state, session);
   for (const message of snapshot?.messages ?? []) applyMessageEvent(state, message);
   return state;
@@ -25,6 +28,8 @@ export function applyEvent(state, eventName, data) {
 export function applySessionEvent(state, event) {
   if (!event || typeof event.pid !== "number") return state;
   const previous = state.sessions.get(event.pid);
+  const name = event.session ?? previous?.session ?? null;
+  if (name !== null) resolveThreadsFor(state, name, event.state, event.ts);
   state.sessions.set(event.pid, {
     pid: event.pid,
     session: event.session ?? previous?.session ?? null,
@@ -41,15 +46,46 @@ export function applySessionEvent(state, event) {
 // Appends a message to history, oldest first.
 export function applyMessageEvent(state, event) {
   if (!event || typeof event.from !== "string" || typeof event.to !== "string") return state;
-  state.messages.push({
+  const message = {
     ts: event.ts ?? null,
     from: event.from,
     to: event.to,
     text: event.text ?? "",
     notify_on_idle: Boolean(event.notify_on_idle),
-  });
+  };
+  state.messages.push(message);
+  if (message.notify_on_idle) {
+    state.threads.push({ id: state.messages.length - 1, from: message.from, to: message.to, ts: message.ts, status: "waiting", resolvedTs: null });
+  }
   bumpTs(state, event.ts);
   return state;
+}
+
+// Returns threads still waiting for the recipient to go idle.
+export function waitingThreads(state) {
+  return state.threads.filter((thread) => thread.status === "waiting");
+}
+
+function resolveThreadsFor(state, recipientName, newState, ts) {
+  if (newState !== "idle" && newState !== "ended") return;
+  for (const thread of state.threads) {
+    if (thread.status !== "waiting" || thread.to !== recipientName) continue;
+    thread.status = newState === "idle" ? "snapped" : "dropped";
+    thread.resolvedTs = ts ?? null;
+  }
+  pruneFinishedThreads(state);
+}
+
+function pruneFinishedThreads(state) {
+  const finished = state.threads.filter((thread) => thread.status !== "waiting");
+  if (finished.length <= MAX_FINISHED_THREADS) return;
+  const dropCount = finished.length - MAX_FINISHED_THREADS;
+  let dropped = 0;
+  state.threads = state.threads.filter((thread) => {
+    if (thread.status === "waiting" || dropped >= dropCount) return true;
+    dropped += 1;
+    return false;
+  });
 }
 
 // Returns sessions whose state is started, busy, or idle, sorted by folder then name.

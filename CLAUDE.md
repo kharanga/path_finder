@@ -20,7 +20,7 @@ Event schema and the contract between server and page live in `docs/overview.md`
 |---|---|---|---|
 | Hooks, SSE server, fake event generator | `webhook/` | webhook-builder | `docs/webhook/` |
 | HTML visualization | `frontend/` | frontend-builder | `docs/frontend/` |
-| Tests | `tests/` (to be proposed by validator) | validator | review files |
+| Tests | `tests/` (unit, integration, docs-examples, helpers) | validator | `tests/README.md`, review files |
 | This file, `SPEC.md`, `docs/overview.md`, git | repo root | manager | `docs/overview.md` |
 
 ## Setup, run, test
@@ -37,8 +37,8 @@ node webhook/server.js
 # demo with fake data (after W4 and W5)
 node webhook/server.js --demo
 
-# run tests (after V1 is approved, proposed)
-node --test tests/
+# run tests
+node --test "tests/**/*.test.js"
 ```
 
 ## Coding conventions
