@@ -1,0 +1,18 @@
+{
+  "snapshot": {
+    "sessions": [
+      {"ts":"2026-10-05T23:00:00Z","type":"session","session":"path-finder-0d","folder":"path_finder","pid":29248,"state":"idle","role":"manager"},
+      {"ts":"2026-10-05T23:00:01Z","type":"session","session":"path-finder-18","folder":"path_finder","pid":30222,"state":"busy","role":"frontend-builder"},
+      {"ts":"2026-10-05T23:00:02Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"idle","role":null}
+    ],
+    "messages": []
+  },
+  "events": [
+    {"delayMs": 1000, "event": "message", "data": {"ts":"2026-10-05T23:00:10Z","type":"message","from":"path-finder-0d","to":"path-finder-18","text":"before the rename","notify_on_idle":false}},
+    {"delayMs": 2500, "event": "session", "data": {"ts":"2026-10-05T23:00:12Z","type":"session","session":"manager-drives-feature-work","folder":"path_finder","pid":29248,"state":"busy","role":"manager"}},
+    {"delayMs": 1500, "event": "message", "data": {"ts":"2026-10-05T23:00:14Z","type":"message","from":"path-finder-0d","to":"path-finder-18","text":"sent under the former name, must leave the renamed body","notify_on_idle":false}},
+    {"delayMs": 2500, "event": "message", "data": {"ts":"2026-10-05T23:00:16Z","type":"message","from":"listings-bc","to":"path-finder-0d","text":"notify to the former name, thread must reach the renamed body","notify_on_idle":true}},
+    {"delayMs": 2500, "event": "session", "data": {"ts":"2026-10-05T23:00:19Z","type":"session","session":"manager-drives-feature-work","folder":"path_finder","pid":29248,"state":"idle","role":"manager"}},
+    {"delayMs": 1500, "event": "message", "data": {"ts":"2026-10-05T23:00:20Z","type":"message","from":"listings-bc","to":"nobody-99","text":"truly unknown name still gets a placeholder","notify_on_idle":false}}
+  ]
+}

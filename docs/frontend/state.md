@@ -10,7 +10,7 @@ The state object:
 
 `Placeholder` is `{ name, folder, createdAtMs }`: a body for a name that appeared in a message but has no session event yet. `folder` is guessed by `folderFromName`. Placeholders are merged away when a session event with that name arrives and pruned by `prunePlaceholders` after 60 s.
 
-`Session` is `{ pid, session, folder, role, state, ts, firstSeen }`. `state` is one of `started`, `busy`, `waiting`, `idle`, `ended`. `Message` is `{ ts, from, to, text, notify_on_idle }`; `from` is a string or `null` (the hook could not resolve the sender's name). `Thread` is `{ id, from, to, ts, status, resolvedTs }` where `id` is the index of the message in `messages` and `status` is `waiting`, `snapped`, or `dropped`. `snapshotSeq` counts snapshots so the renderer can tell a rebuild from incremental growth.
+`Session` is `{ pid, session, folder, role, state, ts, firstSeen, formerNames }`. `state` is one of `started`, `busy`, `waiting`, `idle`, `ended`. `formerNames` lists earlier display names of the same PID, oldest first, because Claude Code can rename a session mid-run (SPEC §6). `Message` is `{ ts, from, to, text, notify_on_idle }`; `from` is a string or `null` (the hook could not resolve the sender's name). `Thread` is `{ id, from, to, ts, status, resolvedTs }` where `id` is the index of the message in `messages` and `status` is `waiting`, `snapped`, or `dropped`. `snapshotSeq` counts snapshots so the renderer can tell a rebuild from incremental growth.
 
 ## createState()
 
@@ -79,7 +79,7 @@ state.sessions.get(29904).state // "ended"
 
 ## applySessionEvent(state, event)
 
-What it does: upserts the session with `event.pid`. Fields that are `null` or missing in the event keep the previously known value, so a later event with `session: null` does not erase a known name. `firstSeen` is the `ts` of the first event for that PID. Before storing, it resolves threads addressed to this session's name: an `idle` event marks every waiting thread to that name `snapped`, an `ended` event marks them `dropped`, and `busy`, `waiting`, or `started` leave them waiting. At most 50 finished threads are kept; older finished ones are pruned. A placeholder with the same name is deleted (merged into the real session).
+What it does: upserts the session with `event.pid`. Fields that are `null` or missing in the event keep the previously known value, so a later event with `session: null` does not erase a known name. `firstSeen` is the `ts` of the first event for that PID. When the event carries a string name that differs from the previously known name, the old name is appended to `formerNames` (no duplicates; a name that comes back is not re-added). Before storing, it resolves threads addressed to any of this session's names, current or former: an `idle` event marks every waiting thread to one of those names `snapped`, an `ended` event marks them `dropped`, and `busy`, `waiting`, or `started` leave them waiting. At most 50 finished threads are kept; older finished ones are pruned. Placeholders with any of those names are deleted (merged into the real session).
 
 Inputs:
 - `state` (object).
@@ -94,8 +94,26 @@ Example:
 ```js
 applySessionEvent(state, { ts: "2026-10-05T21:43:00Z", type: "session", session: null, folder: "scratch", pid: 30444, state: "started", role: null });
 applySessionEvent(state, { ts: "2026-10-05T21:45:00Z", type: "session", session: "scratch-7a", folder: "scratch", pid: 30444, state: "idle", role: null });
-state.sessions.get(30444) // { pid: 30444, session: "scratch-7a", folder: "scratch", role: null, state: "idle", ts: "2026-10-05T21:45:00Z", firstSeen: "2026-10-05T21:43:00Z" }
+state.sessions.get(30444) // { pid: 30444, session: "scratch-7a", folder: "scratch", role: null, state: "idle", ts: "2026-10-05T21:45:00Z", firstSeen: "2026-10-05T21:43:00Z", formerNames: [] }
 ```
+
+A first naming (`null` → `"scratch-7a"`) is not a rename, so `formerNames` stays empty. Renames, with `frontend/fixtures/rename.json` replayed through `applyEvent` with `now = Date.parse("2026-10-05T23:01:00Z")`:
+
+```js
+// after event 2 (pid 29248 renamed path-finder-0d → manager-drives-feature-work)
+state.sessions.get(29248).formerNames        // ["path-finder-0d"]
+sessionByName(state, "path-finder-0d").pid   // 29248, resolved through the former name
+// after event 4 (notify message to the former name)
+state.placeholders.size                      // 0, no placeholder for a former name of a live session
+state.threads.map(t => `${t.to}:${t.status}`) // ["path-finder-0d:waiting"]
+// after event 5 (the renamed session goes idle)
+state.threads.map(t => `${t.to}:${t.status}`) // ["path-finder-0d:snapped"]
+// after event 6
+[...state.placeholders.keys()]               // ["nobody-99"]
+liveSessions(state).map(sessionLabel)        // ["listings-bc", "nobody-99", "manager-drives-feature-work", "path-finder-18"]
+```
+
+Rename bookkeeping: names `a` → `b` → `a` → `c` for one PID give `formerNames` `["a", "b"]`.
 
 Thread resolution, with `frontend/fixtures/messages.json` applied and its events replayed in order through `applyEvent`:
 
@@ -201,7 +219,7 @@ waitingThreads(state).map(t => t.to) // ["nobody-99"]
 
 ## liveSessions(state)
 
-What it does: returns sessions in state `started`, `busy`, `waiting`, or `idle`, plus every placeholder as a pseudo-session `{ pid: "placeholder:<name>", session: name, folder, role: null, state: "placeholder" }`, sorted by folder then label. Ended sessions are excluded.
+What it does: returns sessions in state `started`, `busy`, `waiting`, or `idle`, plus every placeholder as a pseudo-session `{ pid: "placeholder:<name>", session: name, folder, role: null, state: "placeholder", formerNames: [] }`, sorted by folder then label. Ended sessions are excluded.
 
 Inputs: `state` (object).
 
@@ -218,7 +236,7 @@ liveSessions(state).map(sessionLabel)
 
 ## sessionByName(state, name)
 
-What it does: finds the session whose current display name equals `name`, or the placeholder pseudo-session with that name. A non-string `name` (such as a `null` sender) gives `undefined`. Former names are not searched yet: a session renamed mid-run (SPEC §6) is only found by its new name until task F9 adds per-PID former-name lookup.
+What it does: resolves a name to a body in three steps: a session whose current display name equals `name` (live or ended), then a live session whose `formerNames` include `name`, then the placeholder pseudo-session with that name. A non-string `name` (such as a `null` sender) gives `undefined`. Ended sessions are not matched by former name, so a stale name after a restart still gets a placeholder.
 
 Inputs: `state` (object), `name` (string or null).
 
@@ -231,6 +249,10 @@ Example:
 ```js
 sessionByName(state, "scratch-7a")?.pid // 30444
 sessionByName(state, "nobody")          // undefined
+// with rename.json fully replayed:
+sessionByName(state, "path-finder-0d")?.pid                // 29248 (former name of a live body)
+sessionByName(state, "manager-drives-feature-work")?.pid   // 29248
+sessionByName(state, "nobody-99")?.pid                     // "placeholder:nobody-99"
 ```
 
 ## sessionLabel(session)

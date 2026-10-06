@@ -32,18 +32,21 @@ export function applySessionEvent(state, event) {
   if (!event || typeof event.pid !== "number") return state;
   const previous = state.sessions.get(event.pid);
   const name = event.session ?? previous?.session ?? null;
-  if (name !== null) {
-    resolveThreadsFor(state, name, event.state, event.ts);
-    state.placeholders.delete(name);
+  const formerNames = formerNamesAfter(previous, event.session);
+  const allNames = name === null ? formerNames : [name, ...formerNames];
+  if (allNames.length > 0) {
+    resolveThreadsFor(state, new Set(allNames), event.state, event.ts);
+    for (const known of allNames) state.placeholders.delete(known);
   }
   state.sessions.set(event.pid, {
     pid: event.pid,
-    session: event.session ?? previous?.session ?? null,
+    session: name,
     folder: event.folder ?? previous?.folder ?? "unknown",
     role: event.role ?? previous?.role ?? null,
     state: event.state ?? previous?.state ?? "started",
     ts: event.ts ?? previous?.ts ?? null,
     firstSeen: previous?.firstSeen ?? event.ts ?? null,
+    formerNames,
   });
   bumpTs(state, event.ts);
   return state;
@@ -95,10 +98,17 @@ export function waitingThreads(state) {
   return state.threads.filter((thread) => thread.status === "waiting");
 }
 
-function resolveThreadsFor(state, recipientName, newState, ts) {
+function formerNamesAfter(previous, newName) {
+  const former = previous?.formerNames ?? [];
+  const oldName = previous?.session ?? null;
+  if (typeof newName !== "string" || oldName === null || oldName === newName || former.includes(oldName)) return former;
+  return [...former, oldName];
+}
+
+function resolveThreadsFor(state, recipientNames, newState, ts) {
   if (newState !== "idle" && newState !== "ended") return;
   for (const thread of state.threads) {
-    if (thread.status !== "waiting" || thread.to !== recipientName) continue;
+    if (thread.status !== "waiting" || !recipientNames.has(thread.to)) continue;
     thread.status = newState === "idle" ? "snapped" : "dropped";
     thread.resolvedTs = ts ?? null;
   }
@@ -124,18 +134,21 @@ export function liveSessions(state) {
   return live.concat(placeholders).sort(compareByFolderThenName);
 }
 
-// Finds a session or placeholder by its display name, or undefined when neither has that name.
+// Finds a body by name: current name first, then a former name of a live session, then a placeholder.
 export function sessionByName(state, name) {
   if (typeof name !== "string") return undefined;
   for (const session of state.sessions.values()) {
     if (session.session === name) return session;
+  }
+  for (const session of state.sessions.values()) {
+    if (LIVE_STATES.has(session.state) && session.formerNames.includes(name)) return session;
   }
   const placeholder = state.placeholders.get(name);
   return placeholder ? placeholderAsSession(placeholder) : undefined;
 }
 
 function placeholderAsSession(placeholder) {
-  return { pid: `placeholder:${placeholder.name}`, session: placeholder.name, folder: placeholder.folder, role: null, state: "placeholder", ts: null, firstSeen: null };
+  return { pid: `placeholder:${placeholder.name}`, session: placeholder.name, folder: placeholder.folder, role: null, state: "placeholder", ts: null, firstSeen: null, formerNames: [] };
 }
 
 // Returns the display label for a session: its name, or its PID while the name is unknown.

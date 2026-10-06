@@ -4,11 +4,12 @@ Draws the Orbit ring into an `<svg>`. All geometry is in a fixed `0 0 1360 1000`
 
 ## createRenderer(svg, { ghostMs, travelMs, lingerMs, reducedMotion, onSelect })
 
-What it does: sets the viewBox, adds the ring circle, the "No sessions running" label, and an empty bodies layer, and returns a `draw(state)` function. Each call to `draw` reconciles one `<g class="body" data-pid data-state data-folder tabindex="0" role="img" aria-label>` per live session (the label reads "`<name>`, `<state>`, `<role>`, folder `<folder>`", so bodies are reachable with Tab and announced by screen readers; a focused body shows a light ring): creating, moving, and relabeling nodes as needed. Each body has a `<circle class="halo">` (visible and pulsing only while busy), a `<circle class="core">`, a `<title>` tooltip with the full name, role, and folder, a `<text class="name">` truncated to 24 characters, and a `<text class="role">` that is hidden unless the session declared a role. Label offsets come from `labelPlacement`. Bodies are positioned with a CSS `transform`, so a position change animates over 600 ms unless the user prefers reduced motion.
+What it does: sets the viewBox, adds the ring circle, the "No sessions running" label, and an empty bodies layer, and returns a `draw(state)` function. Each call to `draw` reconciles one `<g class="body" data-pid data-state data-folder tabindex="0" role="img" aria-label>` per live session (the label reads "`<name>`, `<state>`, `<role>`, folder `<folder>`", so bodies are reachable with Tab and announced by screen readers; a focused body shows a light ring): creating, moving, and relabeling nodes as needed. Each body has a `<circle class="halo">` (visible and pulsing only while busy), a `<circle class="core">`, a `<title>` tooltip with the full name, role, folder, and `formerly <names>` after a rename, a `<text class="name">` truncated to 24 characters, and a `<text class="role">` that is hidden unless the session declared a role. Label offsets come from `labelPlacement`. Bodies are positioned with a CSS `transform`, so a position change animates over 600 ms unless the user prefers reduced motion.
 
 State visuals (F3) are all CSS keyed on classes and `data-state`:
 
 - A new body is created with class `entering` (opacity 0); styles are flushed synchronously and the class removed, so it fades in even when the tab is in the background (where `requestAnimationFrame` is paused).
+- When a body's label changes (a rename, or a PID-only body receiving its name) the text is updated in place and the group gets class `renamed` for 1.8 s, which flashes the label yellow and fades it back. The tooltip lists former names.
 - When a session stops being live, its node is not removed. It gets `data-state="ended"` and class `leaving`, fades to a faint mark at its last position, and is removed after `ghostMs`. If the same PID becomes live again before then, the timer is cancelled and the node is reused.
 - `busy`: yellow core with a drop-shadow glow and a pulsing halo. `waiting` (permission prompt): orange core with a faint static halo, no pulse. `idle`: dim core and muted label. `started`: light blue core. `ended`: ring-colored core. `placeholder` (a name seen only in messages): hollow dashed circle, italic muted label, title "`<name>`, no session event yet (folder guessed: `<folder>`)".
 
@@ -78,6 +79,8 @@ document.querySelector('.body[data-pid="30111"]').dataset.state   // "waiting" b
 
 Without `reducedMotion`, the dot has an `animateMotion` child whose `mpath` references the particle's own path id, and the thread starts with `stroke-dashoffset` equal to its length.
 
+Rename, with `frontend/fixtures/rename.json`: after the snapshot and event 2, the body for pid 29248 has `.name` text `manager-drives-feature-…` (27 characters truncated to 24), class `renamed`, and title `manager-drives-feature-work (manager) in path_finder, formerly path-finder-0d`. There is still exactly one body in folder `path_finder` with that PID and no `placeholder:path-finder-0d` body. The particle for event 3 (sent as `path-finder-0d`) starts at that body's position, not the center.
+
 Selection, with `createRenderer(svg, { reducedMotion: true, onSelect })` and the last event of `messages.json` (sender `null`) applied:
 
 ```js
@@ -90,4 +93,4 @@ draw.select(null); particle.classList.contains("selected") // false
 
 With `frontend/fixtures/many.json` the body for pid 41008 shows the name `add-semantic-similarity…` and its title holds `add-semantic-similarity-scores-28 in add-semantic-similarity-scores`.
 
-Styling hooks in `orbit.css`: `.body[data-state="busy"|"waiting"|"idle"|"started"|"ended"|"placeholder"]`, `.body.entering`, `.body.leaving`, `.body .halo`, `.body .core`, `.particle`, `.particle.notify`, `.particle.arrived`, `.particle.selected`, `.particle-dot`, `.particle-hit`, `.thread`, `.thread.drawing`, `.thread.snapping`, `.thread.dropping`, `.ring.empty`, `.empty-label`, `.hidden`. Under `prefers-reduced-motion: reduce` all transitions are off and the busy halo is a static glow with no pulse.
+Styling hooks in `orbit.css`: `.body[data-state="busy"|"waiting"|"idle"|"started"|"ended"|"placeholder"]`, `.body.entering`, `.body.leaving`, `.body.renamed`, `.body .halo`, `.body .core`, `.particle`, `.particle.notify`, `.particle.arrived`, `.particle.selected`, `.particle-dot`, `.particle-hit`, `.thread`, `.thread.drawing`, `.thread.snapping`, `.thread.dropping`, `.ring.empty`, `.empty-label`, `.hidden`. Under `prefers-reduced-motion: reduce` all transitions are off and the busy halo is a static glow with no pulse.
