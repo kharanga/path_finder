@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { readFileSync, existsSync, mkdtempSync, realpathSync, statSync } from "node:fs";
+import { readFileSync, existsSync, mkdtempSync, realpathSync, statSync, appendFileSync, mkdirSync } from "node:fs";
 import { join, dirname, resolve, sep, extname } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -97,11 +97,12 @@ export function resolveStaticFile(frontendDir, urlPath) {
   return { filePath: realCandidate, contentType: CONTENT_TYPES[extname(realCandidate).toLowerCase()] ?? "application/octet-stream" };
 }
 
-/** Creates the dashboard hub: in-memory state, connected SSE clients, ingestion, liveness, and broadcast. */
+/** Creates the dashboard hub: in-memory state, connected SSE clients, ingestion, removal, liveness, and broadcast. */
 export function createHub(options = {}) {
   const state = createState(options.messageLimit);
   const clients = new Set();
-  const stats = { linesRead: 0, malformedLines: 0, eventsApplied: 0, livenessEnded: 0, statusCorrections: 0 };
+  const stats = { linesRead: 0, malformedLines: 0, eventsApplied: 0, livenessEnded: 0, statusCorrections: 0, removals: 0 };
+  const selfWrittenLines = new Set();
   const isAlive = options.isAlive ?? isPidAlive;
   const readStatus = options.readStatus ?? ((pid) => readRegistryStatus(pid, options.sessionsDir ?? DEFAULT_SESSIONS_DIR));
 
@@ -112,6 +113,7 @@ export function createHub(options = {}) {
 
   const ingestLine = (line, { replaying = false } = {}) => {
     stats.linesRead += 1;
+    if (selfWrittenLines.delete(line)) return state.sessions.get(JSON.parse(line).pid) ?? null;
     const event = parseEventLine(line);
     if (!event) {
       if (line.trim() !== "") stats.malformedLines += 1;
@@ -120,6 +122,23 @@ export function createHub(options = {}) {
     const applied = applyEvent(state, event);
     stats.eventsApplied += 1;
     if (!replaying) broadcast(event.type, applied);
+    return applied;
+  };
+
+  const removeSession = (pid, now = new Date()) => {
+    const current = state.sessions.get(pid);
+    if (!current) return null;
+    const event = { ts: now.toISOString(), type: "session", session: current.session, folder: current.folder, pid, state: "removed", role: current.role };
+    const line = JSON.stringify(event);
+    if (options.eventsPath) {
+      mkdirSync(dirname(options.eventsPath), { recursive: true });
+      appendFileSync(options.eventsPath, `${line}\n`);
+      selfWrittenLines.add(line);
+    }
+    const applied = applyEvent(state, event);
+    stats.eventsApplied += 1;
+    stats.removals += 1;
+    broadcast("session", applied);
     return applied;
   };
 
@@ -145,12 +164,24 @@ export function createHub(options = {}) {
     return () => clients.delete(response);
   };
 
-  return { state, clients, stats, ingestLine, runLivenessCheck, addClient, broadcast };
+  return { state, clients, stats, ingestLine, removeSession, runLivenessCheck, addClient, broadcast };
 }
 
-/** Handles one HTTP request: /events streams SSE, /snapshot returns JSON, everything else is a static file from frontendDir. */
+/** Handles one HTTP request: /events streams SSE, /snapshot returns JSON, POST /sessions/<pid>/remove removes a session, everything else is a static file from frontendDir. */
 export function handleRequest(hub, options, request, response) {
   const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
+  const removeMatch = url.pathname.match(/^\/sessions\/(\d+)\/remove$/);
+  if (removeMatch) {
+    if (request.method !== "POST") {
+      response.writeHead(405, { "Content-Type": "text/plain", Allow: "POST" });
+      response.end("method not allowed");
+      return;
+    }
+    const removed = hub.removeSession(Number(removeMatch[1]));
+    response.writeHead(removed ? 204 : 404, removed ? {} : { "Content-Type": "text/plain" });
+    response.end(removed ? undefined : "unknown pid");
+    return;
+  }
   if (request.method !== "GET" && request.method !== "HEAD") {
     response.writeHead(405, { "Content-Type": "text/plain" });
     response.end("method not allowed");

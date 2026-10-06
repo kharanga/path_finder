@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { SESSION_STATES } from "./schema.js";
+import { SESSION_STATES, NOT_LIVE_STATES } from "./schema.js";
 
 /** Claude Code messaging socket directory, an undocumented internal used only as a hint. */
 export const SOCKET_DIR = "/tmp/cc-socks";
@@ -37,11 +37,11 @@ export function readRegistryStatus(pid, sessionsDir = DEFAULT_SESSIONS_DIR) {
   }
 }
 
-/** Finds live sessions whose process is gone and returns a synthetic ended event for each. */
+/** Finds live sessions (not ended, not removed) whose process is gone and returns a synthetic ended event for each. */
 export function findDeadSessions(state, now = new Date(), isAlive = isPidAlive) {
   const ended = [];
   for (const session of state.sessions.values()) {
-    if (session.state === "ended") continue;
+    if (NOT_LIVE_STATES.includes(session.state)) continue;
     if (isAlive(session.pid)) continue;
     ended.push({ ...session, ts: now.toISOString(), state: "ended" });
   }
@@ -52,11 +52,11 @@ export function findDeadSessions(state, now = new Date(), isAlive = isPidAlive) 
 export function findStatusCorrections(state, now = new Date(), readStatus = readRegistryStatus) {
   const corrections = [];
   for (const session of state.sessions.values()) {
-    if (session.state === "ended") continue;
+    if (NOT_LIVE_STATES.includes(session.state)) continue;
     const registry = readStatus(session.pid);
     if (!registry) continue;
     const registryIsNewer = registry.statusUpdatedAt !== null && registry.statusUpdatedAt > Date.parse(session.ts);
-    const stateDisagrees = SESSION_STATES.includes(registry.status) && registry.status !== "ended" && registry.status !== session.state;
+    const stateDisagrees = SESSION_STATES.includes(registry.status) && !NOT_LIVE_STATES.includes(registry.status) && registry.status !== session.state;
     const nameMissing = session.session === null && registry.name !== null;
     if (!(registryIsNewer && stateDisagrees) && !nameMissing) continue;
     corrections.push({

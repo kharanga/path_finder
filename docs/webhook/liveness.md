@@ -63,7 +63,7 @@ readRegistryStatus(1, "/tmp/registry-example")    // null
 
 ## findDeadSessions(state, now = new Date(), isAlive = isPidAlive)
 
-What it does: returns a synthetic `ended` event for every session that is not already ended and whose PID is not alive.
+What it does: returns a synthetic `ended` event for every session that is neither `ended` nor `removed` and whose PID is not alive.
 
 Inputs:
 
@@ -90,7 +90,7 @@ findDeadSessions(state, now, () => true) // []
 
 ## findStatusCorrections(state, now = new Date(), readStatus = readRegistryStatus)
 
-What it does: for every session that is not ended, reads the registry entry. When the registry's `statusUpdatedAt` is newer than the session's last hook event `ts` and its `status` is a legal non-ended state different from the hook state, returns a corrective copy with the registry state. Independently, when the stored name is null and the registry has one, the copy carries that name. Registry entries older than the hook event are ignored, which protects against stale files.
+What it does: for every session that is neither `ended` nor `removed`, reads the registry entry. When the registry's `statusUpdatedAt` is newer than the session's last hook event `ts` and its `status` is a legal non-ended state different from the hook state, returns a corrective copy with the registry state. Independently, when the stored name is null and the registry has one, the copy carries that name. Registry entries older than the hook event are ignored, which protects against stale files.
 
 Inputs:
 

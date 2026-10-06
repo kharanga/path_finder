@@ -52,9 +52,33 @@ applyEvent(state, { ts: "2026-10-05T21:41:02Z", type: "message", from: "a", to: 
 // state.messages.map((m) => m.text) ["m1", "m2"]
 ```
 
+## isLive(session)
+
+What it does: tells whether a session object is on the board.
+
+Inputs: `session` (object with `state`).
+
+Output: `false` for `ended` and `removed`, `true` for every other state.
+
+Errors: none.
+
+Example: `isLive({ state: "busy" })` is `true`; `isLive({ state: "removed" })` is `false`.
+
+## liveSessions(state)
+
+What it does: lists the sessions that are neither ended nor removed.
+
+Inputs: `state`.
+
+Output: array sorted by `ts` ascending.
+
+Errors: none.
+
+Example: with PID 1 `idle`, PID 2 `ended`, PID 3 `removed`, `liveSessions(state).map((s) => s.pid)` is `[1]`.
+
 ## findSessionByName(state, name)
 
-What it does: looks a session up by display name, preferring one that has not ended.
+What it does: looks a session up by display name, preferring a live one, then an ended one. Removed sessions are never returned.
 
 Inputs: `state`; `name` (string).
 
@@ -75,7 +99,9 @@ What it does: builds the payload for the SSE `snapshot` event.
 
 Inputs: `state`.
 
-Output: `{sessions, messages}`. `sessions` is an array of the stored session objects sorted by `ts` ascending; `messages` is a copy of the retained messages, oldest first.
+Output: `{sessions, messages}`. `sessions` is an array of the stored session objects except those in state `removed`, sorted by `ts` ascending; `ended` sessions stay so the page can fade them. `messages` is a copy of the retained messages, oldest first.
+
+A removed session stays in `state.sessions`, so any later event for its PID replaces the entry and it reappears in the next snapshot. With PID 1 `idle`, PID 2 `ended`, PID 3 `removed`, `snapshot(state).sessions.map((s) => s.pid)` is `[1, 2]`; after a `busy` event for PID 3 it is `[1, 2, 3]`.
 
 Errors: none.
 
