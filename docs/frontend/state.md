@@ -10,7 +10,7 @@ The state object:
 
 `Placeholder` is `{ name, folder, createdAtMs }`: a capsule for a name that appeared in a message but has no session event yet. `folder` is guessed by `folderFromName`. Placeholders are merged away when a session event with that name arrives and pruned by `prunePlaceholders` after 60 s.
 
-`Session` is `{ pid, session, folder, role, state, ts, firstSeen, formerNames }`. `state` is one of `started`, `busy`, `waiting`, `idle`, `ended`, `removed`. `removed` is written by the server on a manual removal; the reducer treats it like `ended` (not live), the renderer drops the capsule with no footprint, and any later event for the PID makes it live again. `formerNames` lists earlier display names of the same PID, oldest first, because Claude Code can rename a session mid-run (SPEC §6). `Message` is `{ ts, from, to, text, notify_on_idle }`; `from` is a string or `null` (the hook could not resolve the sender's name). `Thread` is `{ id, from, to, ts, status, resolvedTs }` where `id` is the index of the message in `messages` and `status` is `waiting`, `snapped`, or `dropped`. `snapshotSeq` counts snapshots so the renderer can tell a rebuild from incremental growth.
+`Session` is `{ pid, session, folder, role, state, ts, firstSeen, formerNames, stateBeforeRemoval }`. `state` is one of `started`, `busy`, `waiting`, `idle`, `ended`, `removed`. `removed` is written by the server on a manual removal; the reducer treats it like `ended` (not live), the renderer drops the capsule with no footprint, and any later event for the PID makes it live again. `stateBeforeRemoval` holds the state the session had when it was removed (kept across repeated `removed` events) and is `null` otherwise; a message naming a removed session reinstates it in that state. `formerNames` lists earlier display names of the same PID, oldest first, because Claude Code can rename a session mid-run (SPEC §6). `Message` is `{ ts, from, to, text, notify_on_idle }`; `from` is a string or `null` (the hook could not resolve the sender's name). `Thread` is `{ id, from, to, ts, status, resolvedTs }` where `id` is the index of the message in `messages` and `status` is `waiting`, `snapped`, or `dropped`. `snapshotSeq` counts snapshots so the renderer can tell a rebuild from incremental growth.
 
 ## createState()
 
@@ -77,8 +77,23 @@ applyEvent(state, "liveness", { ts: "2026-10-05T21:46:00Z", type: "session", ses
 state.sessions.get(29904).state // "ended"
 applyEvent(state, "session", { ts: "2026-10-05T21:47:00Z", type: "session", session: "listings-bc", folder: "listings", pid: 29904, state: "removed", role: null });
 state.sessions.get(29904).state // "removed"
+state.sessions.get(29904).stateBeforeRemoval // "ended"
 liveSessions(state).some(s => s.pid === 29904) // false
 ```
+
+Reinstatement, with `frontend/fixtures/removed.json`:
+
+```js
+const state = applySnapshot(createState(), fixture.snapshot);
+for (const step of fixture.events.slice(0, 2)) applyEvent(state, step.event, step.data); // listings-bc ended, path-finder-e5 removed
+[state.sessions.get(40707).state, state.sessions.get(40707).stateBeforeRemoval] // ["removed", "idle"]
+applyEvent(state, fixture.events[2].event, fixture.events[2].data);                 // message from path-finder-e5
+[state.sessions.get(40707).state, state.sessions.get(40707).stateBeforeRemoval] // ["idle", null]
+state.placeholders.size                                                             // 0
+liveSessions(state).map(sessionLabel)   // ["path-finder-18", "path-finder-e5", "tag-analyzer-63"]
+```
+
+By former name: a session renamed `a-11` → `b-22`, then removed, is reinstated by a message `from: "a-11"`; the unknown recipient of that message still becomes a placeholder.
 
 ## applySessionEvent(state, event)
 
@@ -97,7 +112,7 @@ Example:
 ```js
 applySessionEvent(state, { ts: "2026-10-05T21:43:00Z", type: "session", session: null, folder: "scratch", pid: 30444, state: "started", role: null });
 applySessionEvent(state, { ts: "2026-10-05T21:45:00Z", type: "session", session: "scratch-7a", folder: "scratch", pid: 30444, state: "idle", role: null });
-state.sessions.get(30444) // { pid: 30444, session: "scratch-7a", folder: "scratch", role: null, state: "idle", ts: "2026-10-05T21:45:00Z", firstSeen: "2026-10-05T21:43:00Z", formerNames: [] }
+state.sessions.get(30444) // { pid: 30444, session: "scratch-7a", folder: "scratch", role: null, state: "idle", ts: "2026-10-05T21:45:00Z", firstSeen: "2026-10-05T21:43:00Z", formerNames: [], stateBeforeRemoval: null }
 ```
 
 A first naming (`null` → `"scratch-7a"`) is not a rename, so `formerNames` stays empty. Renames, with `frontend/fixtures/rename.json` replayed through `applyEvent` with `now = Date.parse("2026-10-05T23:01:00Z")`:
@@ -134,7 +149,7 @@ state.messages.at(-1).from // null
 
 ## applyMessageEvent(state, event, receivedAtMs)
 
-What it does: appends a message to `state.messages`, oldest first. When `notify_on_idle` is true it also appends a `waiting` thread whose `id` is the message index. For `from` and `to` names that match neither a session nor an existing placeholder, it creates a placeholder stamped with `receivedAtMs`.
+What it does: appends a message to `state.messages`, oldest first. When `notify_on_idle` is true it also appends a `waiting` thread whose `id` is the message index. For each string `from` and `to` name: if `sessionByName` finds nothing, a placeholder stamped with `receivedAtMs` is created; if it finds a `removed` session (by current or former name), that session is reinstated in `stateBeforeRemoval` (or `idle` when that is unknown), because any event from a removed session brings it back (SPEC §4.1). A page that connected after the removal has no record of the session and shows a placeholder until a session event arrives.
 
 Inputs:
 - `state` (object).
@@ -222,7 +237,7 @@ waitingThreads(state).map(t => t.to) // ["nobody-99"]
 
 ## liveSessions(state)
 
-What it does: returns sessions in state `started`, `busy`, `waiting`, or `idle` (never `ended` or `removed`), plus every placeholder as a pseudo-session `{ pid: "placeholder:<name>", session: name, folder, role: null, state: "placeholder", formerNames: [] }`, sorted by folder then label. Ended sessions are excluded.
+What it does: returns sessions in state `started`, `busy`, `waiting`, or `idle` (never `ended` or `removed`), plus every placeholder as a pseudo-session `{ pid: "placeholder:<name>", session: name, folder, role: null, state: "placeholder", formerNames: [], stateBeforeRemoval: null }`, sorted by folder then label. Ended sessions are excluded.
 
 Inputs: `state` (object).
 
@@ -239,7 +254,7 @@ liveSessions(state).map(sessionLabel)
 
 ## sessionByName(state, name)
 
-What it does: resolves a name to a capsule in three steps: a session whose current display name equals `name` (live or ended), then a live session whose `formerNames` include `name`, then the placeholder pseudo-session with that name. A non-string `name` (such as a `null` sender) gives `undefined`. Ended sessions are not matched by former name, so a stale name after a restart still gets a placeholder.
+What it does: resolves a name to a capsule in four steps: a session whose current display name equals `name` (any state), then a live session whose `formerNames` include `name`, then a removed session whose `formerNames` include `name`, then the placeholder pseudo-session with that name. A non-string `name` (such as a `null` sender) gives `undefined`. Ended sessions are not matched by former name, so a stale name after a restart still gets a placeholder.
 
 Inputs: `state` (object), `name` (string or null).
 
@@ -256,6 +271,7 @@ sessionByName(state, "nobody")          // undefined
 sessionByName(state, "path-finder-0d")?.pid                // 29248 (former name of a live capsule)
 sessionByName(state, "manager-drives-feature-work")?.pid   // 29248
 sessionByName(state, "nobody-99")?.pid                     // "placeholder:nobody-99"
+// removed sessions are found by current name (and by former name) so a message can reinstate them, see applyMessageEvent
 ```
 
 ## sessionLabel(session)

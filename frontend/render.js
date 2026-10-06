@@ -91,7 +91,8 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
     for (const [pid, node] of capsuleNodes) {
       if (seen.has(pid)) continue;
       const removed = state.sessions.get(pid)?.state === "removed";
-      if (instant || removed) removeCapsule(node, capsuleNodes, lastBoxes, pid);
+      const slotReused = node.box && sessions.some((session) => boxesOverlap(node.box, layout.capsules.get(session.pid)));
+      if (instant || removed || slotReused) removeCapsule(node, capsuleNodes, lastBoxes, pid);
       else if (!node.ghostTimer) startFootprint(node, capsuleNodes, lastBoxes, pid, ghostMs);
     }
 
@@ -269,7 +270,7 @@ function createCapsuleNode(layer, capsuleNodes, session, box, instant = false, o
   const title = appendTo(group, "title", {});
   const name = appendTo(group, "text", { class: "name", x: box.width / 2, "text-anchor": "middle" });
   const role = appendTo(group, "text", { class: "role", x: box.width / 2, "text-anchor": "middle" });
-  const node = { group, shell, title, name, role, remove: null, session, ghostTimer: null, powerTimer: null, lastLabel: null, renameTimer: null };
+  const node = { group, shell, title, name, role, remove: null, session, box, ghostTimer: null, powerTimer: null, lastLabel: null, renameTimer: null };
   if (options.onRemove && session.state !== "placeholder") {
     const remove = appendTo(group, "g", { class: "remove", role: "button", tabindex: "-1" });
     appendTo(remove, "circle", { cx: box.width, cy: 0, r: 13 });
@@ -294,8 +295,13 @@ function createCapsuleNode(layer, capsuleNodes, session, box, instant = false, o
   return node;
 }
 
+function boxesOverlap(a, b) {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
 function updateCapsuleNode(node, session, box, options = {}) {
   node.session = session;
+  node.box = box;
   if (node.ghostTimer) {
     clearTimeout(node.ghostTimer);
     node.ghostTimer = null;

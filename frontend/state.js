@@ -1,4 +1,5 @@
 const LIVE_STATES = new Set(["started", "busy", "waiting", "idle"]);
+const REINSTATABLE_STATES = new Set(["started", "busy", "waiting", "idle"]);
 const MAX_FINISHED_THREADS = 50;
 const PLACEHOLDER_MAX_AGE_MS = 60000;
 const NAME_ID_SUFFIX = /-[0-9a-f]{2}$/i;
@@ -38,15 +39,17 @@ export function applySessionEvent(state, event) {
     resolveThreadsFor(state, new Set(allNames), event.state, event.ts);
     for (const known of allNames) state.placeholders.delete(known);
   }
+  const nextState = event.state ?? previous?.state ?? "started";
   state.sessions.set(event.pid, {
     pid: event.pid,
     session: name,
     folder: event.folder ?? previous?.folder ?? "unknown",
     role: event.role ?? previous?.role ?? null,
-    state: event.state ?? previous?.state ?? "started",
+    state: nextState,
     ts: event.ts ?? previous?.ts ?? null,
     firstSeen: previous?.firstSeen ?? event.ts ?? null,
     formerNames,
+    stateBeforeRemoval: nextState === "removed" ? (previous?.state === "removed" ? previous.stateBeforeRemoval : previous?.state ?? null) : null,
   });
   bumpTs(state, event.ts);
   return state;
@@ -57,9 +60,10 @@ export function applyMessageEvent(state, event, receivedAtMs = Date.now()) {
   if (!event || typeof event.to !== "string") return state;
   if (event.from !== null && event.from !== undefined && typeof event.from !== "string") return state;
   for (const name of [event.from, event.to]) {
-    if (typeof name === "string" && !sessionByName(state, name)) {
-      state.placeholders.set(name, { name, folder: folderFromName(name), createdAtMs: receivedAtMs });
-    }
+    if (typeof name !== "string") continue;
+    const known = sessionByName(state, name);
+    if (!known) state.placeholders.set(name, { name, folder: folderFromName(name), createdAtMs: receivedAtMs });
+    else if (known.state === "removed") reinstate(state, known, event.ts);
   }
   const message = {
     ts: event.ts ?? null,
@@ -134,7 +138,7 @@ export function liveSessions(state) {
   return live.concat(placeholders).sort(compareByFolderThenName);
 }
 
-// Finds a body by name: current name first, then a former name of a live session, then a placeholder.
+// Finds a capsule by name: current name first, then a former name of a live or removed session, then a placeholder.
 export function sessionByName(state, name) {
   if (typeof name !== "string") return undefined;
   for (const session of state.sessions.values()) {
@@ -143,12 +147,20 @@ export function sessionByName(state, name) {
   for (const session of state.sessions.values()) {
     if (LIVE_STATES.has(session.state) && session.formerNames.includes(name)) return session;
   }
+  for (const session of state.sessions.values()) {
+    if (session.state === "removed" && session.formerNames.includes(name)) return session;
+  }
   const placeholder = state.placeholders.get(name);
   return placeholder ? placeholderAsSession(placeholder) : undefined;
 }
 
+function reinstate(state, session, ts) {
+  const restored = REINSTATABLE_STATES.has(session.stateBeforeRemoval) ? session.stateBeforeRemoval : "idle";
+  state.sessions.set(session.pid, { ...session, state: restored, ts: ts ?? session.ts, stateBeforeRemoval: null });
+}
+
 function placeholderAsSession(placeholder) {
-  return { pid: `placeholder:${placeholder.name}`, session: placeholder.name, folder: placeholder.folder, role: null, state: "placeholder", ts: null, firstSeen: null, formerNames: [] };
+  return { pid: `placeholder:${placeholder.name}`, session: placeholder.name, folder: placeholder.folder, role: null, state: "placeholder", ts: null, firstSeen: null, formerNames: [], stateBeforeRemoval: null };
 }
 
 // Returns the display label for a session: its name, or its PID while the name is unknown.
