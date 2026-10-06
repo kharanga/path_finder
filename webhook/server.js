@@ -128,6 +128,7 @@ export function createHub(options = {}) {
   const removeSession = (pid, now = new Date()) => {
     const current = state.sessions.get(pid);
     if (!current) return null;
+    if (current.state === "removed") return current;
     const event = { ts: now.toISOString(), type: "session", session: current.session, folder: current.folder, pid, state: "removed", role: current.role };
     const line = JSON.stringify(event);
     if (options.eventsPath) {
@@ -170,14 +171,15 @@ export function createHub(options = {}) {
 /** Handles one HTTP request: /events streams SSE, /snapshot returns JSON, POST /sessions/<pid>/remove removes a session, everything else is a static file from frontendDir. */
 export function handleRequest(hub, options, request, response) {
   const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
-  const removeMatch = url.pathname.match(/^\/sessions\/(\d+)\/remove$/);
+  const removeMatch = url.pathname.match(/^\/sessions\/([^/]+)\/remove$/);
   if (removeMatch) {
     if (request.method !== "POST") {
       response.writeHead(405, { "Content-Type": "text/plain", Allow: "POST" });
       response.end("method not allowed");
       return;
     }
-    const removed = hub.removeSession(Number(removeMatch[1]));
+    const pid = /^\d+$/.test(removeMatch[1]) ? Number(removeMatch[1]) : null;
+    const removed = pid === null ? null : hub.removeSession(pid);
     response.writeHead(removed ? 204 : 404, removed ? {} : { "Content-Type": "text/plain" });
     response.end(removed ? undefined : "unknown pid");
     return;

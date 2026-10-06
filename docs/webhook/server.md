@@ -74,9 +74,9 @@ What it does: removes a session from the board. Appends a `session` event with s
 
 Inputs: `pid` in the path, decimal integer.
 
-Output: 204 with no body.
+Output: 204 with no body. Removing an already removed PID is idempotent: 204 again, nothing appended, nothing broadcast.
 
-Errors: 404 `unknown pid` when no event for that PID has been seen; 405 with `Allow: POST` for other methods on this path.
+Errors: 404 `unknown pid` when no event for that PID has been seen or the path segment is not a decimal integer; 405 with `Allow: POST` for other methods on this path.
 
 Example, with PID 29904 known:
 
@@ -84,6 +84,8 @@ Example, with PID 29904 known:
 curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:4747/sessions/29904/remove   # 204
 curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:4747/sessions/4242/remove    # 404
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4747/sessions/29904/remove           # 405
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:4747/sessions/abc/remove     # 404
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:4747/sessions/29904/remove   # 204 again, no second line
 ```
 
 After the first call `/snapshot` no longer lists 29904, the last line of the events file is the `removed` event, and a server restarted on that file still omits it. Any later event for 29904 (a hook writing `busy`, say) brings it back.
@@ -176,7 +178,7 @@ Inputs: `options` (object): `messageLimit` (number), `sessionsDir` (string), and
 Output: `{state, clients, stats, ingestLine, runLivenessCheck, addClient, broadcast}`.
 
 - `ingestLine(line, {replaying = false})`: parses and applies one line, returns the applied event or `null` when malformed, broadcasts unless replaying. A line that `removeSession` wrote moments ago is recognized and returns the stored session without applying or broadcasting again.
-- `removeSession(pid, now = new Date())`: appends, applies, and broadcasts a `removed` event for a known PID and returns it; returns `null` for an unknown PID and writes nothing.
+- `removeSession(pid, now = new Date())`: appends, applies, and broadcasts a `removed` event for a known PID and returns it; returns the stored session without writing or broadcasting when it is already removed; returns `null` for an unknown PID and writes nothing.
 - `runLivenessCheck(now = new Date())`: applies and broadcasts dead-PID `ended` events as `liveness` and registry corrections as `session`; returns `{ended, corrections}`.
 - `addClient(response)`: registers an object with `write(string)`, writes the snapshot frame immediately, returns a function that removes the client.
 - `broadcast(eventName, payload)`: writes one frame to every client.
