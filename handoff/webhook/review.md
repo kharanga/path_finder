@@ -14,7 +14,11 @@ Acceptance: two live sessions produce correct events for start, busy, idle, one 
 - `main()` with `CC_DASHBOARD_EVENTS` pointing at a temp path: permission-prompt Notification with an unknown session id appends a `waiting` event with `session: null` and the enclosing claude PID; `SendMessage` appends a `message` with `from: null`; a non-permission Notification, garbage input, and empty stdin append nothing; all exit 0 with 0 bytes on stdout and stderr. Unwritable path: exit 0, silent. Runs in about 30 ms.
 - Entry guard uses `realpathSync`, so a symlinked invocation now logs (round 1 note closed). A bare import yields 10 exports and writes nothing.
 
-# Review: W4 2026-10-05
+# Review: W4 2026-10-05 (round 2)
+
+PASS. Round 1 failure 1 fixed: docs say `createRandom(42).hex2()` is `"99"` and that the PID allocator consumes the first draw (`int(1, 40)` gives 25, verified), so the next `hex2()` is `"72"`.
+
+# Review: W4 2026-10-05 (round 1)
 
 1. `docs/webhook/fake-generator.md`, `createRandom` section  input: `createRandom(42).hex2()`  expected (per docs): `"72"`  actual: `"99"`. The first session is still `listings-72` because `allocatePid` draws from the PRNG before the name does, so only the example value is wrong. Replace with `"99"` or document the first `int` draw.
 

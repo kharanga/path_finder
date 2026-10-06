@@ -1,8 +1,8 @@
-# server.js, tail.js, state.js, liveness.js
+# server.js
 
-The dashboard server. Replays `events.jsonl`, tails it, keeps in-memory state, checks liveness, serves the page, and streams Server-Sent Events.
+The dashboard server. Replays `events.jsonl`, tails it, keeps in-memory state through `state.js`, runs the liveness and registry checks from `liveness.js`, serves the page, and streams Server-Sent Events. Related modules have their own files: `tail.md`, `state.md`, `liveness.md`, `schema.md`.
 
-Run: `node webhook/server.js [flags]`. Prints `dashboard at http://127.0.0.1:4747/`, the events file in use, and the replay count. Ctrl-C stops it cleanly.
+Run: `node webhook/server.js [flags]`. Prints `dashboard at http://127.0.0.1:4747/`, the events file in use, a warning when the frontend directory has no `index.html`, and the replay count. Ctrl-C stops it cleanly.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -19,17 +19,44 @@ Run: `node webhook/server.js [flags]`. Prints `dashboard at http://127.0.0.1:474
 
 ### GET /
 
-Serves `frontend/index.html` with `text/html; charset=utf-8`. 404 with `frontend not found at <dir>` when the file is missing.
+What it does: serves `<frontend>/index.html`.
+
+Inputs: none.
+
+Output: 200 with `Content-Type: text/html; charset=utf-8` and `Cache-Control: no-store`.
+
+Errors: 404 `frontend not found at <dir>` when the file is missing.
+
+Example: `curl -s -o /dev/null -w '%{http_code} %{content_type}\n' http://127.0.0.1:4747/` prints `200 text/html; charset=utf-8`.
 
 ### GET /<path>
 
-Any other path is a static file under the frontend directory. Content types: `.html`, `.js`, `.mjs`, `.css`, `.json`, `.svg`, `.png`, `.ico`, `.woff2`, `.txt`; anything else is `application/octet-stream`. Paths that resolve outside the directory, directories, and missing files return 404 `not found`. Methods other than GET and HEAD return 405.
+What it does: serves any other path as a static file under the frontend directory.
 
-Example: `curl -i http://127.0.0.1:4747/orbit.css` gives `200` with `Content-Type: text/css; charset=utf-8`; `curl --path-as-is -i http://127.0.0.1:4747/../CLAUDE.md` gives `404`.
+Inputs: the URL path, percent-encoded.
+
+Output: 200 with the content type for `.html`, `.js`, `.mjs`, `.css`, `.json`, `.svg`, `.png`, `.ico`, `.woff2`, `.txt`, otherwise `application/octet-stream`. HEAD returns headers only.
+
+Errors: 404 `not found` for paths that resolve outside the directory, directories, and missing files. 405 for methods other than GET and HEAD.
+
+Example:
+
+```
+curl -s -o /dev/null -w '%{http_code} %{content_type}\n' http://127.0.0.1:4747/orbit.css          # 200 text/css; charset=utf-8
+curl -s -o /dev/null -w '%{http_code}\n' --path-as-is http://127.0.0.1:4747/../CLAUDE.md          # 404
+curl -s -o /dev/null -w '%{http_code}\n' --path-as-is http://127.0.0.1:4747/%2e%2e/CLAUDE.md      # 404
+curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:4747/                           # 405
+```
 
 ### GET /events
 
-SSE stream. Headers `text/event-stream`, `Cache-Control: no-store`. The first frame is a comment `: connected`, then `event: snapshot` with `{"sessions":[...],"messages":[...]}`, then `event: session`, `event: message`, and `event: liveness` frames as they happen, plus a `: ping` comment every 15 seconds. Registry status corrections arrive as `event: session`.
+What it does: the SSE stream.
+
+Inputs: none.
+
+Output: `Content-Type: text/event-stream`, `Cache-Control: no-store`. A comment `: connected`, then `event: snapshot` with `{"sessions":[...],"messages":[...]}`, then `event: session`, `event: message`, and `event: liveness` frames as they happen, and a `: ping` comment every 15 seconds. Registry status corrections arrive as `event: session`.
+
+Errors: none; the connection simply closes when the server stops.
 
 Example, with a file holding one `started` line for PID 29904:
 
@@ -43,73 +70,119 @@ data: {"sessions":[{"ts":"2026-10-05T21:40:00Z","type":"session","session":"list
 
 ### GET /snapshot
 
-Debug helper, not part of the page contract. Returns the snapshot plus `stats: {linesRead, malformedLines, eventsApplied, livenessEnded, statusCorrections}` as JSON.
+What it does: debug view of the current state. In the contract since W5.
 
-## server.js functions
+Inputs: none.
 
-### parseArgs(argv, defaults = DEFAULTS)
+Output: 200 JSON `{sessions, messages, stats}` where `stats` is `{linesRead, malformedLines, eventsApplied, livenessEnded, statusCorrections}`.
 
-What it does: turns the flags above into an options object.
+Errors: none.
 
-Inputs: `argv` (string[]); `defaults` (object).
+Example: right after starting on a file with two valid lines and two malformed ones, `curl -s http://127.0.0.1:4747/snapshot | python3 -c "import json,sys; print(json.load(sys.stdin)['stats'])"` prints `{'linesRead': 4, 'malformedLines': 2, 'eventsApplied': 2, 'livenessEnded': 0, 'statusCorrections': 0}` (with the liveness interval disabled or both PIDs alive).
 
-Output: `{eventsPath, frontendDir, sessionsDir, port, host, livenessIntervalMs, pollMs, heartbeatMs, messageLimit, demo}`.
+## DEFAULTS
+
+Constant object with the defaults in the flag table plus `heartbeatMs: 15000` and `messageLimit: 500`.
+
+## CONTENT_TYPES
+
+Constant map from lowercase extension to content type, the ten entries listed under `GET /<path>`.
+
+## parseArgs(argv, defaults = DEFAULTS)
+
+What it does: turns CLI flags into an options object.
+
+Inputs: `argv` (string[]) without the node and script entries; `defaults` (object) to start from.
+
+Output: a copy of `defaults` with `eventsPath`, `frontendDir`, `sessionsDir`, `port`, `host`, `livenessIntervalMs`, `pollMs`, `demo` overridden by the flags present.
 
 Errors: throws `Error("unknown flag <flag>")`.
 
-Example: `parseArgs(["--events", "/tmp/e", "--port", "5000", "--liveness-interval", "0", "--demo"], { port: 1, demo: false })` returns `{"port":5000,"demo":true,"eventsPath":"/tmp/e","livenessIntervalMs":0}`.
+Example:
 
-### sseFrame(eventName, payload)
+```js
+import { parseArgs } from "./webhook/server.js";
+parseArgs(["--events", "/tmp/e", "--port", "5000", "--liveness-interval", "0", "--demo"], { port: 1, demo: false })
+// {"port":5000,"demo":true,"eventsPath":"/tmp/e","livenessIntervalMs":0}
+parseArgs(["--bogus"]) // throws Error: unknown flag --bogus
+```
+
+## sseFrame(eventName, payload)
 
 What it does: formats one SSE frame.
 
-Inputs: `eventName` (string); `payload` (JSON value).
+Inputs: `eventName` (string); `payload` (any JSON value).
 
-Output: string `event: <name>\ndata: <json>\n\n`.
+Output: the string `event: <name>\ndata: <json>\n\n`.
 
 Errors: none.
 
 Example: `sseFrame("session", { a: 1 })` is `"event: session\ndata: {\"a\":1}\n\n"`.
 
-### resolveStaticFile(frontendDir, urlPath)
+## resolveStaticFile(frontendDir, urlPath)
 
-What it does: maps a URL path to a regular file inside the frontend directory.
+What it does: maps a URL path to a regular file inside the frontend directory and picks its content type.
 
-Inputs: `frontendDir` (string); `urlPath` (string, the URL pathname, percent-encoded).
+Inputs: `frontendDir` (string); `urlPath` (string, the percent-encoded URL pathname, `/` means `index.html`).
 
-Output: `{filePath, contentType}` or `null` for traversal, directories, missing files, or undecodable paths.
+Output: `{filePath, contentType}` or `null`.
 
-Errors: none thrown.
+Errors: none thrown. Traversal outside the directory, directories, missing files, and undecodable paths all give `null`.
 
-Example: with the repo's `frontend/`, `resolveStaticFile(dir, "/")` gives `index.html` as `text/html; charset=utf-8`; `"/app.js"` gives `text/javascript; charset=utf-8`; `"/../CLAUDE.md"`, `"/%2e%2e/CLAUDE.md"`, `"/fixtures"` (a directory), and `"/nope.js"` all give `null`.
+Example, with the repo's `frontend/` as `dir`:
 
-### createHub(options = {})
+```js
+import { resolveStaticFile } from "./webhook/server.js";
+resolveStaticFile(dir, "/").contentType               // "text/html; charset=utf-8"
+resolveStaticFile(dir, "/").filePath.endsWith("/frontend/index.html") // true
+resolveStaticFile(dir, "/app.js").contentType         // "text/javascript; charset=utf-8"
+resolveStaticFile(dir, "/orbit.css").contentType      // "text/css; charset=utf-8"
+resolveStaticFile(dir, "/fixtures/few.json").contentType // "application/json; charset=utf-8"
+resolveStaticFile(dir, "/../CLAUDE.md")               // null
+resolveStaticFile(dir, "/%2e%2e/CLAUDE.md")           // null
+resolveStaticFile(dir, "/fixtures")                   // null (directory)
+resolveStaticFile(dir, "/nope.js")                    // null
+resolveStaticFile(dir, "/%E0%A4%A")                   // null (bad encoding)
+```
 
-What it does: builds the in-memory core shared by the tailer, the liveness timer, and HTTP clients. `options.isAlive(pid)` and `options.readStatus(pid)` override the real checks for tests; `options.sessionsDir` sets the registry directory; `options.messageLimit` caps retained messages.
+## createHub(options = {})
 
-Inputs: `options` (object).
+What it does: builds the in-memory core shared by the tailer, the liveness timer, and HTTP clients.
 
-Output: `{state, clients, stats, ingestLine(line, {replaying}), runLivenessCheck(now), addClient(response), broadcast(eventName, payload)}`. `ingestLine` returns the applied event or `null` for a malformed line and broadcasts unless replaying. `runLivenessCheck` returns `{ended, corrections}` after applying and broadcasting them. `addClient` writes the snapshot immediately and returns a remover.
+Inputs: `options` (object): `messageLimit` (number), `sessionsDir` (string), and for tests `isAlive(pid)` and `readStatus(pid)` replacing the real checks.
+
+Output: `{state, clients, stats, ingestLine, runLivenessCheck, addClient, broadcast}`.
+
+- `ingestLine(line, {replaying = false})`: parses and applies one line, returns the applied event or `null` when malformed, broadcasts unless replaying.
+- `runLivenessCheck(now = new Date())`: applies and broadcasts dead-PID `ended` events as `liveness` and registry corrections as `session`; returns `{ended, corrections}`.
+- `addClient(response)`: registers an object with `write(string)`, writes the snapshot frame immediately, returns a function that removes the client.
+- `broadcast(eventName, payload)`: writes one frame to every client.
+- `stats`: `{linesRead, malformedLines, eventsApplied, livenessEnded, statusCorrections}`.
 
 Errors: none thrown.
 
 Example:
 
 ```js
+import { createHub } from "./webhook/server.js";
 const hub = createHub({ isAlive: () => true, readStatus: () => null });
 hub.ingestLine('{"ts":"2026-10-05T21:40:00Z","type":"session","session":"a-1","folder":"a","pid":1,"state":"busy","role":null}').state // "busy"
 hub.ingestLine("not json") // null
-hub.stats // { linesRead: 2, malformedLines: 1, eventsApplied: 1, livenessEnded: 0, statusCorrections: 0 }
-const frames = []; hub.addClient({ write: (f) => frames.push(f) });
+hub.ingestLine("")         // null, blank lines are not counted as malformed
+hub.stats                  // {"linesRead":3,"malformedLines":1,"eventsApplied":1,"livenessEnded":0,"statusCorrections":0}
+const frames = [];
+const remove = hub.addClient({ write: (frame) => frames.push(frame) });
 hub.ingestLine('{"ts":"2026-10-05T21:40:05Z","type":"message","from":"a-1","to":"b","text":"hi","notify_on_idle":true}');
-frames.map((f) => f.split("\n")[0]) // ["event: snapshot", "event: message"]
+frames.map((frame) => frame.split("\n")[0]) // ["event: snapshot", "event: message"]
+remove();
+hub.runLivenessCheck(new Date("2026-10-05T21:45:00Z")) // {"ended":[],"corrections":[]} because isAlive is always true
 ```
 
-### handleRequest(hub, options, request, response)
+## handleRequest(hub, options, request, response)
 
 What it does: the HTTP handler behind the endpoints above.
 
-Inputs: `hub` from `createHub`; `options` with `frontendDir` and `heartbeatMs`; Node `request` and `response`.
+Inputs: `hub` from `createHub`; `options` with `frontendDir` and `heartbeatMs`; Node `IncomingMessage` and `ServerResponse`.
 
 Output: none, writes the response.
 
@@ -117,102 +190,38 @@ Errors: none thrown; bad paths become 404, bad methods 405.
 
 Example: see Endpoints.
 
-### startDemoGenerator(extraArgs = [])
+## startDemoGenerator(extraArgs = [])
 
-What it does: spawns `fake.js --out <temp>/events.jsonl` with placeholder processes.
+What it does: spawns `fake.js --out <tempdir>/events.jsonl` as a child with placeholder processes.
 
-Inputs: `extraArgs` (string[]) appended to the generator command.
+Inputs: `extraArgs` (string[]) appended to the generator command line.
 
 Output: `{eventsPath, child}`.
 
 Errors: none thrown; a failing child simply writes nothing.
 
-Example: `node webhook/server.js --demo` prints an events file under the OS temp dir and within ten seconds `/snapshot` lists several sessions.
+Example: `node webhook/server.js --demo` prints an events file under the OS temp dir and within twelve seconds `/snapshot` lists at least two sessions. Ctrl-C leaves no `sleep 86400` processes behind.
 
-### startServer(overrides = {})
+## startServer(overrides = {})
 
-What it does: wires everything: replay, tail, liveness timer, HTTP listener.
+What it does: wires everything together: replay, tail, liveness timer, HTTP listener.
 
-Inputs: `overrides` (object) merged over `DEFAULTS`.
+Inputs: `overrides` (object) merged over `DEFAULTS`. `port: 0` picks a free port, readable from `server.address().port`.
 
-Output: Promise of `{server, hub, options, stop}`. `stop()` returns a Promise that stops tailing, clears the timer, ends SSE clients, kills the demo child, and closes the server.
+Output: Promise of `{server, hub, options, stop}`. `stop()` returns a Promise that stops tailing, clears the timer, ends SSE clients, kills the demo child, and closes the listener.
 
-Errors: rejects when the port is in use (`EADDRINUSE`).
+Errors: rejects with the listen error, for example `EADDRINUSE`.
 
-Example: `const { stop } = await startServer({ eventsPath: "/tmp/e.jsonl", port: 0, livenessIntervalMs: 0 }); await stop();`
+Example:
 
-## tail.js
-
-### readNewLines(filePath, offset, carry = "")
-
-What it does: reads bytes appended after `offset`, splits complete lines, keeps the partial tail.
-
-Inputs: `filePath` (string); `offset` (integer bytes already consumed); `carry` (string, unfinished line from last call).
-
-Output: `{lines, offset, carry, truncated, missing}`. `truncated` is true when the file shrank (then reading restarts at 0); `missing` is true when the file does not exist.
-
-Errors: none thrown.
-
-Example: a file with `a\nb\npartial` gives `lines ["a","b"]`, `carry "partial"`, `offset 11`. After appending `-done\nc\n`, the next call gives `lines ["partial-done","c"]`, empty carry. Rewriting the file as `z\n` gives `lines ["z"]`, `truncated true`.
-
-### tailFile(filePath, onLine, options = {})
-
-What it does: calls `readNewLines` immediately (replay) and then every `options.pollMs` (default 300). `options.onReplayComplete` fires after the first pass; `options.onTruncate` on shrink; `options.fromStart: false` skips existing content.
-
-Inputs: `filePath` (string); `onLine(line)` (function); `options` (object).
-
-Output: a function that stops the tail.
-
-Errors: none thrown; a missing file is polled until it appears.
-
-Example: `const stop = tailFile("/tmp/e.jsonl", console.log); stop();`
-
-## state.js
-
-### createState(messageLimit = 500)
-
-Output: `{sessions: Map<pid, session>, messages: [], messageLimit}`.
-
-### applyEvent(state, event)
-
-What it does: merges a `session` event into the entry for its PID, keeping an earlier non-null `session` name and `role` when the new event has null, or appends a `message` and trims to `messageLimit`.
-
-Output: the merged session object, or the message.
-
-Example: after `started` with `session: null`, then `busy` with `session: "listings-bc"`, then `idle` with `session: null`, the stored session is `{"session":"listings-bc","state":"idle",...}`. With `messageLimit 2` and three messages `m0, m1, m2`, the snapshot holds `["m1","m2"]`.
-
-### findSessionByName(state, name)
-
-Output: the non-ended session with that name, else any session with that name, else `undefined`.
-
-### snapshot(state)
-
-Output: `{sessions: [...sorted by ts], messages: [...]}`.
-
-## liveness.js
-
-### isPidAlive(pid)
-
-Output: boolean, `process.kill(pid, 0)` with `EPERM` counted alive.
-
-### hasSocket(pid, socketDir = "/tmp/cc-socks")
-
-Output: boolean, secondary hint only.
-
-### readRegistryStatus(pid, sessionsDir = ~/.claude/sessions)
-
-Output: `{status, name, statusUpdatedAt}` from `<pid>.json`, or `null` when missing or malformed.
-
-### findDeadSessions(state, now = new Date(), isAlive = isPidAlive)
-
-Output: array of copies of non-ended sessions whose PID is dead, with `state: "ended"` and `ts: now`.
-
-Example: a state with PID 29904 idle and `isAlive = () => false` gives `[{pid: 29904, state: "ended", ts: "2026-10-05T21:45:00.000Z", ...}]`; with `() => true` it gives `[]`.
-
-### findStatusCorrections(state, now = new Date(), readStatus = readRegistryStatus)
-
-What it does: for each non-ended session, reads the registry; when `statusUpdatedAt` is newer than the session's last hook event and `status` is a legal non-ended state that differs, returns a corrective copy with that state. Also fills a `null` name from the registry.
-
-Output: array of corrective session events.
-
-Example: session idle at 21:40:02, registry `{status: "busy", statusUpdatedAt: 21:44}` gives one correction with `state: "busy"`. Registry at 21:39 (older) gives `[]`. Registry agreeing (`idle`) gives `[]`. A session with `session: null` and registry `name: "x-9f"` gives one correction carrying the name and the unchanged state.
+```js
+import { writeFileSync } from "node:fs";
+import { startServer } from "./webhook/server.js";
+writeFileSync("/tmp/server-example.jsonl", '{"ts":"2026-10-05T21:40:00Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"started","role":null}\nnot json\n');
+const { server, hub, stop } = await startServer({ eventsPath: "/tmp/server-example.jsonl", port: 0, livenessIntervalMs: 0 });
+const port = server.address().port;
+const stats = await fetch(`http://127.0.0.1:${port}/snapshot`).then((r) => r.json()).then((d) => d.stats);
+// stats {"linesRead":2,"malformedLines":1,"eventsApplied":1,"livenessEnded":0,"statusCorrections":0}
+// hub.state.sessions.get(29904).state "started"
+await stop();
+```

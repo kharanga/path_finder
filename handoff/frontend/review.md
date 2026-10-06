@@ -1,3 +1,25 @@
+# Review: F5 2026-10-05
+
+PASS
+
+## What was checked
+
+`docs/frontend/timeline.md` examples with `messages.json` (now 10 events): `size` 16, range 21:59:00Z to 22:00:29Z, 7 message times, `stateAt` at 22:00:13Z gives the five documented session states and one waiting thread with `snapshotSeq` -1, `stateAt(end)` gives the documented states including the `nobody-99` placeholder and threads `snapped, waiting, dropped`, `stateAt(0)` is empty. Entries without a parsable `ts` fall back to arrival time; an empty timeline has a null range. `formatClock` compared against the local-zone `getHours` etc. per ready.md request 1 (matches, `""` for NaN).
+
+`mountTimelineStrip` through the DOM stub with a fresh container: empty timeline disables the slider and the Live button and shows `Live`; with history the slider spans the range, the knob sits at the end, 7 ticks are rendered with percentage offsets; an `input` event leaves live mode (`data-mode="scrub"`, clock label, Live enabled, `onScrub` with the slider value); a new event recorded while scrubbed grows `max` and leaves the knob where it was; clicking Live restores live mode, the knob jumps to the end, `onLive` fires; a container missing a role throws.
+
+`render.js` `draw(state, { instant: true })` with a replayed state: non-live bodies removed at once (no ghost), no `entering` class, threads at dashoffset 0, no particles spawned; returning to the live state with `instant` also spawns nothing. Normal live draw still produces ghosts.
+
+Generated fixtures: `generated-many.json` and `generated-mid.json` are byte-identical to the generator output from my W4 run. Through the page reducer and timeline: mid keeps 15 messages, many 19, max 10 and 17 live bodies, one `ghost-session-00` placeholder and waiting thread each, and replaying the timeline to its end reproduces the live state's body count for both.
+
+`import("./frontend/app.js")` still resolves in Node (it now also imports `panel.js`, which exists).
+
+Browser-only items (knob drag, yellow border, background-tab fade fix) read only.
+
+## Notes, not failures
+
+1. Files changed during the review again (`panel.js`, `onSelect`, null-sender handling, a tenth `messages.json` event). The timeline.md counts were stale for a moment and are correct now. Reviewed as of the F6 message.
+
 # Review: F4 2026-10-05
 
 1. `frontend/state.js:54` `applyMessageEvent`  input: `{ ts, type: "message", from: null, to: "listings-bc", text: "...", notify_on_idle: true }` (the shape `docs/overview.md:56` now allows and `webhook/hooks/dashboard-hook.js` emits when the sender's name cannot be resolved; `webhook/fake.js` emits one per run)  expected: message appended, thread created, sender drawn from the ring center or a placeholder  actual: `state.messages.length` stays 0 and no thread is created, the message is dropped. `docs/frontend/state.md:114` documents the current behavior ("Requires string from and to"), so docs and code agree with each other but not with the contract. Decide the sender display for `from: null` (ring center, as unknown names already use) and update code, docs, and `messages.json` or `generated-many.json` to cover it.
