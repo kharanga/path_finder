@@ -29,6 +29,7 @@ Then open `http://127.0.0.1:8787/`. Because `/events` returns 404 there, the pag
 | `empty` | zero sessions |
 | `one` | one busy session that goes idle after 2 s |
 | `few` | 5 sessions across 4 folders, roles, an unnamed session that gets its name, a `liveness` end |
+| `messages` | 5 sessions incl. one `waiting`, then: a `notify_on_idle` message whose recipient goes busy then idle (thread snaps back), a plain message, a reply, a notify message to a name not on the ring, and a notify message whose recipient ends (thread dropped) |
 | `many` | 15 sessions across 8 folders, same-folder siblings, a 30-character name, then a restart: one session ends by `liveness` and a new PID appears in the same folder |
 
 Fixture file shape:

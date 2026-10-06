@@ -53,12 +53,12 @@ Message:
 |---|---|---|
 | `ts` | ISO 8601 string | when the sender's hook ran |
 | `type` | `"message"` | discriminator |
-| `from` | string | sender display name |
+| `from` | string or null | sender display name, null when the hook could not resolve its own session name |
 | `to` | string | recipient display name |
 | `text` | string | message text |
 | `notify_on_idle` | boolean | sender asked to be told when the recipient goes idle |
 
-Field names for `from`, `to`, `text`, and `notify_on_idle` are provisional until task W1 confirms what `SendMessage` actually exposes.
+Confirmed in W1: `SendMessage` exposes `to`, `message`, and `notify_when_idle`, mapped to `to`, `text`, and `notify_on_idle`.
 
 ## Server to page contract
 

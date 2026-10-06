@@ -101,8 +101,6 @@ function spawnParticle(layer, message, index, from, to, { travelMs, lingerMs, re
   mpath.setAttribute("href", `#${pathId}`);
   mpath.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", `#${pathId}`);
   setTimeout(settle, travelMs);
-  path.remove();
-  layer.insertBefore(path, group);
   return group;
 }
 

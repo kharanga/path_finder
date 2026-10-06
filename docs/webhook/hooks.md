@@ -34,6 +34,139 @@ Timing facts that shape the real hook: `UserPromptSubmit` fires when a cross-ses
 
 The hook process is a child of `sh`, which is a child of the `claude` process. Walking `ps -o ppid=,comm=` upward finds the session PID. Separately, Claude Code keeps `~/.claude/sessions/<pid>.json` with `sessionId`, `name` (the display name such as `listings-bc`), `cwd`, and `status`. Matching `session_id` against `sessionId` gives both the PID and the display name without a process walk. Both are undocumented internals; the process walk is the fallback.
 
+## dashboard-hook.js
+
+The real hook. One script handles every dashboard event: `SessionStart`, `UserPromptSubmit`, `Notification`, `Stop`, `SessionEnd`, and `PostToolUse` for `SendMessage`. Run as `node webhook/hooks/dashboard-hook.js` with the hook JSON on stdin. Appends one §3 event line to `$CC_DASHBOARD_EVENTS`, default `~/.claude/dashboard/events.jsonl`, creating the directory. Always exits 0 with no stdout or stderr. Measured at about 25 ms per invocation.
+
+Hook to event mapping:
+
+| Hook input | Event |
+|---|---|
+| `SessionStart` | `session` with state `started` |
+| `UserPromptSubmit` | `session` with state `busy` |
+| `Notification` with `notification_type` `permission_prompt` | `session` with state `waiting` |
+| `Notification` with any other type | nothing |
+| `Stop` | `session` with state `idle` |
+| `SessionEnd` | `session` with state `ended` |
+| `PostToolUse` with `tool_name` `SendMessage` | `message` |
+| anything else | nothing |
+
+`role` is always `null` until a role-declaring mechanism exists.
+
+### stateForHook(hookInput)
+
+What it does: returns the session state a hook input maps to.
+
+Inputs: `hookInput` (object) parsed hook JSON with `hook_event_name` and, for `Notification`, `notification_type`.
+
+Output: one of `started`, `busy`, `waiting`, `idle`, `ended`, or `null` when the hook carries no state change.
+
+Errors: none.
+
+Example:
+
+```js
+stateForHook({ hook_event_name: "Notification", notification_type: "permission_prompt" }) // "waiting"
+stateForHook({ hook_event_name: "Notification", notification_type: "idle_prompt" })       // null
+stateForHook({ hook_event_name: "PreToolUse" })                                            // null
+```
+
+### lookupSessionRegistry(sessionId, sessionsDir = ~/.claude/sessions)
+
+What it does: scans Claude Code's session registry for the entry whose `sessionId` matches.
+
+Inputs: `sessionId` (string) the hook's `session_id`; `sessionsDir` (string) directory of `<pid>.json` files.
+
+Output: `{pid, name}` with `name` a string or `null`, or `null` when no file matches or the directory is unreadable.
+
+Errors: none thrown. Unreadable or malformed files are skipped.
+
+Example: with this session running, `lookupSessionRegistry("177234a7-b67a-4a0f-bacc-d346355dfd49")` returns `{"pid":52134,"name":"path-finder-37"}`. `lookupSessionRegistry("nope")` and `lookupSessionRegistry("x", "/nonexistent")` both return `null`.
+
+### findClaudeAncestorPid(startPid = process.ppid, maxDepth = 6)
+
+What it does: walks the process tree upward and returns the PID of the nearest process whose command is `claude`.
+
+Inputs: `startPid` (integer); `maxDepth` (integer).
+
+Output: integer PID or `null`.
+
+Errors: none thrown. A failing `ps` returns `null`.
+
+Example: called from any tool or hook under this session it returns `52134`.
+
+### resolveSession(hookInput, options = {})
+
+What it does: resolves `{pid, name}` for the hook, registry first, process walk second.
+
+Inputs: `hookInput` (object) with `session_id`; `options.sessionsDir` (string, optional); `options.findPid` (function, optional, replaces the process walk in tests).
+
+Output: `{pid, name}`. `name` is `null` when only the process walk succeeded. `pid` is `null` when both fail.
+
+Errors: none thrown.
+
+Example: `resolveSession({ session_id: "nope" }, { findPid: () => 4242 })` returns `{"pid":4242,"name":null}`.
+
+### buildEvent(hookInput, identity, now = new Date())
+
+What it does: converts hook input plus resolved identity into a §3 event.
+
+Inputs: `hookInput` (object) parsed hook JSON; `identity` (`{pid, name}`); `now` (Date).
+
+Output: a `session` event, a `message` event, or `null` when the hook is not logged or `identity.pid` is not an integer.
+
+Errors: none thrown.
+
+Example:
+
+```js
+buildEvent({ hook_event_name: "Stop", cwd: "/Users/k/listings" }, { pid: 29904, name: "listings-bc" }, new Date("2026-10-05T21:40:00Z"))
+// {"ts":"2026-10-05T21:40:00.000Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"idle","role":null}
+
+buildEvent({ hook_event_name: "PostToolUse", tool_name: "SendMessage", cwd: "/x", tool_input: { to: "tag-analyzer-63", message: "L16 is ready, look at it", notify_when_idle: true } }, { pid: 29904, name: "listings-bc" }, new Date("2026-10-05T21:40:05Z"))
+// {"ts":"2026-10-05T21:40:05.000Z","type":"message","from":"listings-bc","to":"tag-analyzer-63","text":"L16 is ready, look at it","notify_on_idle":true}
+
+buildEvent({ hook_event_name: "PostToolUse", tool_name: "Bash", cwd: "/x" }, { pid: 1, name: null }) // null
+buildEvent({ hook_event_name: "Stop", cwd: "/x" }, { pid: null, name: null })                       // null
+```
+
+### appendEvent(eventsPath, event)
+
+What it does: appends `JSON.stringify(event)` plus a newline, creating the parent directory.
+
+Inputs: `eventsPath` (string); `event` (object).
+
+Output: `true` on success, `false` on any failure.
+
+Errors: none thrown.
+
+Example: `appendEvent("/nonexistent-root/e.jsonl", { a: 1 })` returns `false`.
+
+### readStdin()
+
+Same as in `capture-raw.js` below.
+
+### main()
+
+What it does: reads stdin, resolves the session, builds the event, appends it. Swallows every error.
+
+Inputs: hook JSON on stdin; `CC_DASHBOARD_EVENTS` environment variable optionally overrides the output path.
+
+Output: none. Exit code is always 0, nothing on stdout or stderr.
+
+Errors: none.
+
+Example, run inside a Claude Code session so the registry lookup succeeds:
+
+```
+export CC_DASHBOARD_EVENTS=/tmp/hook-test/events.jsonl
+echo '{"session_id":"<this session id>","hook_event_name":"Notification","cwd":"/Users/khangnguyen/Documents/path_finder","message":"x","notification_type":"permission_prompt"}' | node webhook/hooks/dashboard-hook.js; echo $?
+echo 'garbage' | node webhook/hooks/dashboard-hook.js; echo $?
+cat /tmp/hook-test/events.jsonl
+```
+
+Expected: `0`, `0`, and one line `{"ts":"...","type":"session","session":"path-finder-37","folder":"path_finder","pid":52134,"state":"waiting","role":null}` with the session name and PID of the session running the command. With an unknown `session_id` the line has `"session":null` and the PID of the enclosing `claude` process.
+
 ## capture-raw.js
 
 Catch-all used in task W1 only. Appends one redacted record per hook invocation so the real hook can be written from observed shapes.

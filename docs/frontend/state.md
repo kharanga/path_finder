@@ -5,10 +5,10 @@ Pure reducer. Holds every session keyed by PID and the message history. No DOM a
 The state object:
 
 ```js
-{ sessions: Map<number, Session>, messages: Message[], lastEventTs: string | null }
+{ sessions: Map<number, Session>, messages: Message[], threads: Thread[], lastEventTs: string | null, snapshotSeq: number }
 ```
 
-`Session` is `{ pid, session, folder, role, state, ts, firstSeen }`. `Message` is `{ ts, from, to, text, notify_on_idle }`.
+`Session` is `{ pid, session, folder, role, state, ts, firstSeen }`. `state` is one of `started`, `busy`, `waiting`, `idle`, `ended`. `Message` is `{ ts, from, to, text, notify_on_idle }`. `Thread` is `{ id, from, to, ts, status, resolvedTs }` where `id` is the index of the message in `messages` and `status` is `waiting`, `snapped`, or `dropped`. `snapshotSeq` counts snapshots so the renderer can tell a rebuild from incremental growth.
 
 ## createState()
 
@@ -16,7 +16,7 @@ What it does: returns an empty state.
 
 Inputs: none.
 
-Output: `{ sessions: new Map(), messages: [], lastEventTs: null }`.
+Output: `{ sessions: new Map(), messages: [], threads: [], lastEventTs: null, snapshotSeq: 0 }`.
 
 Errors: none.
 
@@ -28,7 +28,7 @@ createState().sessions.size // 0
 
 ## applySnapshot(state, snapshot)
 
-What it does: discards current sessions and messages and rebuilds them from a server snapshot.
+What it does: discards current sessions, messages, and threads, increments `snapshotSeq`, and rebuilds from a server snapshot. Snapshot messages with `notify_on_idle` create threads too, so a page that connects mid-wait still shows the thread.
 
 Inputs:
 - `state` (object): the state to overwrite in place.
@@ -48,6 +48,8 @@ applySnapshot(state, {
 });
 state.sessions.get(29904).state // "idle"
 state.messages.length           // 1
+state.threads                   // [{ id: 0, from: "listings-bc", to: "tag-analyzer-63", ts: "2026-10-05T21:40:05Z", status: "waiting", resolvedTs: null }]
+state.snapshotSeq               // 1
 state.lastEventTs               // "2026-10-05T21:40:05Z"
 ```
 
@@ -73,7 +75,7 @@ state.sessions.get(29904).state // "ended"
 
 ## applySessionEvent(state, event)
 
-What it does: upserts the session with `event.pid`. Fields that are `null` or missing in the event keep the previously known value, so a later event with `session: null` does not erase a known name. `firstSeen` is the `ts` of the first event for that PID.
+What it does: upserts the session with `event.pid`. Fields that are `null` or missing in the event keep the previously known value, so a later event with `session: null` does not erase a known name. `firstSeen` is the `ts` of the first event for that PID. Before storing, it resolves threads addressed to this session's name: an `idle` event marks every waiting thread to that name `snapped`, an `ended` event marks them `dropped`, and `busy`, `waiting`, or `started` leave them waiting. At most 50 finished threads are kept; older finished ones are pruned.
 
 Inputs:
 - `state` (object).
@@ -91,9 +93,21 @@ applySessionEvent(state, { ts: "2026-10-05T21:45:00Z", type: "session", session:
 state.sessions.get(30444) // { pid: 30444, session: "scratch-7a", folder: "scratch", role: null, state: "idle", ts: "2026-10-05T21:45:00Z", firstSeen: "2026-10-05T21:43:00Z" }
 ```
 
+Thread resolution, with `frontend/fixtures/messages.json` applied and its events replayed in order through `applyEvent`:
+
+```js
+// after event 1 (message path-finder-18 → path-finder-e5, notify_on_idle)
+state.threads.map(t => `${t.id}:${t.to}:${t.status}`) // ["1:path-finder-e5:waiting"]
+// after event 2 (path-finder-e5 busy): unchanged, still waiting
+// after event 5 (path-finder-e5 idle)
+state.threads.map(t => `${t.id}:${t.to}:${t.status}`) // ["1:path-finder-e5:snapped"]
+// after all 9 events
+state.threads.map(t => `${t.id}:${t.to}:${t.status}`) // ["1:path-finder-e5:snapped", "4:nobody-99:waiting", "5:listings-bc:dropped"]
+```
+
 ## applyMessageEvent(state, event)
 
-What it does: appends a message to `state.messages`, oldest first.
+What it does: appends a message to `state.messages`, oldest first. When `notify_on_idle` is true it also appends a `waiting` thread whose `id` is the message index.
 
 Inputs:
 - `state` (object).
@@ -110,9 +124,25 @@ applyMessageEvent(state, { ts: "2026-10-05T21:44:05Z", type: "message", from: "p
 state.messages.at(-1) // { ts: "2026-10-05T21:44:05Z", from: "path-finder-e5", to: "path-finder-18", text: "F1 spec updated", notify_on_idle: false }
 ```
 
+## waitingThreads(state)
+
+What it does: returns the threads whose recipient has not yet gone idle or ended.
+
+Inputs: `state` (object).
+
+Output: `Thread[]`, in creation order.
+
+Errors: none.
+
+Example, after all events of `messages.json`:
+
+```js
+waitingThreads(state).map(t => t.to) // ["nobody-99"]
+```
+
 ## liveSessions(state)
 
-What it does: returns sessions in state `started`, `busy`, or `idle`, sorted by folder then label. Ended sessions are excluded.
+What it does: returns sessions in state `started`, `busy`, `waiting`, or `idle`, sorted by folder then label. Ended sessions are excluded.
 
 Inputs: `state` (object).
 

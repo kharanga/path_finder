@@ -78,6 +78,29 @@ labelPlacement(Math.PI / 2, { bodyRadius: 18, lineHeight: 22, hasRole: false })
 
 Values are computed with floating point; compare with a tolerance of 0.01.
 
+## messageCurve(from, to, center, { bow, sideOffset })
+
+What it does: builds the quadratic Bézier path a message particle follows and a `notify_on_idle` thread is drawn along. The control point is the midpoint of the chord pulled toward the ring center by `bow` (0.55 by default) and pushed `sideOffset` units (40 by default) to one side, so curves between opposite bodies do not pass exactly through the center and two bodies exchanging messages get mirrored arcs. Coordinates in the path string are rounded to one decimal.
+
+Inputs:
+- `from`, `to` (`{ x, y }`): endpoints, usually body positions.
+- `center` (`{ x, y }`): ring center.
+- `bow` (number, optional): 0 keeps the control point on the chord, 1 puts it at the center.
+- `sideOffset` (number, optional): perpendicular push in user units.
+
+Output: `{ d, control, length }`. `d` is the SVG path (`M x y Q cx cy x y`), `control` the control point, `length` the arc length approximated with 24 segments, used for stroke-dash drawing and snapping.
+
+Errors: none. Coincident endpoints yield a degenerate path of length about 0 with the control point pushed toward the center.
+
+Example:
+
+```js
+const curve = messageCurve({ x: 680, y: 160 }, { x: 1020, y: 500 }, { x: 680, y: 500 });
+curve.d               // "M 680 160 Q 728.2 451.8 1020 500"
+Math.round(curve.length) // 519
+curve.control         // { x: 728.2157…, y: 451.7842… }
+```
+
 ## truncateLabel(label, maxChars)
 
 What it does: cuts a label that is longer than `maxChars` and appends an ellipsis so the result is exactly `maxChars` characters. The full name stays available in the body's tooltip.
