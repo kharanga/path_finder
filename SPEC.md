@@ -175,7 +175,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **V5: docs examples.** Every example in `docs/` runs and produces the documented output. Use the runtime's markdown example runner if one exists, otherwise a small script.
 - [x] **V6: review each ready.md** (ongoing duty, exercised on every task) against this file's acceptance criteria. Write `review.md` as PASS or numbered failures with file, line, input, expected, actual. Missing or outdated docs count as failures.
 
-- [ ] **V7: v2 verification.** Update V3 layout tests for the board layout, add unit tests for the `removed` state in both reducers, an integration test for the removal endpoint including persistence across restart, and re-run all docs examples.
+- [~] path-finder-e5 **V7: v2 verification.** Update V3 layout tests for the board layout, add unit tests for the `removed` state in both reducers, an integration test for the removal endpoint including persistence across restart, and re-run all docs examples.
 
 ### 8.4 manager
 

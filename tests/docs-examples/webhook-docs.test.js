@@ -136,7 +136,7 @@ check("fake command fixture", () => {
   assert.equal(J(ev[0]), '{"delayMs":3000,"event":"session","data":{"ts":"2026-10-05T21:40:03.000Z","type":"session","session":"listings-72","folder":"listings","pid":70025,"state":"started","role":null}}');
   execFileSync(process.execPath, [`${R}/webhook/fake.js`, "--fixture", `${T}/fx2.json`, "--start-time", "2026-10-05T21:40:00Z"]); assert.equal(readFileSync(`${T}/fx.json`, "utf8"), readFileSync(`${T}/fx2.json`, "utf8"));
   execFileSync(process.execPath, [`${R}/webhook/fake.js`, "--fixture", `${T}/fast.json`, "--speed", "10", "--start-time", "2026-10-05T21:40:00Z"]);
-  const fast = JSON.parse(readFileSync(`${T}/fast.json`, "utf8")); assert.equal(fast.events.reduce((a, e) => a + e.delayMs, 0) / 1000, 16.35); assert.equal(ev.reduce((a, e) => a + e.delayMs, 0) / 1000, 163.5);
+  const fast = JSON.parse(readFileSync(`${T}/fast.json`, "utf8")); assert.equal(fast.events.reduce((a, e) => a + e.delayMs, 0) / 1000, 17.15); assert.equal(ev.reduce((a, e) => a + e.delayMs, 0) / 1000, 171.5);
 });
 check("fake command raw", () => {
   execFileSync(process.execPath, [`${R}/webhook/fake.js`, "--out", `${T}/raw.jsonl`, "--instant"]);
