@@ -25,17 +25,17 @@ Event schema and the contract between server and page live in `docs/overview.md`
 
 ## Setup, run, test
 
-No code exists yet. The runtime (Node or Bun) is chosen by webhook-builder in its first task and recorded here by the manager. Until then:
+Runtime is Node 24, the only runtime installed on this machine. No code exists yet. webhook-builder adds the manifest in task W2 and the manager fills in the exact commands here.
 
 ```
 # install
-(to be decided)
+cd webhook && npm install
 
 # run server
-(to be decided, target: one command that starts the server and prints the dashboard URL)
+(to be filled after W5, target: one command that starts the server and prints the dashboard URL)
 
 # run tests
-(to be decided, validator proposes the framework and asks the user first)
+(to be filled after V1, proposed: node:test)
 ```
 
 ## Coding conventions

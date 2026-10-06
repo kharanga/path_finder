@@ -54,7 +54,7 @@ Liveness fallback: the server periodically checks whether each known PID is aliv
 
 ### 5.1 webhook (hooks, server, fake generator)
 
-Folder `webhook/` is empty. No runtime chosen. No hooks installed. `~/.claude/settings.json` has an empty `hooks` object. `~/.claude/dashboard/` does not exist.
+Folder `webhook/` is empty. Runtime is Node 24. No hooks installed. `~/.claude/settings.json` has an empty `hooks` object. `~/.claude/dashboard/` does not exist.
 
 ### 5.2 frontend (HTML visualization)
 
@@ -106,22 +106,22 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 
 ### 8.1 webhook-builder
 
-- [ ] **W1: verify hook behavior.** Write a catch-all hook script in `webhook/hooks/` that appends raw hook input for every event to a temp log. Provide the `settings.json` snippet under Requests. After the manager installs it, send one test message between two sessions, then fill in §6 findings and request removal of the catch-all.
+- [~] path-finder-37 **W1: verify hook behavior.** Write a catch-all hook script in `webhook/hooks/` that appends raw hook input for every event to a temp log. Provide the `settings.json` snippet under Requests. After the manager installs it, send one test message between two sessions, then fill in §6 findings and request removal of the catch-all.
   Acceptance: all four W-U findings filled in with evidence quoted from the raw log. Docs: `docs/webhook/hooks.md` describes the raw hook input shape.
-- [ ] **W2: choose runtime.** Pick Node or Bun, add the manifest, and write install and run commands under Requests so the manager updates `CLAUDE.md`.
+- [~] path-finder-37 **W2: choose runtime.** Runtime is Node 24 (only runtime installed, decided by manager 2026-10-05). Add `webhook/package.json` and write run commands under Requests so the manager updates `CLAUDE.md`.
   Acceptance: a fresh clone can install and run `webhook/` with the documented commands.
-- [ ] **W3: real hooks.** Hook script that appends `session` events for `started`, `busy`, `idle`, `ended` and `message` events for `SendMessage`, following §3. Creates `~/.claude/dashboard/` if missing. Never blocks or fails a turn. Snippet under Requests.
+- [~] path-finder-37 **W3: real hooks.** Hook script that appends `session` events for `started`, `busy`, `idle`, `ended` and `message` events for `SendMessage`, following §3. Creates `~/.claude/dashboard/` if missing. Never blocks or fails a turn. Snippet under Requests.
   Acceptance: two live sessions produce correct events for start, busy, idle, one message, end. Hook exits 0 and logs nothing to the terminal even when the log dir is unwritable. Docs: `docs/webhook/hooks.md` covers each exported function.
-- [ ] **W4: fake event generator.** Script that writes a realistic stream to a chosen path. Covers zero sessions, ~15 sessions, same-folder siblings, a restarted session with a new ID, a session dying without `ended`, and `notify_on_idle` followed by the recipient going idle. Configurable speed.
+- [~] path-finder-37 **W4: fake event generator.** Script that writes a realistic stream to a chosen path. Covers zero sessions, ~15 sessions, same-folder siblings, a restarted session with a new ID, a session dying without `ended`, and `notify_on_idle` followed by the recipient going idle. Configurable speed.
   Acceptance: output validates against §3 schema. frontend-builder can run it against the page with one command. Docs: `docs/webhook/fake-generator.md`.
-- [ ] **W5: server.** Tails `events.jsonl` (path configurable), replays the file on startup, keeps in-memory state, runs the PID liveness check on an interval, serves `GET /` and `GET /events` per §7.
+- [~] path-finder-37 **W5: server.** Tails `events.jsonl` (path configurable), replays the file on startup, keeps in-memory state, runs the PID liveness check on an interval, serves `GET /` and `GET /events` per §7.
   Acceptance: browser connecting mid-run receives a correct snapshot. Killing a session process marks it ended within one interval. Server survives malformed lines. Docs: `docs/webhook/server.md`, one entry per public function and endpoint.
-- [ ] **W6: documentation standard.** Every public function has a one-line docstring. Every module has a file in `docs/webhook/` with what, inputs, output, errors, example.
+- [~] path-finder-37 **W6: documentation standard.** Every public function has a one-line docstring. Every module has a file in `docs/webhook/` with what, inputs, output, errors, example.
   Acceptance: validator confirms every documented example produces the documented output.
 
 ### 8.2 frontend-builder
 
-- [ ] **F1: static page skeleton.** `frontend/index.html` with no build step. Connects to `/events`, applies the snapshot, applies incremental events. Falls back to loading a local JSON fixture when the SSE endpoint is absent so it can be developed before W5 exists.
+- [~] path-finder-18 **F1: static page skeleton.** `frontend/index.html` with no build step. Connects to `/events`, applies the snapshot, applies incremental events. Falls back to loading a local JSON fixture when the SSE endpoint is absent so it can be developed before W5 exists.
   Acceptance: page loads with zero sessions and shows the empty ring with "No sessions running".
 - [ ] **F2: ring layout.** Sessions placed on a ring keyed by start folder. Same-folder sessions adjacent. Stable position across restart. Handles 1 to ~15 without label overlap.
   Acceptance: checked against W4 output at 1, 5, and 15 sessions.
