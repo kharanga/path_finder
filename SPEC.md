@@ -27,6 +27,7 @@ Each session reports on itself through user-level hooks in `~/.claude/settings.j
 | `UserPromptSubmit` | | session is busy | Should also fire when an inbox message starts a turn. Verify. |
 | `Stop` | | session is idle | Does not fire on user interrupt. |
 | `PostToolUse` | `SendMessage` | outgoing message | Log once, at the sender. |
+| `Notification` | `permission_prompt` | session is waiting | Emits state `waiting`. The next `UserPromptSubmit` or `Stop` clears it. |
 | `SessionEnd` | | session closed | May not fire if the process dies. |
 
 Event schema:
@@ -36,9 +37,9 @@ Event schema:
 {"ts":"2026-10-05T21:40:05Z","type":"message","from":"listings-bc","to":"tag-analyzer-63","text":"L16 is ready, look at it","notify_on_idle":true}
 ```
 
-`state` is one of `started`, `busy`, `idle`, `ended`. `role` is `null` unless declared.
+`state` is one of `started`, `busy`, `waiting`, `idle`, `ended`. `waiting` means the session is blocked on a permission prompt, emitted from the `Notification` hook when `notification_type` is `permission_prompt`. `role` is `null` unless declared.
 
-Liveness fallback: the server periodically checks whether each known PID is alive and marks dead sessions `ended`. The socket filename in `/tmp/cc-socks/` appears to be the PID. Treat it as an undocumented internal.
+Liveness fallback: the server periodically checks whether each known PID is alive and marks dead sessions `ended`. On the same interval it reads `status` from `~/.claude/sessions/<pid>.json` and, when it disagrees with hook state (missed `Stop` after an interrupt), emits a corrective `session` event. Decided 2026-10-05. The socket filename in `/tmp/cc-socks/` appears to be the PID. Treat it as an undocumented internal.
 
 ## 4. Visual direction: "Orbit"
 
@@ -108,11 +109,11 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 
 ### 8.1 webhook-builder
 
-- [~] path-finder-37 **W1: verify hook behavior.** Write a catch-all hook script in `webhook/hooks/` that appends raw hook input for every event to a temp log. Provide the `settings.json` snippet under Requests. After the manager installs it, send one test message between two sessions, then fill in §6 findings and request removal of the catch-all.
+- [x] **W1: verify hook behavior.** Write a catch-all hook script in `webhook/hooks/` that appends raw hook input for every event to a temp log. Provide the `settings.json` snippet under Requests. After the manager installs it, send one test message between two sessions, then fill in §6 findings and request removal of the catch-all.
   Acceptance: all four W-U findings filled in with evidence quoted from the raw log. Docs: `docs/webhook/hooks.md` describes the raw hook input shape.
-- [~] path-finder-37 **W2: choose runtime.** Runtime is Node 24 (only runtime installed, decided by manager 2026-10-05). Add `webhook/package.json` and write run commands under Requests so the manager updates `CLAUDE.md`.
+- [x] **W2: choose runtime.** Runtime is Node 24 (only runtime installed, decided by manager 2026-10-05). Add `webhook/package.json` and write run commands under Requests so the manager updates `CLAUDE.md`.
   Acceptance: a fresh clone can install and run `webhook/` with the documented commands.
-- [ ] **W3: real hooks.** Hook script that appends `session` events for `started`, `busy`, `idle`, `ended` and `message` events for `SendMessage`, following §3. Creates `~/.claude/dashboard/` if missing. Never blocks or fails a turn. Snippet under Requests.
+- [~] path-finder-37 **W3: real hooks.** Hook script that appends `session` events for `started`, `busy`, `idle`, `ended` and `message` events for `SendMessage`, following §3. Creates `~/.claude/dashboard/` if missing. Never blocks or fails a turn. Snippet under Requests.
   Acceptance: two live sessions produce correct events for start, busy, idle, one message, end. Hook exits 0 and logs nothing to the terminal even when the log dir is unwritable. Docs: `docs/webhook/hooks.md` covers each exported function.
 - [ ] **W4: fake event generator.** Script that writes a realistic stream to a chosen path. Covers zero sessions, ~15 sessions, same-folder siblings, a restarted session with a new ID, a session dying without `ended`, and `notify_on_idle` followed by the recipient going idle. Configurable speed.
   Acceptance: output validates against §3 schema. frontend-builder can run it against the page with one command. Docs: `docs/webhook/fake-generator.md`.
@@ -123,12 +124,12 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 
 ### 8.2 frontend-builder
 
-- [~] path-finder-18 (in review) **F1: static page skeleton.** `frontend/index.html` with no build step. Connects to `/events`, applies the snapshot, applies incremental events. Falls back to loading a local JSON fixture when the SSE endpoint is absent so it can be developed before W5 exists.
+- [x] **F1: static page skeleton.** `frontend/index.html` with no build step. Connects to `/events`, applies the snapshot, applies incremental events. Falls back to loading a local JSON fixture when the SSE endpoint is absent so it can be developed before W5 exists.
   Acceptance: page loads with zero sessions and shows the empty ring with "No sessions running".
-- [~] path-finder-18 **F2: ring layout.** Sessions placed on a ring keyed by start folder. Same-folder sessions adjacent. Stable position across restart. Handles 1 to ~15 without label overlap.
+- [x] **F2: ring layout.** Decision 2026-10-05: folder-group stability is sufficient, slot order inside a folder follows name order. Sessions placed on a ring keyed by start folder. Same-folder sessions adjacent. Stable position across restart. Handles 1 to ~15 without label overlap.
   Acceptance: checked against W4 output at 1, 5, and 15 sessions.
-- [~] path-finder-18 **F3: state visuals.** Busy glow and pulse, idle dim, fade in on start, fade out with brief faint mark on end. Name label, role underneath only when declared.
-- [ ] **F4: message particles.** Curved path from sender to recipient. `notify_on_idle` thread that snaps back to the sender when the recipient's next state is idle.
+- [x] **F3: state visuals.** Busy glow and pulse, idle dim, fade in on start, fade out with brief faint mark on end. Name label, role underneath only when declared.
+- [~] path-finder-18 **F4: message particles.** Curved path from sender to recipient. `notify_on_idle` thread that snaps back to the sender when the recipient's next state is idle.
 - [ ] **F5: timeline strip.** Scrub through history. Scrubbing replays state at that moment without losing the live stream.
 - [ ] **F6: side panel.** Click a particle to show from, to, time, and full text.
 - [ ] **F7: accessibility and responsiveness.** `prefers-reduced-motion` disables pulse, particles become instant markers. Works at phone width.
@@ -137,7 +138,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 
 ### 8.3 validator
 
-- [ ] **V1: propose test structure.** Pick a framework compatible with the runtime from W2. Propose folder layout. Ask the user before creating anything.
+- [~] path-finder-e5 **V1: test structure.** Approved 2026-10-05: `node:test`, `tests/` at repo root with `unit/`, `integration/`, `docs-examples/`, run by `node --test tests/`. Create it now.
 - [ ] **V2: unit tests for webhook.** Hook event formatting, state reduction from events, PID liveness with a mocked process check, malformed line handling. Mock the filesystem and process calls.
 - [ ] **V3: unit tests for frontend.** Ring position function, state reducer, reduced-motion branch. Use a DOM test environment, no real browser needed.
 - [ ] **V4: integration tests.** W4 output through the server into a connected SSE client, using a temp `events.jsonl`. Never the real file.
@@ -146,7 +147,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 
 ### 8.4 manager
 
-- [ ] M1: install hook snippets from Requests into `~/.claude/settings.json`.
-- [ ] M2: update `CLAUDE.md` setup commands after W2.
-- [ ] M3: decide the open design questions in §6.
+- [~] M1: install hook snippets from Requests into `~/.claude/settings.json`. Catch-all installed; swap for the W3 snippet when W3 is ready.
+- [x] M2: update `CLAUDE.md` setup commands after W2.
+- [~] M3: decide the open design questions in §6. Decided 2026-10-05: `waiting` state from the Notification hook plus a server-side status poll. Remaining: role declaration, timeline depth, log rotation.
 - [ ] M4: packaging, later. Plugin bundle with hooks, optional role-declaring skill, and a `/dashboard` command. Reference model: Graphify.
