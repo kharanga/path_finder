@@ -117,18 +117,18 @@ check("fake buildFixture", () => {
 check("fake command fixture", () => {
   execFileSync("node", [`${R}/webhook/fake.js`, "--fixture", `${T}/fx.json`, "--start-time", "2026-10-05T21:40:00Z"]);
   const f = JSON.parse(readFileSync(`${T}/fx.json`, "utf8")); const ev = f.events;
-  assert.equal(f.snapshot.sessions.length, 0); assert.equal(ev.length, 124);
+  assert.equal(f.snapshot.sessions.length, 0); assert.equal(ev.length, 129);
   assert.equal(ev.filter((e) => e.event === "liveness").length, 2); assert.equal(ev.filter((e) => e.data.type === "message" && e.data.from === null).length, 1);
-  assert.equal(ev.filter((e) => e.data.type === "message" && e.data.to === "ghost-session-00").length, 1); assert.equal(ev.filter((e) => e.data.notify_on_idle === true).length, 6);
-  assert.equal(new Set(ev.filter((e) => e.data.type === "session" && e.data.session).map((e) => e.data.session)).size, 17);
+  assert.equal(ev.filter((e) => e.data.type === "message" && e.data.to === "ghost-session-00").length, 1); assert.equal(ev.filter((e) => e.data.notify_on_idle === true).length, 7);
+  assert.equal(new Set(ev.filter((e) => e.data.type === "session" && e.data.session).map((e) => e.data.session)).size, 18);
   assert.equal(J(ev[0]), '{"delayMs":3000,"event":"session","data":{"ts":"2026-10-05T21:40:03.000Z","type":"session","session":"listings-72","folder":"listings","pid":70025,"state":"started","role":null}}');
   execFileSync("node", [`${R}/webhook/fake.js`, "--fixture", `${T}/fx2.json`, "--start-time", "2026-10-05T21:40:00Z"]); assert.equal(readFileSync(`${T}/fx.json`, "utf8"), readFileSync(`${T}/fx2.json`, "utf8"));
   execFileSync("node", [`${R}/webhook/fake.js`, "--fixture", `${T}/fast.json`, "--speed", "10", "--start-time", "2026-10-05T21:40:00Z"]);
-  const fast = JSON.parse(readFileSync(`${T}/fast.json`, "utf8")); assert.equal(fast.events.reduce((a, e) => a + e.delayMs, 0) / 1000, 16.05); assert.equal(ev.reduce((a, e) => a + e.delayMs, 0) / 1000, 160.5);
+  const fast = JSON.parse(readFileSync(`${T}/fast.json`, "utf8")); assert.equal(fast.events.reduce((a, e) => a + e.delayMs, 0) / 1000, 16.35); assert.equal(ev.reduce((a, e) => a + e.delayMs, 0) / 1000, 163.5);
 });
 check("fake command raw", () => {
   execFileSync("node", [`${R}/webhook/fake.js`, "--out", `${T}/raw.jsonl`, "--instant"]);
-  const lines = readFileSync(`${T}/raw.jsonl`, "utf8").trim().split("\n"); assert.equal(lines.length, 122); assert.equal(lines.filter((l) => !schema.parseEventLine(l)).length, 0);
+  const lines = readFileSync(`${T}/raw.jsonl`, "utf8").trim().split("\n"); assert.equal(lines.length, 127); assert.equal(lines.filter((l) => !schema.parseEventLine(l)).length, 0);
 });
 
 const cr = await import(`${R}/webhook/hooks/capture-raw.js`);
@@ -170,6 +170,8 @@ check("hook main cli", () => {
 
 check("hook registry by pid", () => { assert.equal(hk.readSessionRegistry("/nonexistent").length, 0); assert.equal(hk.lookupSessionRegistryByPid(1), null); assert.equal(hk.lookupSessionRegistryByPid(52134).name, "path-finder-37"); });
 check("server parseArgs port", () => assert.throws(() => sv.parseArgs(["--port"]), /--port needs a non-negative number/));
+
+check("fake rename", () => { const f = JSON.parse(readFileSync(`${T}/fx.json`, "utf8")); const byPid = {}; for (const e of f.events) if (e.data.type === "session" && e.data.session) (byPid[e.data.pid] ??= new Set()).add(e.data.session); const renamed = Object.values(byPid).filter((names) => names.size > 1); assert.equal(renamed.length, 1); assert.ok(renamed[0].has(fk.RENAMED_NAME)); });
 
 const dr = await import(`${R}/webhook/declare-role.js`);
 check("declare parseRole", () => { assert.equal(dr.parseRole(["  manager "]), "manager"); assert.throws(() => dr.parseRole([]), /usage/); assert.throws(() => dr.parseRole(["bad/role!"]), /usage/); });

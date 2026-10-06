@@ -1,3 +1,17 @@
+# Review: W7 2026-10-05
+
+PASS
+
+## What was checked
+
+Acceptance: `declare-role.js <role>` appends a `session` event for the calling session with `role` set, resolving PID and name like the hook; prints nothing on success and exits 0; exits 1 with one stderr line when the session cannot be resolved.
+
+- CLI on a temp events file from this session: `validator` exits 0 with 0 bytes on stdout and stderr and appends one line with this session's name (`path-finder-e5`), claude PID (40707), folder `path_finder`, state `busy`, role `validator`; the line passes `parseEventLine`. Missing role and `bad/role!` print the usage line and exit 1. Unwritable path prints `declare-role: cannot write ...` and exits 1. A second declaration appends a second line, and reducing both through `webhook/state.js` followed by a later hook event with `role: null` keeps the latest role (`reviewer`) while the state updates. The real events file was not written by any of these runs.
+- `declare-role.md` examples: `parseRole` trim and every documented throw (plus a 41-character role, a blank, and a leading dash, all rejected), the four `resolveCallingSession` cases, an `ended` registry status mapping to `busy`, `buildRoleEvent`, `main` returning 1 with one stderr line.
+- `hooks.md` additions: `readSessionRegistry("/nonexistent")` is `[]`, the live registry lists this session, `lookupSessionRegistryByPid` resolves this session's name and returns `null` for PID 1.
+- W5 notes closed: with a scratch frontend dir containing `escape.txt -> /etc/hosts`, `resolveStaticFile` returns `null` for it and still serves `index.html`; `parseArgs` rejects `--port` with no value, `abc`, or `-1`, `--liveness-interval` and `--poll` likewise, and `--events` or `--host` without a value, each with the documented message.
+- Live acceptance (role appears under the body within a tail interval) was not run against the real events file from this session, since that would write real data from a review step. The builder reports it verified from their session; the reducer behavior that makes it work is covered above.
+
 # Review: W6 2026-10-05
 
 PASS

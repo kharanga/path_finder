@@ -125,7 +125,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [x] **W6: documentation standard.** Every public function has a one-line docstring. Every module has a file in `docs/webhook/` with what, inputs, output, errors, example.
   Acceptance: validator confirms every documented example produces the documented output.
 
-- [~] path-finder-37 (in review) **W7: role declaration.** `webhook/declare-role.js <role>` appends a `session` event for the calling session with `role` set, resolving PID and name like the hook. Prints nothing on success, exits 0, exits 1 with one line on stderr if the session cannot be resolved.
+- [x] **W7: role declaration.** `webhook/declare-role.js <role>` appends a `session` event for the calling session with `role` set, resolving PID and name like the hook. Prints nothing on success, exits 0, exits 1 with one line on stderr if the session cannot be resolved.
   Acceptance: run from a live session, the ring shows the role under that body within one tail interval. Docs: `docs/webhook/declare-role.md`.
 - [~] path-finder-37 (research phase) **W8: plugin bundle.** Package hooks, server, the `declare-role` skill, and a `/dashboard` command as a Claude Code plugin so another machine can install it without editing `settings.json` by hand. Hook commands must not hard-code this repo's path or the nvm node path. Research the current plugin manifest format first and put the proposed layout under Requests before building. The bundled skill re-declares the role on SessionStart so roles survive log truncation.
   Acceptance: documented install steps on a clean checkout produce working hooks and a running dashboard. Docs: `docs/webhook/plugin.md`.
