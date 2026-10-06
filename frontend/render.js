@@ -51,7 +51,7 @@ export function createRenderer(svg, { ghostMs = DEFAULT_GHOST_MS, travelMs = DEF
       seen.add(session.pid);
       const position = positions.get(session.pid);
       lastPositions.set(session.pid, { x: position.x, y: position.y });
-      const node = bodyNodes.get(session.pid) ?? createBodyNode(bodiesLayer, bodyNodes, session.pid, instant);
+      const node = bodyNodes.get(session.pid) ?? createBodyNode(bodiesLayer, bodyNodes, session.pid, position, instant);
       updateBodyNode(node, session, position);
     }
     for (const [pid, node] of bodyNodes) {
@@ -181,8 +181,9 @@ function startGhost(node, bodyNodes, lastPositions, pid, ghostMs) {
   }, ghostMs);
 }
 
-function createBodyNode(layer, bodyNodes, pid, instant = false) {
+function createBodyNode(layer, bodyNodes, pid, position, instant = false) {
   const group = appendTo(layer, "g", { class: instant ? "body" : "body entering", "data-pid": pid, tabindex: "0", role: "img" });
+  group.style.transform = translateTo(position);
   appendTo(group, "circle", { class: "halo", r: HALO_RADIUS });
   const circle = appendTo(group, "circle", { class: "core", r: BODY_RADIUS });
   const title = appendTo(group, "title", {});
@@ -201,7 +202,7 @@ function updateBodyNode(node, session, position) {
     node.ghostTimer = null;
     node.group.classList.remove("leaving");
   }
-  node.group.style.transform = `translate(${position.x.toFixed(1)}px, ${position.y.toFixed(1)}px)`;
+  node.group.style.transform = translateTo(position);
   node.group.dataset.state = session.state;
   node.group.dataset.folder = session.folder;
   const label = sessionLabel(session);
@@ -221,6 +222,10 @@ function updateBodyNode(node, session, position) {
   if (session.state === "placeholder") node.title.textContent = `${label}, no session event yet (folder guessed: ${session.folder})`;
   else node.title.textContent = `${session.role ? `${label} (${session.role})` : label} in ${session.folder}${formerly}`;
   node.group.setAttribute("aria-label", `${label}, ${session.state}${session.role ? `, ${session.role}` : ""}, folder ${session.folder}`);
+}
+
+function translateTo(position) {
+  return `translate(${position.x.toFixed(1)}px, ${position.y.toFixed(1)}px)`;
 }
 
 function flushStyles(element) {
