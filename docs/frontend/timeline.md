@@ -40,6 +40,12 @@ What it does: lists the timestamps of recorded messages for the tick marks on th
 
 Output: `number[]` in ms, oldest first.
 
+### messages()
+
+What it does: lists recorded messages with their timestamps, for the clickable tick buttons.
+
+Output: `{ tsMs: number, data: Message }[]`, oldest first.
+
 ### stateAt(tsMs)
 
 What it does: builds a fresh state from `createState()` and replays every entry whose timestamp is at or before `tsMs`, passing each entry's recorded arrival time so placeholders are created as they were. The returned state has a negative, unique `snapshotSeq`, so the renderer treats each replay as a rebuild and never animates particles for it.
@@ -63,6 +69,7 @@ for (const step of fixture.events) timeline.record(step.event, step.data, now);
 timeline.size                      // 16
 timeline.range()                   // { startMs: Date.parse("2026-10-05T21:59:00Z"), endMs: Date.parse("2026-10-05T22:00:29Z") }
 timeline.messageTimes().length     // 7
+timeline.messages().at(-1).data.from // null
 
 const at13 = timeline.stateAt(Date.parse("2026-10-05T22:00:13Z"));
 liveSessions(at13).map(s => `${sessionLabel(s)}:${s.state}`)
@@ -77,20 +84,20 @@ atEnd.threads.map(t => t.status)   // ["snapped", "waiting", "dropped"]
 liveSessions(timeline.stateAt(0)).length // 0
 ```
 
-## mountTimelineStrip(container, timeline, { onScrub, onLive })
+## mountTimelineStrip(container, timeline, { onScrub, onLive, onTick })
 
-What it does: binds the strip markup in `index.html` (a Live button `[data-role=live]`, a range input `[data-role=scrubber]`, a tick container `[data-role=ticks]`, and a time label `[data-role=time]`). Moving the slider leaves live mode and calls `onScrub(tsMs)`; clicking Live returns and calls `onLive()`. `refresh()` re-reads the timeline range: in live mode the knob follows the newest event, in scrub mode it stays where the user left it while the range still grows, so nothing from the live stream is lost. With fewer than two distinct timestamps the slider is disabled. `container.dataset.mode` is `live` or `scrub` for styling.
+What it does: binds the strip markup in `index.html` (a Live button `[data-role=live]`, a range input `[data-role=scrubber]`, a tick container `[data-role=ticks]`, and a time label `[data-role=time]`). Moving the slider leaves live mode and calls `onScrub(tsMs)`; clicking Live returns and calls `onLive()`. Each message becomes a `<button class="tick">` positioned by time, with `aria-label` "Message from `<sender>` to `<recipient>` at `HH:MM:SS`" (`unknown sender` for a null sender) and a matching tooltip; clicking or activating a tick calls `onTick(message, tsMs)`, which `app.js` uses to open the side panel, so history is browsable even while scrubbed. Ticks are in the tab order between the Live button and the slider. `refresh()` re-reads the timeline range: in live mode the knob follows the newest event, in scrub mode it stays where the user left it while the range still grows, so nothing from the live stream is lost. With fewer than two distinct timestamps the slider is disabled. `container.dataset.mode` is `live` or `scrub` for styling.
 
 Inputs:
 - `container` (HTMLElement): the footer holding the four `data-role` elements.
 - `timeline` (object from `createTimeline`).
-- `onScrub` (function(tsMs)), `onLive` (function()).
+- `onScrub` (function(tsMs)), `onLive` (function()), `onTick` (function(message, tsMs), optional).
 
 Output: `{ refresh(), isLive }`.
 
 Errors: throws if any of the four `data-role` elements is missing.
 
-Example: open `?fixture=messages`, wait 15 s. The strip shows 7 ticks and the label `Live`. Drag the knob to about a third: the label shows a clock time, the Live button becomes enabled, the ring shows the state at that moment (for example `listings-bc` alive again and a single thread between `path-finder-18` and `path-finder-e5`). Click Live: the current state returns, `listings-bc` is gone, the knob snaps to the right edge.
+Example: open `?fixture=messages`, wait 15 s. The strip shows 7 ticks and the label `Live`. Drag the knob to about a third: the label shows a clock time, the Live button becomes enabled, the ring shows the state at that moment (for example `listings-bc` alive again and a single thread between `path-finder-18` and `path-finder-e5`). Click Live: the current state returns, `listings-bc` is gone, the knob snaps to the right edge. Click the second tick: the panel opens with From `path-finder-18`, To `path-finder-e5`, the `notify on idle` badge. In the DOM, `document.querySelectorAll("button.tick").length` is 7 and the first tick's `aria-label` starts with `Message from path-finder-0d to path-finder-18 at`.
 
 ## formatClock(tsMs)
 

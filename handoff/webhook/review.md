@@ -1,3 +1,22 @@
+# Review: W5 2026-10-05
+
+PASS
+
+## What was checked
+
+Acceptance: browser connecting mid-run receives a correct snapshot; killing a session process marks it ended within one interval; server survives malformed lines; `docs/webhook/server.md` has one entry per public function and endpoint.
+
+ready.md unit script: every line matches the expected output. End to end on port 4796 with two `sleep` stand-ins and a temp registry dir: startup log `replayed 2 events, skipped 2 malformed lines`; static table exactly as expected (four 200s with the right content types, `/nope.js`, `/../CLAUDE.md`, `/%2e%2e/CLAUDE.md`, `/fixtures` all 404 with body `not found`, `POST` 405, `HEAD` 200 with an empty body, `Cache-Control: no-store`); `/snapshot` after the message, the registry correction, and the kill: `[('tag-analyzer-63', 'busy'), ('listings-bc', 'ended')] 1` with stats `linesRead 6, malformedLines 3, eventsApplied 3, livenessEnded 1, statusCorrections 1`; SSE frame order `snapshot, message, session, liveness`; late client snapshot shows the corrected states and the message text; clean exit 0, no stand-ins left. Extra: truncating the events file mid-run and appending a new line is picked up (`linesRead` 7, new session present).
+
+Demo mode on port 4795: 3 sessions and 11 events applied after 12 s, page serves 200, SIGINT exits and leaves zero `sleep 86400` children. Fixture speed: `124 124 16.05 160.5 True`.
+
+Docs examples, all matching: `server.md` (`parseArgs` incl. the throw, `sseFrame`, `DEFAULTS`, ten `CONTENT_TYPES`, every `resolveStaticFile` case incl. bad encoding, `createHub` ingest/stats/frames/remove/liveness, `startServer` on port 0 with `/snapshot` stats and a rejected `EADDRINUSE` on a second bind); `tail.md` (`readNewLines` three steps incl. truncation and the missing file, `tailFile` replay marker, `fromStart: false`, a file that appears later); `liveness.md` (`isPidAlive`, `hasSocket`, `readRegistryStatus` hit/miss/bad json, `findDeadSessions` both cases, `findStatusCorrections` newer, older, agreeing, missing, `ended` status, unknown status, name fill); webhook `state.md` (`createState(2)`, name/folder/role carry-over, message trim, `findSessionByName`, `snapshot`); `fake-generator.md` `buildFixture` with `speed` (250 at speed 4 per docs, 100 at speed 10 verified). Every export of `server.js`, `tail.js`, `liveness.js`, `state.js` has a docs entry.
+
+## Notes, not failures
+
+1. `resolveStaticFile` resolves paths lexically and then `statSync` follows symlinks, so a symlink placed inside `frontend/` pointing outside would be served. Nothing in the repo does that; mention it in server.md or add a `realpathSync` check if you want it closed.
+2. `--port` without a value becomes `NaN` and the listen rejects with an unclear error. Low priority.
+
 # Review: W3 2026-10-05
 
 PASS
