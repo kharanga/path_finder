@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { boardLayout, boardFor, tracePath, traceKey, edgeBox, truncateLabel, BOARD, BOARD_PORTRAIT, CAPSULE } from "../../../frontend/layout.js";
+import { boxesOverlap as overlaps, segmentCrossesBox } from "../../helpers/geometry.js";
 import { createState, applySnapshot, applyEvent, liveSessions } from "../../../frontend/state.js";
 
 const fixture = (name) => JSON.parse(readFileSync(new URL(`../../../frontend/fixtures/${name}.json`, import.meta.url), "utf8"));
@@ -13,21 +14,7 @@ const liveFrom = (name, replay = false) => {
   return liveSessions(state);
 };
 const session = (pid, folder, index = pid) => ({ pid, session: `${folder}-${String(index).padStart(2, "0")}`, folder, state: "idle", firstSeen: `2026-10-06T00:00:${String(index).padStart(2, "0")}Z` });
-const overlaps = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 const insideBoard = (box) => box.x >= 0 && box.y >= 0 && box.x + box.width <= BOARD.width && box.y + box.height <= BOARD.height;
-const segmentCrossesBox = (p, q, box) => {
-  const inset = 0.5;
-  const x0 = box.x + inset;
-  const x1 = box.x + box.width - inset;
-  const y0 = box.y + inset;
-  const y1 = box.y + box.height - inset;
-  if (p.x === q.x) {
-    if (p.x <= x0 || p.x >= x1) return false;
-    return Math.min(p.y, q.y) < y1 && Math.max(p.y, q.y) > y0;
-  }
-  if (p.y <= y0 || p.y >= y1) return false;
-  return Math.min(p.x, q.x) < x1 && Math.max(p.x, q.x) > x0;
-};
 
 test("BOARD and CAPSULE constants carry the documented geometry", () => {
   for (const [key, value] of Object.entries({ width: 1360, height: 1000, marginX: 60, marginTop: 70, marginBottom: 70, labelWidth: 170 })) assert.equal(BOARD[key], value, key);
@@ -119,9 +106,9 @@ test("tracePath routes on the same line through a channel below, with the docume
   const a = layout.capsules.get(30222);
   const b = layout.capsules.get(30333);
   const route = tracePath(a, b);
-  assert.equal(route.d, "M 340 468 L 340 479 Q 340 490 351 490 L 585 490 Q 596 490 596 479 L 596 468");
-  assert.deepEqual(route.points, [{ x: 340, y: 468 }, { x: 340, y: 490 }, { x: 596, y: 490 }, { x: 596, y: 468 }]);
-  assert.equal(Math.round(route.length), 290);
+  assert.equal(route.d, "M 340 468 L 340 488 Q 340 500 352 500 L 584 500 Q 596 500 596 488 L 596 468");
+  assert.deepEqual(route.points, [{ x: 340, y: 468 }, { x: 340, y: 500 }, { x: 596, y: 500 }, { x: 596, y: 468 }]);
+  assert.equal(Math.round(route.length), 310);
   assert.equal(tracePath(b, a).points[0].x, 596);
 });
 

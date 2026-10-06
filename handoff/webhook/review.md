@@ -1,3 +1,12 @@
+# V8: trace lane tests 2026-10-06
+
+Done, against F13 round 2 (`laneSlot`). Whole suite: 499 tests, 499 pass, 2.1 s, docs examples included, real events and roles files untouched, no processes left.
+
+- `tests/helpers/geometry.js` new: box overlap, segment-through-box, and shared collinear stretch detection between orthogonal routes (`sharedSegments`, `routesSharingSegments`), independent of the builder's checker.
+- `tests/unit/frontend/lanes.test.js` new, 11 tests: `LANE` and `laneOffset`; `laneSlot` documented values, prefix stability for 1 to 21 slots, offsets inside the corridor, zero-width corridor; `traceCorridors` for same, adjacent, and far routes; `assignLanes` order, per-corridor lanes, per-column pins, duplicate keys, empty input, determinism and prefix stability of the assignment; fan-in of three into one capsule in both orientations: four distinct pins, distinct end x, no shared segments, no crossings; every fixture's message pairs in both orientations with no shared segments and no crossings; route determinism and byte-identical prefix stability on `fanin`; byte-identical prefix stability on `generated-many`, `generated-mid`, `generated-fast`, `messages`, `rename` in both orientations; `laneOptions` corridor and pin shifts applied by `tracePath`.
+- `tests/unit/frontend/layout.test.js` updated to the corrected channel geometry (same-line channel at the gap center, length 310) and now imports the shared geometry helper.
+- `tests/docs-examples/frontend-docs.test.js` regenerated from the builder's 275-check runner, with its `lanes-check.mjs` copied as `frontend-lanes-check.mjs` (root derived from the file location, command-line branches disabled). Every example in `docs/` runs under `node --test`.
+
 # V7: v2 verification 2026-10-06
 
 Done. After F12: 416 tests, 416 pass, 2.1 s, docs examples included, no processes left behind, real events and roles files untouched. (At the committed F11 it was 405 of 405; F12 added reinstatement and slot-reuse tests and the regenerated 202-check frontend docs copy.)

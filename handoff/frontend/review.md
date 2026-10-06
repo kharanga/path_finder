@@ -1,3 +1,40 @@
+# Review: F13 2026-10-06 (round 2)
+
+PASS
+
+Round 1 failure 1 closed by design rather than by documentation: `laneSlot` replaces the shrinking gap. Slots alternate outward at the standard gap and later lanes interleave at half and quarter steps, so an assigned slot never depends on how many later lanes exist.
+
+## What was checked
+
+- Exact stability (acceptance "existing traces and pins do not move"): routing every prefix of the pair list on `fanin`, `generated-many`, `generated-mid`, `generated-fast`, `messages`, `rename`, `removed`, `many` in both orientations moves 0 earlier paths, byte for byte, in my own reproduction and in the builder's checker (`stability` mode). The round 1 case (`generated-many`, 13 pins in column 0) is now stable.
+- No shared segments and no capsule crossings for every fixture's message pairs in both orientations, unchanged from round 1. Fan-in of three into `path-finder-0d`: distinct pins and separate routes; pulses and charges follow their trace's lane; the first trace's path is identical after all later events.
+- `laneSlot` examples in `layout.md` all match (13 lanes in a 64-unit gap, 12 pins on a capsule edge, a compressed 24-unit gap, 21 distinct pins), and every prefix of up to 21 slots is stable with all offsets inside the corridor.
+- Determinism: repeated assignment gives identical paths.
+- Builder's runner: 275 passed, 0 failed, including shared-segment, crossing, and prefix-stability checks per fixture and orientation. Final export list matches the handoff.
+
+## Notes, not failures
+
+1. Documented capacity limit: once a corridor needs more lanes than its width allows at 1-unit steps (21 in a standard gap), slots repeat and two traces share a lane. Observed only under an artificial all-pairs load (105 pairs on a 15-session board: 2 to 18 shared segments on compressed boards, 0 capsule crossings). The W4 outputs (11 pairs) are clean.
+2. Request 2 (portrait row labels close to the line above at 14 lines) is the manager's call for a later task.
+
+# Review: F13 2026-10-06
+
+1. `frontend/layout.js:102` `fittedGap` via `laneOptions`  input: `generated-many.json` (W4 output, 15 sessions, 11 lines) with its 11 message pairs assigned in order; compare each pair's path after 2 pairs and after all 11  expected (F13: "stable when a new pair is added (existing lanes do not shuffle)", acceptance: "adding a message between a new pair does not move existing traces")  actual: pair `70071|70201` moves: its `fromPinShift` is 20 with 2 pairs and 16.33 with 11, because column 0 ends up holding 13 pins and `fittedGap(100, 13, 20)` shrinks the pin gap for every pin in that column, not only the new ones. The horizontal lanes behave the same way once a corridor exceeds 3 lanes on a compressed board (`fittedGap(12.2, 4)` is 5.1). `fanin.json` is stable because nothing is crowded. Options: give pins and lanes a fixed capacity so shrinking never touches already-assigned indices (for example place new pins at the reduced gap only, or spill to the opposite edge), or record the shrink as an accepted limitation in SPEC §4 and `layout.md`; either way the acceptance sentence and the code must agree.
+
+## What passed
+
+- Fan-in of three (`fanin.json`): three separate routes into `path-finder-0d` with distinct pins (pin indices 1, 3, 5 plus the row neighbor at 6), five pulses resting on five distinct pin x positions at that capsule's edge, three charges each on its own lane, all draining after the idle event; the fifth pair runs beside the first in the same corridor; the first trace's path is byte-identical after every later event. Shared segments 0, crossings 0, both orientations.
+- Every fixture's message pairs in both orientations (`few`, `messages`, `rename`, `removed`, `many`, `fanin`, `generated-many`, `generated-mid`, `generated-fast`): 0 shared segments and 0 capsule crossings, checked with my own geometry helper (`tests/helpers/geometry.js`) independently of the builder's checker, which reports the same (7 to 31 shared without lanes, 0 with).
+- Determinism: the same pair set produces identical paths on repeated assignment.
+- Renderer: traces carry `data-lane` 0..4 in creation order; every pulse path and every charge path equals its pair's trace path (same points, possibly reversed), so pulses and charges follow their own lane.
+- `layout.md` examples: `assignLanes` (lanes, pins, shared-column pins, corridor lanes and counts), `laneOffset`, `fittedGap`, `traceCorridors`, the corrected `tracePath` values (same-line channel now at the gap center, length 310), shifted and multi-corridor routes; `LANE` constants. Builder's runner: 257 passed, 0 failed.
+- Lane rule documented in `layout.md` and `render.md`; `README.md` lists `fanin`.
+
+## Notes, not failures
+
+1. Dense beyond the acceptance: with every capsule pair messaging (105 pairs on `many` or `generated-many`), shared segments stay at 0, but lanes overflow their corridors on compressed boards (crossings: `many` portrait 3, `generated-many` landscape 16, portrait 62) because `fittedGap` floors at 1 unit while the offsets keep growing. The W4 outputs (11 pairs) are clean. If that density ever matters, cap lanes per corridor or wrap them.
+2. The suite currently has 4 failing assertions in my `layout.test.js` for the old same-line channel values; V8 updates them to the corrected geometry.
+
 # Review: F12 2026-10-06
 
 PASS
