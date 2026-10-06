@@ -94,7 +94,7 @@ Open design questions, manager decides:
 
 Defined in `docs/overview.md`. Summary:
 
-- `GET /` serves `frontend/index.html`.
+- `GET /` serves `frontend/index.html`. All other non-`/events` paths are static files from `frontend/` (ES modules, css, json fixtures), no path traversal.
 - `GET /events` is an SSE stream. First event is `snapshot` with the full state. Later events are `session` and `message` with the §3 schema, plus `liveness` when the PID check marks a session ended.
 - Snapshot shape: `{ "sessions": [session objects with current state], "messages": [recent message events] }`.
 
@@ -114,16 +114,16 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
   Acceptance: two live sessions produce correct events for start, busy, idle, one message, end. Hook exits 0 and logs nothing to the terminal even when the log dir is unwritable. Docs: `docs/webhook/hooks.md` covers each exported function.
 - [ ] **W4: fake event generator.** Script that writes a realistic stream to a chosen path. Covers zero sessions, ~15 sessions, same-folder siblings, a restarted session with a new ID, a session dying without `ended`, and `notify_on_idle` followed by the recipient going idle. Configurable speed.
   Acceptance: output validates against §3 schema. frontend-builder can run it against the page with one command. Docs: `docs/webhook/fake-generator.md`.
-- [ ] **W5: server.** Tails `events.jsonl` (path configurable), replays the file on startup, keeps in-memory state, runs the PID liveness check on an interval, serves `GET /` and `GET /events` per §7.
+- [ ] **W5: server.** Tails `events.jsonl` (path configurable), replays the file on startup, keeps in-memory state, runs the PID liveness check on an interval, serves `GET /`, static files from `frontend/`, and `GET /events` per §7.
   Acceptance: browser connecting mid-run receives a correct snapshot. Killing a session process marks it ended within one interval. Server survives malformed lines. Docs: `docs/webhook/server.md`, one entry per public function and endpoint.
 - [ ] **W6: documentation standard.** Every public function has a one-line docstring. Every module has a file in `docs/webhook/` with what, inputs, output, errors, example.
   Acceptance: validator confirms every documented example produces the documented output.
 
 ### 8.2 frontend-builder
 
-- [~] path-finder-18 **F1: static page skeleton.** `frontend/index.html` with no build step. Connects to `/events`, applies the snapshot, applies incremental events. Falls back to loading a local JSON fixture when the SSE endpoint is absent so it can be developed before W5 exists.
+- [~] path-finder-18 (in review) **F1: static page skeleton.** `frontend/index.html` with no build step. Connects to `/events`, applies the snapshot, applies incremental events. Falls back to loading a local JSON fixture when the SSE endpoint is absent so it can be developed before W5 exists.
   Acceptance: page loads with zero sessions and shows the empty ring with "No sessions running".
-- [ ] **F2: ring layout.** Sessions placed on a ring keyed by start folder. Same-folder sessions adjacent. Stable position across restart. Handles 1 to ~15 without label overlap.
+- [~] path-finder-18 **F2: ring layout.** Sessions placed on a ring keyed by start folder. Same-folder sessions adjacent. Stable position across restart. Handles 1 to ~15 without label overlap.
   Acceptance: checked against W4 output at 1, 5, and 15 sessions.
 - [ ] **F3: state visuals.** Busy glow and pulse, idle dim, fade in on start, fade out with brief faint mark on end. Name label, role underneath only when declared.
 - [ ] **F4: message particles.** Curved path from sender to recipient. `notify_on_idle` thread that snaps back to the sender when the recipient's next state is idle.
