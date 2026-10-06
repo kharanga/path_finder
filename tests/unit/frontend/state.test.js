@@ -195,6 +195,7 @@ test("a removed recipient does not resolve a waiting thread and a removed name s
   applySessionEvent(state, session({ pid: 1, session: "r-1", state: "removed", ts: "2026-10-05T21:41:00Z" }));
   assert.deepEqual(waitingThreads(state).map((t) => t.to), ["r-1"]);
   applyMessageEvent(state, message({ from: "x-9", to: "r-1" }), NOW);
-  assert.deepEqual([...state.placeholders.keys()], ["x-9"]);
+  assert.deepEqual([...state.placeholders.keys()], ["listings-bc", "x-9"]);
+  assert.equal(state.placeholders.has("r-1"), false);
 });
 

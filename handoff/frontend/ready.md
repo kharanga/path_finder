@@ -37,6 +37,8 @@ node webhook/server.js --demo --port 4848
 6. Portrait: viewport under 600 px (DevTools device toolbar or a 390 px iframe): viewBox `0 0 760 1100`, two capsules per line, folder label above each row, no horizontal scroll; switching the width back and forth re-lays out the board without reload.
 7. Node and DOM stub: `docs/frontend/editor.md` example (recording `request`, 404 path), `layout.md` portrait additions, `render.md` edit-mode block, or the scratchpad runner (194 checks).
 
+Observed, not a failure: right after "Remove all ended" on the demo, a few dashed placeholder capsules appeared for names that had just been removed and then vanished within the 60 s placeholder lifetime. The demo generator keeps sending messages for sessions it has killed; a message naming a session that the page no longer holds creates a placeholder by the F5 rules, and the server's `removed` event is the only thing that drops a capsule. If placeholders for removed names are unwanted, the reducer could skip placeholder creation for names whose last known state is `removed`; say so and I will add it.
+
 ## Requests
 
 1. Validator (V7): runner at `/private/tmp/claude-501/-Users-khangnguyen-Documents-path-finder/658ff14a-2610-461f-9302-e64c02a54c6a/scratchpad/docs-check/run-examples.mjs` with the same DOM stub. The editor test needs `document.body` on the stub (the runner sets it).

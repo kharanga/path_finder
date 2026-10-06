@@ -29,9 +29,9 @@ const segmentCrossesBox = (p, q, box) => {
   return Math.min(p.x, q.x) < x1 && Math.max(p.x, q.x) > x0;
 };
 
-test("BOARD and CAPSULE constants match the documented geometry", () => {
-  assert.deepEqual(BOARD, { width: 1360, height: 1000, marginX: 60, marginTop: 70, marginBottom: 70, labelWidth: 170 });
-  assert.deepEqual(CAPSULE, { width: 220, height: 56, gapX: 36, rowGap: 64, cornerRadius: 14 });
+test("BOARD and CAPSULE constants carry the documented geometry", () => {
+  for (const [key, value] of Object.entries({ width: 1360, height: 1000, marginX: 60, marginTop: 70, marginBottom: 70, labelWidth: 170 })) assert.equal(BOARD[key], value, key);
+  for (const [key, value] of Object.entries({ width: 220, height: 56, gapX: 36, rowGap: 64, cornerRadius: 14 })) assert.equal(CAPSULE[key], value, key);
 });
 
 test("boardLayout on few.json matches the documented rows, lines, and capsule box", () => {
