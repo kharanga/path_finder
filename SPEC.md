@@ -86,6 +86,7 @@ Findings:
 - W-U4 (confirmed, reliable for normal turn ends): `Stop` fires at the end of every completed turn with `stop_hook_active: false`. Evidence: `path-finder-0d` (PID 29248) `Stop` at 06:04:33Z then `UserPromptSubmit` at 06:04:49Z on its next turn; `path-finder-e5` `Stop` at 06:04:57Z after processing the test message. Gaps: user interrupt (Escape) skips `Stop`, and a session waiting on a permission prompt is still "busy" by hook state. The `Notification` hook fires in that case (observed for PID 29248 at 06:04:09Z with `notification_type` of length 17, consistent with `permission_prompt`). Mitigation available to the server: `~/.claude/sessions/<pid>.json` has a `status` field (`busy`, `idle`) that ListAgents also uses; polling it on the liveness interval would correct a missed `Stop`. Manager decides whether to add a `waiting` state or a poll.
 - Extra fields observed per event, all values redacted: every event has `session_id`, `transcript_path`, `cwd`, `scratchpad_dir`, `prompt_id`, `hook_event_name`; `UserPromptSubmit` adds `permission_mode`, `prompt`; `Stop` adds `permission_mode`, `effort.level`, `stop_hook_active`, `last_assistant_message`, `background_tasks`, `session_crons`; `Notification` adds `message`, `notification_type`; `PostToolUse` adds `tool_name`, `tool_input`, `tool_response`. No `SessionStart` or `SessionEnd` was observed because no session started or ended during the window; their `source` and `reason` fields are kept by the catch-all for the next restart.
 - Hooks installed into `~/.claude/settings.json` took effect in already-running sessions within seconds, no restart needed.
+- Rename observed 2026-10-05: Claude Code renamed the manager session mid-run from `path-finder-0d` to `manager-drives-feature-work` (registry `nameSource` changed, PID unchanged). The hook re-reads the registry per event, so later events carry the new name and the reducer keeps the body under the same PID. Messages sent before the rename still say `from: path-finder-0d`, and ListAgents now shows only the new name. Consequence: the page must not resolve message endpoints by name alone. Task F9.
 
 Design decisions, 2026-10-05:
 
@@ -143,12 +144,15 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 - [~] path-finder-18 **F8: documentation standard.** One-line docstring on each public function. `docs/frontend/` has one file per module with what, inputs, output, errors, example.
   Acceptance for F3 to F8: validator confirms against W4 output and the docs examples.
 
+- [ ] **F9: session renames.** A session can be renamed mid-run (see §6). Resolve message endpoints to bodies by PID when the name matches no live body but matches a former name of one; keep a per-PID list of former names from session events; never create a placeholder body for a former name of a live session. Label updates in place with a brief highlight.
+  Acceptance: W4 rename scenario shows one body throughout with the label changing, messages before and after the rename attach to it, no placeholder appears. Docs updated.
+
 ### 8.3 validator
 
 - [x] **V1: test structure.** `node:test`, `tests/` with `unit/`, `integration/`, `docs-examples/`, `helpers/`. Run with `node --test "tests/**/*.test.js"`. Done 2026-10-05.
 - [~] path-finder-e5 **V2: unit tests for webhook.** Hook event formatting, state reduction from events, PID liveness with a mocked process check, malformed line handling. Mock the filesystem and process calls.
 - [ ] **V3: unit tests for frontend.** Ring position function, state reducer, reduced-motion branch. Use a DOM test environment, no real browser needed.
-- [ ] **V4: integration tests.** W4 output through the server into a connected SSE client, using a temp `events.jsonl`. Never the real file.
+- [ ] **V4: integration tests.** W4 output through the server into a connected SSE client, using a temp `events.jsonl`. Never the real file. Include the rename scenario (§6) and a role declaration via `declare-role.js` against the temp file.
 - [ ] **V5: docs examples.** Every example in `docs/` runs and produces the documented output. Use the runtime's markdown example runner if one exists, otherwise a small script.
 - [ ] **V6: review each ready.md** against this file's acceptance criteria. Write `review.md` as PASS or numbered failures with file, line, input, expected, actual. Missing or outdated docs count as failures.
 
