@@ -1,12 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateEvent, parseEventLine, SESSION_STATES } from "../../../webhook/schema.js";
+import { validateEvent, parseEventLine, SESSION_STATES, NOT_LIVE_STATES } from "../../../webhook/schema.js";
 
 const session = { ts: "2026-10-05T21:40:00Z", type: "session", session: "listings-bc", folder: "listings", pid: 29904, state: "started", role: null };
 const message = { ts: "2026-10-05T21:40:05Z", type: "message", from: "listings-bc", to: "tag-analyzer-63", text: "L16 is ready", notify_on_idle: true };
 
-test("SESSION_STATES lists the five §3 states in order", () => {
-  assert.deepEqual(SESSION_STATES, ["started", "busy", "waiting", "idle", "ended"]);
+test("SESSION_STATES lists the six §3 states in order and NOT_LIVE_STATES the two off-board ones", () => {
+  assert.deepEqual(SESSION_STATES, ["started", "busy", "waiting", "idle", "ended", "removed"]);
+  assert.deepEqual(NOT_LIVE_STATES, ["ended", "removed"]);
 });
 
 test("validateEvent accepts a well-formed session and message", () => {
@@ -34,7 +35,7 @@ test("validateEvent reports every session field problem at once", () => {
       "session must be a string or null",
       "folder must be a string",
       "pid must be a positive integer",
-      "state must be one of started, busy, waiting, idle, ended",
+      "state must be one of started, busy, waiting, idle, ended, removed",
       "role must be a string or null",
       "unknown field extra",
     ],

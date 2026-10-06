@@ -64,7 +64,7 @@ Errors: none.
 
 ### stateAt(tsMs)
 
-What it does: builds a fresh state from `createState()` and replays every entry whose timestamp is at or before `tsMs`, passing each entry's recorded arrival time so placeholders are created as they were. The returned state has a negative, unique `snapshotSeq`, so the renderer treats each replay as a rebuild and never animates particles for it.
+What it does: builds a fresh state from `createState()` and replays every entry whose timestamp is at or before `tsMs`, passing each entry's recorded arrival time so placeholders are created as they were. The returned state has a negative, unique `snapshotSeq`, so the renderer treats each replay as a rebuild and never animates pulses for it.
 
 Inputs: `tsMs` (number).
 
@@ -119,7 +119,7 @@ Output: `{ refresh(), isLive }`.
 
 Errors: throws if any of the four `data-role` elements is missing.
 
-Example: open `?fixture=messages`, wait 15 s. The strip shows 7 ticks and the label `Live`. Drag the knob to about a third: the label shows a clock time, the Live button becomes enabled, the ring shows the state at that moment (for example `listings-bc` alive again and a single thread between `path-finder-18` and `path-finder-e5`). Click Live: the current state returns, `listings-bc` is gone, the knob snaps to the right edge. Click the second tick: the panel opens with From `path-finder-18`, To `path-finder-e5`, the `notify on idle` badge. In the DOM, `document.querySelectorAll("button.tick").length` is 7 and the first tick's `aria-label` starts with `Message from path-finder-0d to path-finder-18 at`.
+Example: open `?fixture=messages`, wait 15 s. The strip shows 7 ticks and the label `Live`. Drag the knob to about a third: the label shows a clock time, the Live button becomes enabled, the board shows the state at that moment (for example `listings-bc` alive again and a single charged trace between `path-finder-18` and `path-finder-e5`). Click Live: the current state returns, `listings-bc` is gone, the knob snaps to the right edge. Click the second tick: the panel opens with From `path-finder-18`, To `path-finder-e5`, the `notify on idle` badge. In the DOM, `document.querySelectorAll("button.tick").length` is 7 and the first tick's `aria-label` starts with `Message from path-finder-0d to path-finder-18 at`.
 
 ## formatClock(tsMs)
 

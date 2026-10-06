@@ -1,3 +1,24 @@
+# Review: W9 2026-10-06
+
+PASS
+
+## What was checked
+
+Acceptance: curl the endpoint against the demo server, the capsule disappears from the snapshot, restart the server and it stays gone, a new event for the PID brings it back, docs updated.
+
+- ready.md end-to-end block on scratch files (generator instant output, server on port 4793): `remove 204`, `unknown 404`, `GET` 405 with `Allow: POST`, `/snapshot` no longer lists the PID and stats show `removals: 1`, the last file line is the `removed` event with the session's name and folder, a restarted server on the same file replays 133 events and still omits the PID, a new `busy` line for the PID appended to the file brings it back, and the SSE client saw exactly one `removed` frame (`snapshot` then one `session`). Real events file untouched.
+- Generator scenario: `134 [(97, 70144), (98, 70025)] [[], ['busy', 'idle']]` as documented, every fixture event valid.
+- Reducer and liveness probes: `SESSION_STATES` has six states and `NOT_LIVE_STATES` two; `isLive` is false for ended and removed; `liveSessions` keeps only live, `snapshot` keeps ended but drops removed; `findSessionByName` never returns a removed session but still returns an ended one; a later event for a removed PID restores it with its earlier name and role; `findDeadSessions` and `findStatusCorrections` both skip a removed session even with a dead PID and a newer registry status.
+- Hub over a real tailed server (port 0, 20 ms poll): `POST` returns 204 with an empty body, the client receives one `session:removed` frame, the file gains one line, after the tail pass `eventsApplied` counts the event once and `removals` is 1, so the self-written-line bookkeeping works; a late client's snapshot omits the PID; a file append for the PID brings it back into the snapshot.
+- Docs: `server.md` endpoint and `removeSession` entries, `state.md` `isLive`/`liveSessions`/`snapshot` examples, `liveness.md`, `schema.md`, `fake-generator.md` step 10 all match. Builder's runner: 51 of 53, the two session-literal checks as always.
+- Request 1 applied: schema states and error text, `removals: 0` in two hub stats assertions, `removed` in the scenario states, and the docs copies (states, error text, stats, 134 fixture events, 132 raw lines). Request 2 applied: the `server startServer` example now stops its server in a `finally`. Webhook unit tests 84 pass, integration 5 pass, overview docs 5 pass; `webhook-docs.test.js` has one remaining failing check noted below for V7.
+
+## Notes, not failures
+
+1. `POST /sessions/abc/remove` (non-numeric PID) falls through to the generic handler and returns 405 rather than 404. Harmless for the page, which only sends numeric PIDs; mention it in server.md or match `\d+` with a 404 if you prefer.
+2. Removing an already removed PID returns 204 again and appends another `removed` line. Idempotent in effect; a 404 or a no-op would avoid the duplicate line.
+3. `docs/overview.md` wording nit from ready.md request 4 is the manager's call.
+
 # V5: docs examples 2026-10-06
 
 Done. `tests/docs-examples/` runs every documented example under `node --test`; the todo placeholder is gone.

@@ -1,6 +1,8 @@
-# Ready: F10 circuit visual
+# Ready: F10 circuit visual (round 2)
 
 ## Done
+
+Round 2: review failure 1 (ring-era wording) fixed in `README.md`, `app.md`, `connect.md`, `state.md`, plus the same wording the review did not list in `timeline.md` and `panel.md`. Review note 2: the README file table now says `id="orbit"` and `orbit.css` are v1 identifiers kept on purpose. No code change.
 
 The ring is gone. The page now draws the Circuit board from SPEC §4.
 

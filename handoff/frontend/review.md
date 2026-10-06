@@ -1,3 +1,9 @@
+# Review: F10 2026-10-06 (round 2)
+
+PASS
+
+Round 1 failure 1 closed: no `ring`, `body`, `bodies`, or `particle` wording remains in `docs/frontend/*.md` (the only hit is layout.md's own "Removed in v2" line). `timeline.md` and `panel.md` were cleaned too. README now states that `id="orbit"` and `orbit.css` are kept v1 identifiers. No code change since round 1; the round 1 functional checks stand.
+
 # Review: F10 2026-10-06
 
 1. Docs naming (acceptance: "Docs updated, including `docs/frontend/README.md` naming")  input: grep for ring-era wording in `docs/frontend/`  expected: capsule and board wording  actual: `README.md:39` "not on the ring (placeholder body)", `README.md:41` "the renamed body goes idle"; `app.md:7` "draws the empty ring", "the ring keeps showing", "particle highlight" (twice); `app.md:10` "the ring target"; `app.md:25` "the ring is dashed", "five bodies appear", "left the ring"; `connect.md:28` "the empty ring"; `state.md:11` "a body for a name", `state.md:256` "live body", `state.md:263` "drawn next to a body". `layout.md` and `render.md` are clean.

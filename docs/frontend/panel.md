@@ -1,6 +1,6 @@
 # panel.js
 
-The side panel that opens when a message particle is clicked. `describeMessage` and `formatTimestamp` are pure and run in Node; `createPanel` needs the `<aside id="panel">` markup from `index.html`.
+The side panel that opens when a message pulse is clicked. `describeMessage` and `formatTimestamp` are pure and run in Node; `createPanel` needs the `<aside id="panel">` markup from `index.html`.
 
 ## describeMessage(message)
 
@@ -44,10 +44,10 @@ What it does: binds the panel markup: `[data-field=from|to|time|text]`, the `[da
 
 Inputs:
 - `element` (HTMLElement): the `<aside id="panel">`.
-- `onClose` (function, optional): called after the panel hides, used to clear the particle highlight.
+- `onClose` (function, optional): called after the panel hides, used to clear the pulse highlight.
 
 Output: `{ show(message, index), hide(), selectedIndex }`.
 
 Errors: throws if the close button or a field element is missing.
 
-Example, in a browser with `?fixture=messages` loaded for 17 s: click the small dot resting on `path-finder-18`. The panel shows From `unknown sender` (italic), To `path-finder-18`, the local time, no badge, and the full text. Press Escape or the × button: the panel closes and the particle highlight clears. Clicking a dot of a `notify_on_idle` message shows the `notify on idle` badge.
+Example, in a browser with `?fixture=messages` loaded for 17 s: click the small dot resting on `path-finder-18`. The panel shows From `unknown sender` (italic), To `path-finder-18`, the local time, no badge, and the full text. Press Escape or the × button: the panel closes and the pulse highlight clears. Clicking a dot of a `notify_on_idle` message shows the `notify on idle` badge.

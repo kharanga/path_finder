@@ -21,11 +21,11 @@ const checkAsync = (name, fn) => test(name, { skip: skipReason(name) }, fn);
 const schema = await import(`${R}/webhook/schema.js`);
 check("schema validate ok session", () => assert.deepEqual(schema.validateEvent({ ts: "2026-10-05T21:40:00Z", type: "session", session: "listings-bc", folder: "listings", pid: 29904, state: "started", role: null }), { ok: true, errors: [] }));
 check("schema validate ok message", () => assert.deepEqual(schema.validateEvent({ ts: "2026-10-05T21:40:05Z", type: "message", from: "listings-bc", to: "tag-analyzer-63", text: "L16 is ready, look at it", notify_on_idle: true }), { ok: true, errors: [] }));
-check("schema validate errors", () => assert.deepEqual(schema.validateEvent({ ts: "bad", type: "session", session: 1, folder: "x", pid: 0, state: "sleeping", role: null, extra: 1 }), { ok: false, errors: ["ts must be an ISO 8601 string", "session must be a string or null", "pid must be a positive integer", "state must be one of started, busy, waiting, idle, ended", "unknown field extra"] }));
+check("schema validate errors", () => assert.deepEqual(schema.validateEvent({ ts: "bad", type: "session", session: 1, folder: "x", pid: 0, state: "sleeping", role: null, extra: 1 }), { ok: false, errors: ["ts must be an ISO 8601 string", "session must be a string or null", "pid must be a positive integer", "state must be one of started, busy, waiting, idle, ended, removed", "unknown field extra"] }));
 check("schema validate nope", () => assert.deepEqual(schema.validateEvent("nope"), { ok: false, errors: ["event must be an object"] }));
 check("schema parse", () => assert.deepEqual(schema.parseEventLine('{"ts":"2026-10-05T21:40:00Z","type":"session","session":null,"folder":"listings","pid":29904,"state":"busy","role":null}'), { ts: "2026-10-05T21:40:00Z", type: "session", session: null, folder: "listings", pid: 29904, state: "busy", role: null }));
 check("schema parse nulls", () => { assert.equal(schema.parseEventLine("not json"), null); assert.equal(schema.parseEventLine(""), null); assert.equal(schema.parseEventLine('{"ts":"bad"}'), null); });
-check("schema states", () => assert.deepEqual(schema.SESSION_STATES, ["started", "busy", "waiting", "idle", "ended"]));
+check("schema states", () => assert.deepEqual(schema.SESSION_STATES, ["started", "busy", "waiting", "idle", "ended", "removed"]));
 
 const st = await import(`${R}/webhook/state.js`);
 check("state create", () => { const s = st.createState(2); assert.equal(s.sessions.size, 0); assert.deepEqual(s.messages, []); assert.equal(s.messageLimit, 2); });
@@ -87,7 +87,7 @@ check("server createHub", () => {
   const hub = sv.createHub({ isAlive: () => true, readStatus: () => null });
   assert.equal(hub.ingestLine('{"ts":"2026-10-05T21:40:00Z","type":"session","session":"a-1","folder":"a","pid":1,"state":"busy","role":null}').state, "busy");
   assert.equal(hub.ingestLine("not json"), null); assert.equal(hub.ingestLine(""), null);
-  assert.equal(J(hub.stats), '{"linesRead":3,"malformedLines":1,"eventsApplied":1,"livenessEnded":0,"statusCorrections":0}');
+  assert.equal(J(hub.stats), '{"linesRead":3,"malformedLines":1,"eventsApplied":1,"livenessEnded":0,"statusCorrections":0,"removals":0}');
   const frames = []; const remove = hub.addClient({ write: (f) => frames.push(f) });
   hub.ingestLine('{"ts":"2026-10-05T21:40:05Z","type":"message","from":"a-1","to":"b","text":"hi","notify_on_idle":true}');
   assert.deepEqual(frames.map((f) => f.split("\n")[0]), ["event: snapshot", "event: message"]); remove();
@@ -97,16 +97,19 @@ await checkAsync("server startServer", async () => {
   const ef = `${T}/server-example.jsonl`;
   writeFileSync(ef, '{"ts":"2026-10-05T21:40:00Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"started","role":null}\nnot json\n');
   const { server, hub, stop } = await sv.startServer({ eventsPath: ef, port: 0, livenessIntervalMs: 0 });
+  try {
   const port = server.address().port;
   const stats = await fetch(`http://127.0.0.1:${port}/snapshot`).then((r) => r.json()).then((d) => d.stats);
-  assert.equal(J(stats), '{"linesRead":2,"malformedLines":1,"eventsApplied":1,"livenessEnded":0,"statusCorrections":0}');
+  assert.equal(J(stats), '{"linesRead":2,"malformedLines":1,"eventsApplied":1,"livenessEnded":0,"statusCorrections":0,"removals":0}');
   assert.equal(hub.state.sessions.get(29904).state, "started");
   const root = await fetch(`http://127.0.0.1:${port}/`); assert.equal(root.status, 200); assert.equal(root.headers.get("content-type"), "text/html; charset=utf-8");
   const css = await fetch(`http://127.0.0.1:${port}/orbit.css`); assert.equal(css.headers.get("content-type"), "text/css; charset=utf-8");
   const post = await fetch(`http://127.0.0.1:${port}/`, { method: "POST" }); assert.equal(post.status, 405);
   const sse = await fetch(`http://127.0.0.1:${port}/events`); const reader = sse.body.getReader(); const { value } = await reader.read(); const text = new TextDecoder().decode(value);
   assert.equal(text, ': connected\n\nevent: snapshot\ndata: {"sessions":[{"ts":"2026-10-05T21:40:00Z","type":"session","session":"listings-bc","folder":"listings","pid":29904,"state":"started","role":null}],"messages":[]}\n\n');
-  await reader.cancel(); await stop();
+  await reader.cancel(); } finally {
+    await stop();
+  }
 });
 
 const fk = await import(`${R}/webhook/fake.js`);
@@ -126,7 +129,7 @@ check("fake buildFixture", () => {
 check("fake command fixture", () => {
   execFileSync(process.execPath, [`${R}/webhook/fake.js`, "--fixture", `${T}/fx.json`, "--start-time", "2026-10-05T21:40:00Z"]);
   const f = JSON.parse(readFileSync(`${T}/fx.json`, "utf8")); const ev = f.events;
-  assert.equal(f.snapshot.sessions.length, 0); assert.equal(ev.length, 129);
+  assert.equal(f.snapshot.sessions.length, 0); assert.equal(ev.length, 134);
   assert.equal(ev.filter((e) => e.event === "liveness").length, 2); assert.equal(ev.filter((e) => e.data.type === "message" && e.data.from === null).length, 1);
   assert.equal(ev.filter((e) => e.data.type === "message" && e.data.to === "ghost-session-00").length, 1); assert.equal(ev.filter((e) => e.data.notify_on_idle === true).length, 7);
   assert.equal(new Set(ev.filter((e) => e.data.type === "session" && e.data.session).map((e) => e.data.session)).size, 18);
@@ -137,7 +140,7 @@ check("fake command fixture", () => {
 });
 check("fake command raw", () => {
   execFileSync(process.execPath, [`${R}/webhook/fake.js`, "--out", `${T}/raw.jsonl`, "--instant"]);
-  const lines = readFileSync(`${T}/raw.jsonl`, "utf8").trim().split("\n"); assert.equal(lines.length, 127); assert.equal(lines.filter((l) => !schema.parseEventLine(l)).length, 0);
+  const lines = readFileSync(`${T}/raw.jsonl`, "utf8").trim().split("\n"); assert.equal(lines.length, 132); assert.equal(lines.filter((l) => !schema.parseEventLine(l)).length, 0);
 });
 
 const cr = await import(`${R}/webhook/hooks/capture-raw.js`);

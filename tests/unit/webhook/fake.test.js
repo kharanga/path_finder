@@ -93,7 +93,7 @@ test("runScenario with the default seed covers every scripted situation with val
   const sessions = entries.filter((e) => e.data.type === "session");
   const messages = entries.filter((e) => e.data.type === "message");
   const states = new Set(sessions.map((e) => e.data.state));
-  assert.deepEqual([...states].sort(), ["busy", "ended", "idle", "started", "waiting"]);
+  assert.deepEqual([...states].sort(), ["busy", "ended", "idle", "removed", "started", "waiting"]);
   assert.equal(entries.filter((e) => e.event === "liveness").length, 2);
   assert.ok(messages.filter((e) => e.data.notify_on_idle).length >= 4);
   assert.equal(messages.filter((e) => e.data.from === null).length, 1);

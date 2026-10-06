@@ -73,7 +73,7 @@ test("createHub counts lines, rejects malformed ones, applies valid ones, and br
   assert.equal(hub.ingestLine('{"ts":"bad"}'), null);
   assert.equal(hub.ingestLine(sessionLine(), { replaying: true }).state, "busy");
   assert.equal(hub.ingestLine(messageLine).text, "hi");
-  assert.deepEqual(hub.stats, { linesRead: 6, malformedLines: 2, eventsApplied: 2, livenessEnded: 0, statusCorrections: 0 });
+  assert.deepEqual(hub.stats, { linesRead: 6, malformedLines: 2, eventsApplied: 2, livenessEnded: 0, statusCorrections: 0, removals: 0 });
   assert.deepEqual(frames.map((frame) => frame.split("\n")[0]), ["event: snapshot", "event: message"]);
   remove();
   hub.ingestLine(sessionLine({ state: "idle" }));
@@ -113,7 +113,7 @@ test("runLivenessCheck applies and broadcasts dead pids as liveness and registry
   assert.equal(hub.state.sessions.get(1).state, "ended");
   assert.deepEqual([hub.state.sessions.get(2).session, hub.state.sessions.get(2).state], ["b-2", "idle"]);
   assert.deepEqual(frames.slice(1).map((frame) => frame.split("\n")[0]), ["event: liveness", "event: session"]);
-  assert.deepEqual(hub.stats, { linesRead: 2, malformedLines: 0, eventsApplied: 2, livenessEnded: 1, statusCorrections: 1 });
+  assert.deepEqual(hub.stats, { linesRead: 2, malformedLines: 0, eventsApplied: 2, livenessEnded: 1, statusCorrections: 1, removals: 0 });
   assert.deepEqual(hub.runLivenessCheck(new Date("2026-10-05T21:46:00Z")), { ended: [], corrections: [] });
   assert.deepEqual(isAlive.mock.calls.map((c) => c.arguments[0]), [1, 2, 2]);
 });

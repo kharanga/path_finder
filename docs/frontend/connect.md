@@ -25,7 +25,7 @@ connect({ onSnapshot: s => console.log("snapshot", s.sessions.length), onStatus:
 
 ## loadFixture(url, { onSnapshot, onEvent, onStatus })
 
-What it does: fetches a fixture file, reports `"fixture"`, delivers `fixture.snapshot`, then schedules each entry of `fixture.events` with `setTimeout`, accumulating `delayMs`. On any failure it reports `"offline"` and delivers an empty snapshot so the page still renders the empty ring.
+What it does: fetches a fixture file, reports `"fixture"`, delivers `fixture.snapshot`, then schedules each entry of `fixture.events` with `setTimeout`, accumulating `delayMs`. On any failure it reports `"offline"` and delivers an empty snapshot so the page still renders the empty board.
 
 Inputs:
 - `url` (string): fixture path.
