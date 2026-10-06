@@ -7,6 +7,9 @@
   --busy: #ffd166;
   --idle: #4f5c8a;
   --started: #8fd3ff;
+  --waiting: #f28c5a;
+  --particle: #cfe3ff;
+  --thread: #9fb4ff;
 }
 
 * { box-sizing: border-box; }
@@ -92,6 +95,9 @@ body {
   filter: drop-shadow(0 0 10px var(--busy));
 }
 
+.body[data-state="waiting"] .core { fill: var(--waiting); }
+.body[data-state="waiting"] .halo { fill: var(--waiting); opacity: 0.2; }
+
 .body[data-state="idle"] .core { opacity: 0.7; }
 .body[data-state="idle"] .name { fill: var(--muted); }
 
@@ -104,8 +110,42 @@ body {
   50% { transform: scale(1.35); opacity: 0.1; }
 }
 
+.particle-path {
+  fill: none;
+  stroke: none;
+}
+
+.particle-dot {
+  fill: var(--particle);
+  filter: drop-shadow(0 0 6px var(--particle));
+  transition: opacity 1500ms ease, r 400ms ease;
+}
+
+.particle.notify .particle-dot { fill: var(--thread); filter: drop-shadow(0 0 6px var(--thread)); }
+
+.particle.arrived .particle-dot {
+  opacity: 0.45;
+  r: 4;
+  filter: none;
+}
+
+.thread {
+  fill: none;
+  stroke: var(--thread);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  opacity: 0.7;
+  transition: stroke-dashoffset var(--draw-ms, 1200ms) ease-out, opacity 500ms ease;
+}
+
+.thread.snapping {
+  transition: stroke-dashoffset 500ms cubic-bezier(0.6, 0, 0.9, 0.5);
+}
+
+.thread.dropping { opacity: 0; }
+
 @media (prefers-reduced-motion: reduce) {
-  .body, .body.leaving, .body .halo { transition: none; }
+  .body, .body.leaving, .body .halo, .particle-dot, .thread, .thread.snapping { transition: none; }
   .body[data-state="busy"] .halo { animation: none; opacity: 0.3; }
 }
 

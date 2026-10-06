@@ -1,55 +1,68 @@
-# Ready: W1 verify hook behavior (re-review), W2 runtime manifest (PASS)
+# Ready: W3 real hooks
 
 ## Done
 
-- W1 live test complete. Catch-all installed by the manager at 06:01Z; 57 records captured across four sessions by 06:05Z. This session sent one `SendMessage` with `notify_when_idle: true` to `path-finder-e5`, the recipient's `UserPromptSubmit` and later `Stop` both appeared in the log.
-- `SPEC.md` §6: all four W-U findings filled in with quoted evidence, plus observed extra fields and two notes for the manager (`Notification` fires on permission prompts; `~/.claude/sessions/<pid>.json` `status` can back up a missed `Stop`).
-- `docs/webhook/hooks.md`: raw input shape table rewritten from the observed records.
-- `webhook/hooks/capture-raw.js`: entry point guarded with `import.meta.url === pathToFileURL(process.argv[1]).href`, per review note 1. A bare import no longer reads stdin or writes a record.
-- Drafts present but not part of this handoff: `webhook/hooks/dashboard-hook.js` (W3), `webhook/schema.js`, `webhook/state.js`, `webhook/liveness.js`, `webhook/tail.js`, `webhook/server.js` (W5), `webhook/fake.js` (W4). Not started per the manager's rule; review them when their task IDs are assigned.
+- `webhook/hooks/dashboard-hook.js`: the real hook. Maps `SessionStart` to `started`, `UserPromptSubmit` to `busy`, `Notification` with `notification_type` `permission_prompt` to `waiting`, `Stop` to `idle`, `SessionEnd` to `ended`, and `PostToolUse` for `SendMessage` to a `message` event with `to`, `text` (from `message`), `notify_on_idle` (from `notify_when_idle`, false when absent). Everything else is ignored. Sender name and PID come from `~/.claude/sessions/<pid>.json` matched on `session_id`, re-read on every event, with the `ps` walk to the `claude` parent as fallback (then `session` is `null`). Creates `~/.claude/dashboard/` if missing. Output path overridable with `CC_DASHBOARD_EVENTS` for tests. Exit 0 always, zero bytes on stdout and stderr, about 25 ms per run. Entry point guarded with `realpathSync`.
+- `webhook/schema.js`: `SESSION_STATES` now includes `waiting`. `validateEvent` and `parseEventLine` are the validators the server and generator will use.
+- `docs/webhook/hooks.md`: hook to event table and every exported function of `dashboard-hook.js`.
+- `docs/webhook/schema.md`: new, every export of `schema.js`.
+- Unchanged from W1: `capture-raw.js` stays until the manager swaps the snippet.
 
 ## How to test
 
-Findings check:
+Unit level, from the repo root, inside any Claude Code session so the registry lookup finds a real session:
 
 ```
-cd /Users/khangnguyen/Documents/path_finder
-sed -n '/^Findings:/,/^Open design questions/p' SPEC.md
+export CC_DASHBOARD_EVENTS=/tmp/w3-test/events.jsonl; rm -rf /tmp/w3-test
+SID=$(python3 -c "import json,glob,os; print([json.load(open(f))['sessionId'] for f in glob.glob(os.path.expanduser('~/.claude/sessions/*.json')) if json.load(open(f))['pid']==$(ps -o ppid= -p $$ | tr -d ' ')][0])" 2>/dev/null || echo unknown)
+H=webhook/hooks/dashboard-hook.js
+for payload in \
+  "{\"session_id\":\"$SID\",\"hook_event_name\":\"SessionStart\",\"cwd\":\"$PWD\",\"source\":\"startup\"}" \
+  "{\"session_id\":\"$SID\",\"hook_event_name\":\"UserPromptSubmit\",\"cwd\":\"$PWD\",\"prompt\":\"x\"}" \
+  "{\"session_id\":\"$SID\",\"hook_event_name\":\"Notification\",\"cwd\":\"$PWD\",\"message\":\"x\",\"notification_type\":\"permission_prompt\"}" \
+  "{\"session_id\":\"$SID\",\"hook_event_name\":\"Notification\",\"cwd\":\"$PWD\",\"message\":\"x\",\"notification_type\":\"idle_prompt\"}" \
+  "{\"session_id\":\"$SID\",\"hook_event_name\":\"PostToolUse\",\"cwd\":\"$PWD\",\"tool_name\":\"SendMessage\",\"tool_input\":{\"to\":\"listings-bc\",\"message\":\"L16 is ready\",\"notify_when_idle\":true},\"tool_response\":{}}" \
+  "{\"session_id\":\"$SID\",\"hook_event_name\":\"PostToolUse\",\"cwd\":\"$PWD\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls\"}}" \
+  "{\"session_id\":\"$SID\",\"hook_event_name\":\"Stop\",\"cwd\":\"$PWD\",\"stop_hook_active\":false}" \
+  "{\"session_id\":\"unknown-id\",\"hook_event_name\":\"Stop\",\"cwd\":\"/tmp/other\"}" \
+  "{\"session_id\":\"$SID\",\"hook_event_name\":\"SessionEnd\",\"cwd\":\"$PWD\",\"reason\":\"exit\"}" \
+  "garbage"; do echo "$payload" | node $H; echo -n "$? "; done; echo
+CC_DASHBOARD_EVENTS=/nonexistent-root/e.jsonl node $H <<< "{\"session_id\":\"$SID\",\"hook_event_name\":\"Stop\",\"cwd\":\"$PWD\"}"; echo "unwritable exit=$?"
+node $H < /dev/null; echo "empty stdin exit=$?"
+cat $CC_DASHBOARD_EVENTS
+node -e 'import("./webhook/schema.js").then(({parseEventLine}) => { const fs = require("fs"); console.log(fs.readFileSync(process.env.CC_DASHBOARD_EVENTS, "utf8").trim().split("\n").map(l => parseEventLine(l) ? "ok" : "INVALID").join(" ")) })'
 ```
 
-Expected: W-U1 to W-U4 each have a finding with timestamps or quoted record fragments.
+Expected: ten `0` exit codes, `unwritable exit=0`, `empty stdin exit=0`, nothing else printed by the hook. The events file has exactly 7 lines in this order: `started`, `busy`, `waiting`, `message` to `listings-bc` with `notify_on_idle` true, `idle`, `idle` with `"session":null` and `"folder":"other"`, `ended`. The `idle_prompt` notification, the `Bash` tool, and `garbage` produce no line. The validator prints seven `ok`. If `$SID` resolved, `session` is the running session's display name and `pid` its PID.
 
-Raw log cross-check, redacted summary only, no values:
+Docs examples: every example in `docs/webhook/hooks.md` under `dashboard-hook.js` and in `docs/webhook/schema.md` runs by importing the module; outputs are what the docs show, except PIDs and names which are whatever session runs it.
 
-```
-python3 -c "
-import json
-for line in open('/tmp/cc-dashboard-raw.jsonl'):
-    r=json.loads(line); k=r['input'].get('kept',{})
-    claude=[a['pid'] for a in r['ancestors'] if 'claude' in a['command']]
-    print(r['captured_at'][11:19], claude[:1], k.get('hook_event_name'), k.get('tool_name',''), k.get('tool_input',{}).get('to',''))
-"
-```
-
-Expected: a `PostToolUse SendMessage path-finder-e5` line for PID 52134 at 06:03:57, a `UserPromptSubmit` for PID 40707 at 06:04:10, a `Stop` for PID 40707 at 06:04:57, and no line containing prompt or message text.
-
-Import guard:
+Live acceptance, after the manager swaps the snippet: in two sessions, send one `SendMessage` from A to B, let B finish, then:
 
 ```
-cd /Users/khangnguyen/Documents/path_finder
-wc -l /tmp/cc-dashboard-raw.jsonl
-node -e 'import("./webhook/hooks/capture-raw.js").then(m => console.log(Object.keys(m).length, "exports"))' < /dev/null
-wc -l /tmp/cc-dashboard-raw.jsonl
+tail -n 20 ~/.claude/dashboard/events.jsonl
 ```
 
-Expected: `8 exports` and the two line counts differ only by hooks other sessions fired in between, never by a record whose `argv` is empty and whose `cwd` is this repo at the same second. Cleaner: set `CC_DASHBOARD_RAW_LOG=/tmp/guard-test.jsonl` for the import and confirm that file is not created.
+Expected: A has `busy` then a `message` with `"to"` equal to B's name, B has `busy` then `idle`, each with `session` equal to the ListAgents name and `pid` equal to the `/tmp/cc-socks/<pid>.sock` filename. A permission prompt in either session adds a `waiting` line before the next `busy` or `idle`. Starting a new session adds `started`; quitting adds `ended`.
 
 ## Requests
 
-1. Manager: W1 is done, so the catch-all can come out of `~/.claude/settings.json`. Two options. Remove all nine hook entries now, which stops the roughly 35 ms per tool call overhead in every session. Or leave it until W3 is assigned and swap it for the real snippet in one edit. The log is redacted either way. I recommend swapping at W3 to save you an edit, and I will delete `/tmp/cc-dashboard-raw.jsonl` when told.
-2. Manager: `npm install` in `webhook/` creates `webhook/package-lock.json` even with zero dependencies (review note 2). Please add `webhook/package-lock.json` to `.gitignore`, or drop the `npm install` step from `CLAUDE.md` since nothing is fetched.
-3. Manager, for M3: two states exist that §3 does not model, a session waiting on a permission prompt (`Notification` hook, ListAgents shows `waiting`) and a missed `Stop` after a user interrupt. Options are in §6 W-U4. Decide whether W3 should emit a fifth state or whether W5 should poll `~/.claude/sessions/<pid>.json` `status`.
-4. Manager: the W5 contract now says static files from `frontend/` are served. Acknowledged; the draft server does not do that yet and will when W5 is assigned.
+1. Manager: replace the W1 catch-all with this snippet, one edit, then delete `/tmp/cc-dashboard-raw.jsonl`. The `Notification` entry carries no matcher because matchers on that hook filter by `notification_type` on recent versions only; the script filters for `permission_prompt` itself, so an unmatched notification costs one 25 ms no-op.
+
+```json
+{
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "/Users/khangnguyen/.nvm/versions/node/v24.14.0/bin/node /Users/khangnguyen/Documents/path_finder/webhook/hooks/dashboard-hook.js", "timeout": 5 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "/Users/khangnguyen/.nvm/versions/node/v24.14.0/bin/node /Users/khangnguyen/Documents/path_finder/webhook/hooks/dashboard-hook.js", "timeout": 5 }] }],
+    "PostToolUse": [{ "matcher": "SendMessage", "hooks": [{ "type": "command", "command": "/Users/khangnguyen/.nvm/versions/node/v24.14.0/bin/node /Users/khangnguyen/Documents/path_finder/webhook/hooks/dashboard-hook.js", "timeout": 5 }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "/Users/khangnguyen/.nvm/versions/node/v24.14.0/bin/node /Users/khangnguyen/Documents/path_finder/webhook/hooks/dashboard-hook.js", "timeout": 5 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "/Users/khangnguyen/.nvm/versions/node/v24.14.0/bin/node /Users/khangnguyen/Documents/path_finder/webhook/hooks/dashboard-hook.js", "timeout": 5 }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "/Users/khangnguyen/.nvm/versions/node/v24.14.0/bin/node /Users/khangnguyen/Documents/path_finder/webhook/hooks/dashboard-hook.js", "timeout": 5 }] }]
+  }
+}
+```
+
+2. Manager: `docs/overview.md` says the `from` field is a string. It is `null` when the registry lookup fails and only the process walk succeeds. Either allow `string or null` for `from` in the contract (schema.js already does), or accept that the page drops messages with a null sender. I recommend allowing null; the frontend can fall back to matching by PID later if we add one.
 
 ## Blocked
 

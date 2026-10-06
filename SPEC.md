@@ -97,6 +97,7 @@ Open design questions, manager decides:
 
 Defined in `docs/overview.md`. Summary:
 
+- `message.from` may be null when the sender's name lookup fails. The page keeps such messages and draws them from the ring center.
 - `GET /` serves `frontend/index.html`. All other non-`/events` paths are static files from `frontend/` (ES modules, css, json fixtures), no path traversal.
 - `GET /events` is an SSE stream. First event is `snapshot` with the full state. Later events are `session` and `message` with the §3 schema, plus `liveness` when the PID check marks a session ended.
 - Snapshot shape: `{ "sessions": [session objects with current state], "messages": [recent message events] }`.
@@ -113,9 +114,9 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
   Acceptance: all four W-U findings filled in with evidence quoted from the raw log. Docs: `docs/webhook/hooks.md` describes the raw hook input shape.
 - [x] **W2: choose runtime.** Runtime is Node 24 (only runtime installed, decided by manager 2026-10-05). Add `webhook/package.json` and write run commands under Requests so the manager updates `CLAUDE.md`.
   Acceptance: a fresh clone can install and run `webhook/` with the documented commands.
-- [~] path-finder-37 **W3: real hooks.** Hook script that appends `session` events for `started`, `busy`, `idle`, `ended` and `message` events for `SendMessage`, following §3. Creates `~/.claude/dashboard/` if missing. Never blocks or fails a turn. Snippet under Requests.
+- [~] path-finder-37 (in review) **W3: real hooks.** Hook script that appends `session` events for `started`, `busy`, `idle`, `ended` and `message` events for `SendMessage`, following §3. Creates `~/.claude/dashboard/` if missing. Never blocks or fails a turn. Snippet under Requests.
   Acceptance: two live sessions produce correct events for start, busy, idle, one message, end. Hook exits 0 and logs nothing to the terminal even when the log dir is unwritable. Docs: `docs/webhook/hooks.md` covers each exported function.
-- [ ] **W4: fake event generator.** Script that writes a realistic stream to a chosen path. Covers zero sessions, ~15 sessions, same-folder siblings, a restarted session with a new ID, a session dying without `ended`, and `notify_on_idle` followed by the recipient going idle. Configurable speed.
+- [~] path-finder-37 **W4: fake event generator.** Script that writes a realistic stream to a chosen path. Covers zero sessions, ~15 sessions, same-folder siblings, a restarted session with a new ID, a session dying without `ended`, and `notify_on_idle` followed by the recipient going idle. Configurable speed.
   Acceptance: output validates against §3 schema. frontend-builder can run it against the page with one command. Docs: `docs/webhook/fake-generator.md`.
 - [ ] **W5: server.** Tails `events.jsonl` (path configurable), replays the file on startup, keeps in-memory state, runs the PID liveness check on an interval, serves `GET /`, static files from `frontend/`, and `GET /events` per §7.
   Acceptance: browser connecting mid-run receives a correct snapshot. Killing a session process marks it ended within one interval. Server survives malformed lines. Docs: `docs/webhook/server.md`, one entry per public function and endpoint.
@@ -147,7 +148,7 @@ Status key: `[ ]` not started, `[~]` in progress (write the session name), `[x]`
 
 ### 8.4 manager
 
-- [~] M1: install hook snippets from Requests into `~/.claude/settings.json`. Catch-all installed; swap for the W3 snippet when W3 is ready.
+- [x] M1: install hook snippets into `~/.claude/settings.json`. Real W3 hook installed 2026-10-05, catch-all removed, raw log deleted.
 - [x] M2: update `CLAUDE.md` setup commands after W2.
 - [~] M3: decide the open design questions in §6. Decided 2026-10-05: `waiting` state from the Notification hook plus a server-side status poll. Remaining: role declaration, timeline depth, log rotation.
 - [ ] M4: packaging, later. Plugin bundle with hooks, optional role-declaring skill, and a `/dashboard` command. Reference model: Graphify.
