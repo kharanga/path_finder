@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Session Directory</title>
+<style>
+  :root {
+    --bg: #0f1218;
+    --panel: #161b24;
+    --ink: #e8ecf2;
+    --muted: #8a94a6;
+    --line: #2a3340;
+    --accent: #7dd3fc;
+    --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 24px 16px;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 20px;
+    margin-bottom: 24px;
+  }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header span { color: var(--muted); font-size: 13px; }
+  .row { margin-bottom: 28px; }
+  .row-title {
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin: 0 0 10px 4px;
+  }
+  .capsules { display: flex; flex-wrap: wrap; gap: 12px; }
+  .capsule {
+    background: var(--panel);
+    border: 2px solid var(--accent);
+    border-radius: 999px;
+    padding: 12px 22px;
+    min-width: 180px;
+    animation: fade .3s ease-out;
+  }
+  .capsule.incomplete { border-style: dashed; border-color: var(--warn); }
+  .label { font-size: 17px; font-weight: 600; }
+  .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .capsule { animation: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Session Directory</h1>
+  <span id="count"></span>
+  <span id="updated"></span>
+</header>
+<main id="board"></main>
+<script>
+  const board = document.getElementById("board");
+  const count = document.getElementById("count");
+  const updated = document.getElementById("updated");
+
+  function folderOf(cwd) {
+    const parts = (cwd || "").split("/").filter(Boolean);
+    return parts[parts.length - 1] || "(unknown)";
+  }
+
+  function render(data) {
+    const sessions = (data && data.sessions) || [];
+    count.textContent = sessions.length ? `${sessions.length} sessions, ${(data.participants || []).length} participants` : "";
+    updated.textContent = data && data.updated_at ? `updated ${data.updated_at}` : "";
+    board.replaceChildren();
+    if (!sessions.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "No sessions discovered yet";
+      board.append(empty);
+      return;
+    }
+    const fullMesh = sessions.length - 1;
+    const byFolder = new Map();
+    for (const s of sessions) {
+      const key = folderOf(s.cwd);
+      if (!byFolder.has(key)) byFolder.set(key, []);
+      byFolder.get(key).push(s);
+    }
+    for (const [folder, list] of [...byFolder.entries()].sort()) {
+      const row = document.createElement("section");
+      row.className = "row";
+      const title = document.createElement("div");
+      title.className = "row-title";
+      title.textContent = folder;
+      const capsules = document.createElement("div");
+      capsules.className = "capsules";
+      for (const s of list.sort((a, b) => a.pid - b.pid)) {
+        const heard = (s.heard_by || []).length;
+        const capsule = document.createElement("div");
+        capsule.className = "capsule" + (heard < fullMesh ? " incomplete" : "");
+        capsule.title = `heard by ${heard} of ${fullMesh}`;
+        const label = document.createElement("div");
+        label.className = "label";
+        label.textContent = s.label || s.role || "(no role)";
+        const meta = document.createElement("div");
+        meta.className = "meta";
+        meta.textContent = `${s.name} · pid ${s.pid}`;
+        capsule.append(label, meta);
+        capsules.append(capsule);
+      }
+      row.append(title, capsules);
+      board.append(row);
+    }
+  }
+
+  async function refresh() {
+    try {
+      const response = await fetch("./sessions.json", { cache: "no-store" });
+      render(response.ok ? await response.json() : null);
+    } catch {
+      render(null);
+    }
+  }
+
+  refresh();
+  setInterval(refresh, 2000);
+</script>
+</body>
+</html>
