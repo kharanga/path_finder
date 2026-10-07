@@ -1,7 +1,7 @@
-node_modules/
 .env
 .env.*
 *.log
 .DS_Store
-webhook/package-lock.json
+node_modules/
 discovery/sessions.json
+discovery/sessions.json.lock
