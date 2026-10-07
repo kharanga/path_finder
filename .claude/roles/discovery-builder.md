@@ -15,43 +15,49 @@ Before doing anything, read CLAUDE.md and SPEC.md.
 - `~/.claude/settings.json`, `~/.claude/dashboard/events.jsonl`, `/tmp/cc-socks/`.
 - `.env` files, credentials, or anything listed under Protected files in CLAUDE.md.
 
-## The discovery round
+## The discovery mesh
 
-The script is `/Users/khangnguyen/Documents/path_finder/discovery/discover.py`. Run it with `python3` and the absolute path. Only you can send messages; the script only reads the registry and stores replies.
+The script is `/Users/khangnguyen/Documents/path_finder/discovery/discover.py`. Only Claude sessions can send messages; the script reads the session registry and stores replies in one shared `discovery/sessions.json` under a file lock, so every node can write at once.
 
-1. `python3 /Users/khangnguyen/Documents/path_finder/discovery/discover.py list` prints one JSON line per live session: `name`, `pid`, `cwd`, and `"self": true` on your own line. Add `--root <path>` to keep only sessions started under that path.
-2. For every line that is not yourself, send one message with `SendMessage` to that `name`. The text is exactly:
-   `discovery: reply with the one-line output of python3 /Users/khangnguyen/Documents/path_finder/discovery/discover.py self`
-3. Each reply arrives as a cross-session message containing one JSON line with `name`, `pid`, `cwd`. For each reply run:
-   `python3 /Users/khangnguyen/Documents/path_finder/discovery/discover.py record --name <name> --pid <pid> --path <cwd>`
-   Add `--role <role>` if the reply states one.
-4. `python3 /Users/khangnguyen/Documents/path_finder/discovery/discover.py done` prints `sessions.json` and exits 0 when every live peer has a record. If it exits 1 it names the missing sessions: ask each of them once more, wait, record, run `done` again. If still missing, stop and write them under Blocked.
-5. Write `handoff/discovery/ready.md` and message the validator and the manager with a one-line pointer.
+Every node runs the same round. There is no single asker.
 
-Use the same `--root` on `list` and `done` so they agree on who counts.
+- `python3 <script> protocol --root <root>` prints the two exact message texts: the ask, and the start message that carries the full round instructions. Copy them, never paraphrase.
+- The manager broadcasts the start text to every session under the root and runs the round itself.
+- A node that receives `discovery: start --root R` runs: `list --root R`, sends the ask to every other line, runs `record --name --pid --path` per reply, runs `done --root R`, then reports one line to the manager. `done` exits 0 only when this node personally heard from every peer under the root, checked through each entry's `heard_by` list.
+- A node that receives `discovery: reply with ...` runs `self` and sends its one output line back to that sender, nothing else. It answers every such request, before, during, and after its own round.
 
-## Answering a discovery request
+Use the same `--root` on `list`, `done`, and `protocol`.
 
-If you receive a message whose text starts with `discovery:`, run
-`python3 /Users/khangnguyen/Documents/path_finder/discovery/discover.py self`
-and send its one output line back to the sender with `SendMessage`, nothing else. This applies to every session in the workspace, whatever its role.
+## Directory shape
+
+```json
+{
+  "participants": ["fake-session-95", "path-finder-e5"],
+  "updated_at": "2026-10-07T05:40:00Z",
+  "sessions": [
+    {"name": "path-finder-18", "pid": 40800, "cwd": "/Users/khangnguyen/Documents/path_finder", "role": null, "replied_at": "...", "heard_by": ["fake-session-95", "path-finder-e5"]}
+  ]
+}
+```
+
+`participants` is everyone who recorded at least one reply. `heard_by` on an entry is every node that received that session's reply. A complete mesh of N nodes has N participants and N entries each heard by N minus 1 names.
 
 ## Handoff
 
 ```
-# Ready: discovery round <date>
+# Ready: discovery mesh <date>
 
 ## Done
-Which sessions were asked, which replied, path of sessions.json.
+Root used, nodes that took part, path of sessions.json, each node's done exit code.
 
 ## How to test
-Run `done` and expect exit 0; open sessions.json.
+Run `done --root <root>` as any participant and expect exit 0; open sessions.json and count heard_by.
 
 ## Requests
 Anything needed outside discovery/.
 
 ## Blocked
-Sessions that never replied, with what you tried.
+Nodes that never replied, with what was tried.
 ```
 
 ## Blocked rule

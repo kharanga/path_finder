@@ -1,4 +1,5 @@
 import argparse
+import fcntl
 import json
 import os
 import subprocess
@@ -7,7 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SESSIONS_DIR = Path.home() / ".claude" / "sessions"
-DEFAULT_OUT = Path(__file__).resolve().parent / "sessions.json"
+SCRIPT_PATH = Path(__file__).resolve()
+DEFAULT_OUT = SCRIPT_PATH.parent / "sessions.json"
 
 
 def now_iso():
@@ -73,8 +75,10 @@ def live_sessions():
 
 
 def under_root(cwd, root):
-    if root is None or cwd is None:
-        return root is None
+    if root is None:
+        return True
+    if cwd is None:
+        return False
     return Path(cwd).resolve().is_relative_to(Path(root).resolve())
 
 
@@ -85,20 +89,47 @@ def own_session():
     return read_registry_entry(SESSIONS_DIR / f"{pid}.json")
 
 
-def load_output(out_path):
+def own_name(args):
+    if getattr(args, "as_name", None):
+        return args.as_name
+    me = own_session()
+    return me["name"] if me else None
+
+
+def own_pid(args):
+    if getattr(args, "as_name", None):
+        return None
+    me = own_session()
+    return me["pid"] if me else None
+
+
+def empty_directory():
+    return {"participants": [], "updated_at": None, "sessions": []}
+
+
+def locked_directory(out_path):
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = out_path.with_suffix(out_path.suffix + ".lock")
+    lock_handle = open(lock_path, "w")
+    fcntl.flock(lock_handle, fcntl.LOCK_EX)
+    return lock_handle
+
+
+def read_directory(out_path):
     try:
         with open(out_path) as handle:
             return json.load(handle)
     except (OSError, ValueError):
-        return {"discovered_by": own_session(), "updated_at": None, "sessions": []}
+        return empty_directory()
 
 
-def save_output(out_path, data):
+def write_directory(out_path, data):
     data["updated_at"] = now_iso()
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, "w") as handle:
+    tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+    with open(tmp_path, "w") as handle:
         json.dump(data, handle, indent=2)
         handle.write("\n")
+    os.replace(tmp_path, out_path)
 
 
 def command_self(_args):
@@ -111,8 +142,7 @@ def command_self(_args):
 
 
 def command_list(args):
-    me = own_session()
-    my_pid = me["pid"] if me else None
+    my_pid = own_pid(args)
     for session in live_sessions():
         if not under_root(session["cwd"], args.root):
             continue
@@ -124,30 +154,75 @@ def command_list(args):
 
 
 def command_record(args):
-    data = load_output(args.out)
-    if data.get("discovered_by") is None:
-        data["discovered_by"] = own_session()
-    entry = {"name": args.name, "pid": args.pid, "cwd": args.path, "role": args.role, "replied_at": now_iso()}
-    data["sessions"] = [s for s in data["sessions"] if s["pid"] != args.pid] + [entry]
-    save_output(args.out, data)
+    reporter = own_name(args)
+    if reporter is None:
+        print("cannot determine own session name, pass --as NAME", file=sys.stderr)
+        return 1
+    lock = locked_directory(args.out)
+    try:
+        data = read_directory(args.out)
+        existing = next((s for s in data["sessions"] if s["pid"] == args.pid), None)
+        heard_by = sorted(set((existing or {}).get("heard_by", [])) | {reporter})
+        role = args.role if args.role is not None else (existing or {}).get("role")
+        entry = {"name": args.name, "pid": args.pid, "cwd": args.path, "role": role, "replied_at": now_iso(), "heard_by": heard_by}
+        data["sessions"] = [s for s in data["sessions"] if s["pid"] != args.pid] + [entry]
+        data["participants"] = sorted(set(data["participants"]) | {reporter})
+        write_directory(args.out, data)
+    finally:
+        lock.close()
     print(json.dumps(entry))
     return 0
 
 
 def command_done(args):
-    data = load_output(args.out)
-    me = own_session()
-    my_pid = me["pid"] if me else None
-    recorded = {s["pid"] for s in data["sessions"]}
+    reporter = own_name(args)
+    my_pid = own_pid(args)
+    data = read_directory(args.out)
+    heard_by_me = {s["pid"] for s in data["sessions"] if reporter in s.get("heard_by", [])}
     missing = [
         s for s in live_sessions()
-        if s["pid"] != my_pid and under_root(s["cwd"], args.root) and s["pid"] not in recorded
+        if s["pid"] != my_pid and s["name"] != reporter and under_root(s["cwd"], args.root) and s["pid"] not in heard_by_me
     ]
     print(json.dumps(data, indent=2))
     if missing:
         names = ", ".join(f"{s['name']} (pid {s['pid']})" for s in missing)
-        print(f"missing replies from: {names}", file=sys.stderr)
+        print(f"{reporter} is still missing replies from: {names}", file=sys.stderr)
         return 1
+    return 0
+
+
+ASK_TEXT = f"discovery: reply with the one-line output of python3 {SCRIPT_PATH} self"
+
+
+def start_text(root, report_to):
+    root_flag = f" --root {root}" if root else ""
+    return "\n".join([
+        f"discovery: start{root_flag}",
+        "You are one node in a discovery mesh. Do exactly this, then stop.",
+        f"1. Run: python3 {SCRIPT_PATH} list{root_flag}",
+        "   One JSON line per live session; the line with \"self\": true is you.",
+        "2. For every other line, send that session (by its name) this exact message with SendMessage:",
+        f"   {ASK_TEXT}",
+        "3. Each reply is one JSON line with name, pid, cwd. For each reply run:",
+        f"   python3 {SCRIPT_PATH} record --name <name> --pid <pid> --path <cwd>",
+        "   Add --role <role> only if the reply states one.",
+        f"4. Run: python3 {SCRIPT_PATH} done{root_flag}",
+        "   Exit 0 means you heard from everyone. Exit 1 names who is missing: ask each of them once more, record, run done again.",
+        f"5. Message {report_to} with one line: discovery done, exit <code>, heard from <n> sessions.",
+        "While doing this, if you receive a message starting with \"discovery: reply with\", run",
+        f"   python3 {SCRIPT_PATH} self",
+        "and send its one output line back to that sender. Answer every such request, even after your own round is done.",
+        "Do not edit files other than what the script writes. Do not run git.",
+    ])
+
+
+def command_protocol(args):
+    me = own_session()
+    report_to = args.report_to or (me["name"] if me else "the manager")
+    print("=== ask ===")
+    print(ASK_TEXT)
+    print("=== start ===")
+    print(start_text(args.root, report_to))
     return 0
 
 
@@ -159,6 +234,7 @@ def build_parser():
 
     list_parser = sub.add_parser("list")
     list_parser.add_argument("--root", help="keep only sessions whose cwd is under this path")
+    list_parser.add_argument("--as", dest="as_name", help="override own session name")
     list_parser.set_defaults(func=command_list)
 
     record_parser = sub.add_parser("record")
@@ -167,12 +243,19 @@ def build_parser():
     record_parser.add_argument("--path", required=True)
     record_parser.add_argument("--role")
     record_parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    record_parser.add_argument("--as", dest="as_name", help="override own session name")
     record_parser.set_defaults(func=command_record)
 
     done_parser = sub.add_parser("done")
     done_parser.add_argument("--root", help="only require replies from sessions under this path")
     done_parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    done_parser.add_argument("--as", dest="as_name", help="override own session name")
     done_parser.set_defaults(func=command_done)
+
+    protocol_parser = sub.add_parser("protocol")
+    protocol_parser.add_argument("--root")
+    protocol_parser.add_argument("--report-to", help="session name that collects results, defaults to the caller")
+    protocol_parser.set_defaults(func=command_protocol)
 
     return parser
 
