@@ -15,4 +15,4 @@ Status: reset 2026-10-07. The architecture and the feature list are to be writte
 
 ## Tasks
 
-To be written.
+- [~] D1: role and label prompt in discovery. When a round starts, each session asks its human for a role and a label in its own CLI, stores them with `identify`, and carries them in its reply. Directory keyed by PID.
