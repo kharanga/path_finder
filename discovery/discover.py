@@ -9,7 +9,9 @@ from pathlib import Path
 
 SESSIONS_DIR = Path.home() / ".claude" / "sessions"
 SCRIPT_PATH = Path(__file__).resolve()
-DEFAULT_OUT = SCRIPT_PATH.parent / "sessions.json"
+DISCOVERY_DIR = SCRIPT_PATH.parent
+DEFAULT_OUT = DISCOVERY_DIR / "sessions.json"
+IDENTITY_DIR = DISCOVERY_DIR / "identity"
 
 
 def now_iso():
@@ -89,18 +91,24 @@ def own_session():
     return read_registry_entry(SESSIONS_DIR / f"{pid}.json")
 
 
-def own_name(args):
-    if getattr(args, "as_name", None):
-        return args.as_name
-    me = own_session()
-    return me["name"] if me else None
-
-
 def own_pid(args):
-    if getattr(args, "as_name", None):
-        return None
+    override = getattr(args, "as_pid", None)
+    if override is not None:
+        return override
     me = own_session()
     return me["pid"] if me else None
+
+
+def identity_path(pid):
+    return IDENTITY_DIR / f"{pid}.json"
+
+
+def read_identity(pid):
+    try:
+        with open(identity_path(pid)) as handle:
+            return json.load(handle)
+    except (OSError, ValueError):
+        return None
 
 
 def empty_directory():
@@ -132,12 +140,30 @@ def write_directory(out_path, data):
     os.replace(tmp_path, out_path)
 
 
+def command_identify(args):
+    me = own_session()
+    if me is None:
+        print("not running inside a Claude Code session", file=sys.stderr)
+        return 1
+    identity = {**me, "role": args.role, "label": args.label, "set_at": now_iso()}
+    IDENTITY_DIR.mkdir(parents=True, exist_ok=True)
+    with open(identity_path(me["pid"]), "w") as handle:
+        json.dump(identity, handle, indent=2)
+        handle.write("\n")
+    print(json.dumps(identity))
+    return 0
+
+
 def command_self(_args):
     me = own_session()
     if me is None:
         print("not running inside a Claude Code session", file=sys.stderr)
         return 1
-    print(json.dumps(me))
+    identity = read_identity(me["pid"])
+    if identity is None:
+        print("identity not set: ask your human for role and label, then run identify", file=sys.stderr)
+        return 2
+    print(json.dumps({**me, "role": identity.get("role"), "label": identity.get("label")}))
     return 0
 
 
@@ -154,17 +180,24 @@ def command_list(args):
 
 
 def command_record(args):
-    reporter = own_name(args)
+    reporter = own_pid(args)
     if reporter is None:
-        print("cannot determine own session name, pass --as NAME", file=sys.stderr)
+        print("cannot determine own session pid, pass --as-pid PID", file=sys.stderr)
         return 1
     lock = locked_directory(args.out)
     try:
         data = read_directory(args.out)
-        existing = next((s for s in data["sessions"] if s["pid"] == args.pid), None)
-        heard_by = sorted(set((existing or {}).get("heard_by", [])) | {reporter})
-        role = args.role if args.role is not None else (existing or {}).get("role")
-        entry = {"name": args.name, "pid": args.pid, "cwd": args.path, "role": role, "replied_at": now_iso(), "heard_by": heard_by}
+        existing = next((s for s in data["sessions"] if s["pid"] == args.pid), None) or {}
+        heard_by = sorted(set(existing.get("heard_by", [])) | {reporter})
+        entry = {
+            "name": args.name,
+            "pid": args.pid,
+            "cwd": args.path,
+            "role": args.role if args.role is not None else existing.get("role"),
+            "label": args.label if args.label is not None else existing.get("label"),
+            "replied_at": now_iso(),
+            "heard_by": heard_by,
+        }
         data["sessions"] = [s for s in data["sessions"] if s["pid"] != args.pid] + [entry]
         data["participants"] = sorted(set(data["participants"]) | {reporter})
         write_directory(args.out, data)
@@ -175,23 +208,28 @@ def command_record(args):
 
 
 def command_done(args):
-    reporter = own_name(args)
-    my_pid = own_pid(args)
+    reporter = own_pid(args)
     data = read_directory(args.out)
     heard_by_me = {s["pid"] for s in data["sessions"] if reporter in s.get("heard_by", [])}
     missing = [
         s for s in live_sessions()
-        if s["pid"] != my_pid and s["name"] != reporter and under_root(s["cwd"], args.root) and s["pid"] not in heard_by_me
+        if s["pid"] != reporter and under_root(s["cwd"], args.root) and s["pid"] not in heard_by_me
     ]
     print(json.dumps(data, indent=2))
     if missing:
         names = ", ".join(f"{s['name']} (pid {s['pid']})" for s in missing)
-        print(f"{reporter} is still missing replies from: {names}", file=sys.stderr)
+        print(f"pid {reporter} is still missing replies from: {names}", file=sys.stderr)
         return 1
     return 0
 
 
 ASK_TEXT = f"discovery: reply with the one-line output of python3 {SCRIPT_PATH} self"
+
+IDENTIFY_INSTRUCTION = "\n".join([
+    "Ask your human with AskUserQuestion, one question with two fields:",
+    "   \"What is this session's role?\" and \"What label should this session show?\"",
+    f"   Then run: python3 {SCRIPT_PATH} identify --role \"<role>\" --label \"<label>\"",
+])
 
 
 def start_text(root, report_to):
@@ -199,19 +237,21 @@ def start_text(root, report_to):
     return "\n".join([
         f"discovery: start{root_flag}",
         "You are one node in a discovery mesh. Do exactly this, then stop.",
+        f"0. {IDENTIFY_INSTRUCTION}",
+        "   Do this first, before step 1 and before answering any ask.",
         f"1. Run: python3 {SCRIPT_PATH} list{root_flag}",
         "   One JSON line per live session; the line with \"self\": true is you.",
         "2. For every other line, send that session (by its name) this exact message with SendMessage:",
         f"   {ASK_TEXT}",
-        "3. Each reply is one JSON line with name, pid, cwd. For each reply run:",
-        f"   python3 {SCRIPT_PATH} record --name <name> --pid <pid> --path <cwd>",
-        "   Add --role <role> only if the reply states one.",
+        "3. Each reply is one JSON line with name, pid, cwd, role, label. For each reply run:",
+        f"   python3 {SCRIPT_PATH} record --name <name> --pid <pid> --path <cwd> --role \"<role>\" --label \"<label>\"",
         f"4. Run: python3 {SCRIPT_PATH} done{root_flag}",
         "   Exit 0 means you heard from everyone. Exit 1 names who is missing: ask each of them once more, record, run done again.",
         f"5. Message {report_to} with one line: discovery done, exit <code>, heard from <n> sessions.",
         "While doing this, if you receive a message starting with \"discovery: reply with\", run",
         f"   python3 {SCRIPT_PATH} self",
-        "and send its one output line back to that sender. Answer every such request, even after your own round is done.",
+        "and send its one output line back to that sender. If self exits 2, do step 0 first, then run self again and reply.",
+        "Answer every such request, even after your own round is done.",
         "Do not edit files other than what the script writes. Do not run git.",
     ])
 
@@ -226,15 +266,24 @@ def command_protocol(args):
     return 0
 
 
+def add_as_pid(parser):
+    parser.add_argument("--as-pid", dest="as_pid", type=int, help="override own session pid, for local tests")
+
+
 def build_parser():
-    parser = argparse.ArgumentParser(description="Discovery helper: who is running, and what did they reply")
+    parser = argparse.ArgumentParser(description="Discovery helper: who is running, who they are, and what they replied")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    identify_parser = sub.add_parser("identify")
+    identify_parser.add_argument("--role", required=True)
+    identify_parser.add_argument("--label", required=True)
+    identify_parser.set_defaults(func=command_identify)
 
     sub.add_parser("self").set_defaults(func=command_self)
 
     list_parser = sub.add_parser("list")
     list_parser.add_argument("--root", help="keep only sessions whose cwd is under this path")
-    list_parser.add_argument("--as", dest="as_name", help="override own session name")
+    add_as_pid(list_parser)
     list_parser.set_defaults(func=command_list)
 
     record_parser = sub.add_parser("record")
@@ -242,14 +291,15 @@ def build_parser():
     record_parser.add_argument("--pid", required=True, type=int)
     record_parser.add_argument("--path", required=True)
     record_parser.add_argument("--role")
+    record_parser.add_argument("--label")
     record_parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    record_parser.add_argument("--as", dest="as_name", help="override own session name")
+    add_as_pid(record_parser)
     record_parser.set_defaults(func=command_record)
 
     done_parser = sub.add_parser("done")
     done_parser.add_argument("--root", help="only require replies from sessions under this path")
     done_parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    done_parser.add_argument("--as", dest="as_name", help="override own session name")
+    add_as_pid(done_parser)
     done_parser.set_defaults(func=command_done)
 
     protocol_parser = sub.add_parser("protocol")
