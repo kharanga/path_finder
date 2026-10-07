@@ -1,9 +1,0 @@
-{
-  "name": "cc-dashboard",
-  "version": "0.1.0",
-  "description": "Live dashboard of every Claude Code session on this machine and the messages they send each other. Hooks log session state, /dashboard starts the local Orbit page, the declare-role skill labels a session.",
-  "author": {
-    "name": "Khang Nguyen"
-  },
-  "keywords": ["dashboard", "sessions", "hooks", "visualization"]
-}
