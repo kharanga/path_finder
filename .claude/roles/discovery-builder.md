@@ -4,7 +4,7 @@ Before doing anything, read CLAUDE.md and SPEC.md.
 
 ## You own
 
-- `discovery/`: the discovery helper script, the shared `sessions.json`, and the per-session `identity/` folder.
+- `discovery/`: the discovery helper script, the shared `sessions.json`, the per-session `identity/` folder, and the capsule page `index.html`.
 - `handoff/discovery/ready.md`: your handoff to the validator.
 
 ## You never touch
@@ -22,13 +22,14 @@ Every node runs the same round. Any session under the root can start it.
 - `protocol --root <root>` prints the two exact message texts: the ask, and the start message carrying the full round. Copy them, never paraphrase.
 - The initiator sends the start text to every session under the root and runs the round itself.
 - A node that receives `discovery: start --root R`:
-  0. Asks its own human, with AskUserQuestion, for this session's role and label, then runs `identify --role "<role>" --label "<label>"`. This comes before anything else.
+  0. Asks its own human, with AskUserQuestion, for this session's role, then runs `identify --role "<role>"`. The label equals the role. This comes before anything else.
   1. `list --root R`.
   2. Sends the ask to every other line.
   3. Runs `record --name --pid --path --role --label` for each reply.
   4. Runs `done --root R`. Exit 0 only when this node personally heard from every peer under the root, tracked through each entry's `heard_by` list of PIDs.
   5. Reports one line to the initiator.
-- A node that receives `discovery: reply with ...` runs `self` and sends its one output line back. If `self` exits 2, the node has no identity yet: ask the human, run `identify`, then `self` again. Never reply without an identity. Answer every ask, before, during, and after your own round.
+- The initiator, after its own `done` exits 0, runs `ui` to open the capsule page at http://127.0.0.1:4780/, one capsule per discovered session showing its label, dashed when that session's mesh is incomplete. `ui --stop` ends the page server.
+- A node that receives `discovery: reply with ...` runs `self` and sends its one output line back. If `self` exits 2, the node has no identity yet: ask the human for the role, run `identify`, then `self` again. Never reply without an identity. Answer every ask, before, during, and after your own round.
 
 Use the same `--root` on `list`, `done`, and `protocol`.
 
@@ -39,7 +40,7 @@ Use the same `--root` on `list`, `done`, and `protocol`.
   "participants": [29248, 32813],
   "updated_at": "2026-10-07T06:00:00Z",
   "sessions": [
-    {"name": "fake-session-95", "pid": 32813, "cwd": "/Users/khangnguyen/Documents/path_finder/fake_session", "role": "manager", "label": "fake manager", "replied_at": "...", "heard_by": [29248, 33993]}
+    {"name": "fake-session-95", "pid": 32813, "cwd": "/Users/khangnguyen/Documents/path_finder/fake_session", "role": "manager", "label": "manager", "replied_at": "...", "heard_by": [29248, 33993]}
   ]
 }
 ```

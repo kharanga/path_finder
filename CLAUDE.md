@@ -8,7 +8,7 @@ The workspace was reset on 2026-10-07. The architecture and the spec are being d
 
 ## What exists
 
-- `discovery/discover.py`: helper for session discovery. `identify --role --label` stores what the session's human entered in `discovery/identity/<pid>.json`. `self` prints the calling session's name, PID, start path, role, and label, and exits 2 until `identify` has run. `list` prints live sessions, filtered by `--root`. `record` and `done` maintain a shared `discovery/sessions.json` under a file lock. `protocol` prints the exact message texts for a mesh round. Owned by discovery-builder.
+- `discovery/discover.py`: helper for session discovery. `identify --role` stores the role the session's human entered in `discovery/identity/<pid>.json` (label equals role). `ui` serves `discovery/index.html`, a capsule per discovered session, with the built-in http server on port 4780; `ui --stop` ends it. `self` prints the calling session's name, PID, start path, role, and label, and exits 2 until `identify` has run. `list` prints live sessions, filtered by `--root`. `record` and `done` maintain a shared `discovery/sessions.json` under a file lock. `protocol` prints the exact message texts for a mesh round. Owned by discovery-builder.
 - `.claude/roles/`: one file per role. Each agent reads its own role file after this file and `SPEC.md`.
 - `handoff/<area>/ready.md` and `review.md`: builder to validator handoff.
 

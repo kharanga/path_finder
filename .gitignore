@@ -6,3 +6,5 @@ node_modules/
 discovery/sessions.json
 discovery/sessions.json.lock
 discovery/identity/
+discovery/ui.log
+discovery/ui.pid

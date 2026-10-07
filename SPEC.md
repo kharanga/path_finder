@@ -15,4 +15,5 @@ Status: reset 2026-10-07. The architecture and the feature list are to be writte
 
 ## Tasks
 
-- [~] D1: role and label prompt in discovery. When a round starts, each session asks its human for a role and a label in its own CLI, stores them with `identify`, and carries them in its reply. Directory keyed by PID.
+- [x] D1: role prompt in discovery (label equals role). When a round starts, each session asks its human for a role and a label in its own CLI, stores them with `identify`, and carries them in its reply. Directory keyed by PID.
+- [~] D2: capsule UI. `discover.py ui` serves `discovery/index.html` with the built-in http server; one capsule per discovered session showing its label, grouped by folder, dashed when its mesh is incomplete. The initiator opens it after `done`.

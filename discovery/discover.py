@@ -145,7 +145,7 @@ def command_identify(args):
     if me is None:
         print("not running inside a Claude Code session", file=sys.stderr)
         return 1
-    identity = {**me, "role": args.role, "label": args.label, "set_at": now_iso()}
+    identity = {**me, "role": args.role, "label": args.role, "set_at": now_iso()}
     IDENTITY_DIR.mkdir(parents=True, exist_ok=True)
     with open(identity_path(me["pid"]), "w") as handle:
         json.dump(identity, handle, indent=2)
@@ -194,7 +194,7 @@ def command_record(args):
             "pid": args.pid,
             "cwd": args.path,
             "role": args.role if args.role is not None else existing.get("role"),
-            "label": args.label if args.label is not None else existing.get("label"),
+            "label": args.label if args.label is not None else (args.role if args.role is not None else existing.get("label")),
             "replied_at": now_iso(),
             "heard_by": heard_by,
         }
@@ -226,10 +226,51 @@ def command_done(args):
 ASK_TEXT = f"discovery: reply with the one-line output of python3 {SCRIPT_PATH} self"
 
 IDENTIFY_INSTRUCTION = "\n".join([
-    "Ask your human with AskUserQuestion, one question with two fields:",
-    "   \"What is this session's role?\" and \"What label should this session show?\"",
-    f"   Then run: python3 {SCRIPT_PATH} identify --role \"<role>\" --label \"<label>\"",
+    "Ask your human with AskUserQuestion, one question: \"What is this session's role?\"",
+    f"   Then run: python3 {SCRIPT_PATH} identify --role \"<role>\"",
 ])
+
+UI_PORT = 4780
+UI_LOG = DISCOVERY_DIR / "ui.log"
+UI_PID = DISCOVERY_DIR / "ui.pid"
+
+
+def ui_is_up(port):
+    import urllib.request
+    try:
+        urllib.request.urlopen(f"http://127.0.0.1:{port}/sessions.json", timeout=1)
+        return True
+    except Exception:
+        return False
+
+
+def command_ui(args):
+    url = f"http://127.0.0.1:{args.port}/"
+    if args.stop:
+        try:
+            pid = int(UI_PID.read_text().strip())
+            os.kill(pid, 15)
+            UI_PID.unlink()
+            print(f"stopped ui server pid {pid}")
+        except (OSError, ValueError):
+            print("no ui server pid file", file=sys.stderr)
+            return 1
+        return 0
+    if not ui_is_up(args.port):
+        with open(UI_LOG, "a") as log:
+            server = subprocess.Popen(
+                [sys.executable, "-m", "http.server", str(args.port), "--bind", "127.0.0.1", "--directory", str(DISCOVERY_DIR)],
+                stdout=log, stderr=log, start_new_session=True,
+            )
+        UI_PID.write_text(f"{server.pid}\n")
+        import time
+        for _ in range(20):
+            if ui_is_up(args.port):
+                break
+            time.sleep(0.1)
+    subprocess.run(["open", url], check=False)
+    print(url)
+    return 0
 
 
 def start_text(root, report_to):
@@ -248,6 +289,7 @@ def start_text(root, report_to):
         f"4. Run: python3 {SCRIPT_PATH} done{root_flag}",
         "   Exit 0 means you heard from everyone. Exit 1 names who is missing: ask each of them once more, record, run done again.",
         f"5. Message {report_to} with one line: discovery done, exit <code>, heard from <n> sessions.",
+        f"   The initiator ({report_to}) also runs: python3 {SCRIPT_PATH} ui   to open the capsule page.",
         "While doing this, if you receive a message starting with \"discovery: reply with\", run",
         f"   python3 {SCRIPT_PATH} self",
         "and send its one output line back to that sender. If self exits 2, do step 0 first, then run self again and reply.",
@@ -276,7 +318,6 @@ def build_parser():
 
     identify_parser = sub.add_parser("identify")
     identify_parser.add_argument("--role", required=True)
-    identify_parser.add_argument("--label", required=True)
     identify_parser.set_defaults(func=command_identify)
 
     sub.add_parser("self").set_defaults(func=command_self)
@@ -301,6 +342,11 @@ def build_parser():
     done_parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     add_as_pid(done_parser)
     done_parser.set_defaults(func=command_done)
+
+    ui_parser = sub.add_parser("ui")
+    ui_parser.add_argument("--port", type=int, default=UI_PORT)
+    ui_parser.add_argument("--stop", action="store_true")
+    ui_parser.set_defaults(func=command_ui)
 
     protocol_parser = sub.add_parser("protocol")
     protocol_parser.add_argument("--root")
