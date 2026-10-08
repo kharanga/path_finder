@@ -1,71 +1,72 @@
-# Ready: V1 2026-10-08
+# Ready: V2 2026-10-08
 
 ## Done
 
-`viz/watcher.py` gains `TranscriptTailer` and a `tail` command.
+`viz/watcher.py` gains `StateModel` and a `state` command.
 
-- `TranscriptTailer(path, start_at_end=False)`: keeps a byte offset and a partial-line buffer per file. `poll()` reads only the new bytes, splits on newline, buffers the trailing fragment, parses each complete line, and returns the kept entries as dicts. A file that shrinks below the stored offset is treated as rewritten: offset and buffer reset to zero.
-- Filter, in order: a type outside `KEPT_ENTRY_TYPES` is recorded once in `unknown_types` and dropped; `isSidechain` dropped; `isMeta` dropped unless `turnOrigin` is `peer` or `system`; `attachment` kept only for `queued_command` and the four `hook_*` kinds. Malformed JSON is counted in `malformed_lines` and dropped. Nothing raises.
-- Kept types: `assistant`, `user`, `system`, `queue-operation`, `attachment`, `agent-name`, `custom-title`, `ai-title`, `permission-mode`, `mode`, `last-prompt`, `summary`. These are everything the V2 state model and the capsule labels read.
-- `tail <transcript> [--follow] [--from-end] [--stats]`: prints one JSON line per kept entry. `--follow` polls every 250 ms. `--stats` prints offset, buffered bytes, unknown types, malformed and skipped counts to stderr at exit.
-- `map` exit code aligned: text and JSON modes both exit 1 when no session matches the root or one is unmapped. This changes the behaviour pinned by `test_command_map_empty_exit_code_differs_between_text_and_json`; that test now fails by design and needs its JSON assertion changed to 1.
+State (plan §5): `sessions` keyed by PID with `status`, `inbox`, `last_text`, `watching`, plus registry and identity fields; `messages` keyed by `msg_id` with `stage` PENDING, IN_INBOX, READ, FAILED and the four timestamps `sent_at`, `accepted_at`, `enqueued_at`, `read_at`; `kind` is `message` or `idle_notice`. Socket to PID: the socket embeds the PID (`uds:/tmp/cc-socks/<pid>.sock`), so `pid_from_socket` parses it; names resolve through `pid_by_name`, filled from the registry, `agent-name` entries, `origin.name` on deliveries, and `from-name` on enqueues. A `name [ref]` target is stripped to the bare name.
+
+Transitions, with the PID of the transcript being read as "this session":
+
+- `assistant` entry: this session WORKING. Each `SendMessage` tool_use creates a PENDING message under key `pending:<tool_use id>`, `last_text` = summary; `notify_when_idle` adds the target PID to `watching`.
+- `user` tool_result matching that tool_use: `success` true re-keys the message to `toolUseResult.msg_id`, stage IN_INBOX, `accepted_at`; false sets FAILED with `reason`. If the receiver's side already created the message under that `msg_id`, the two merge: sender-owned fields (summary, body, sent_at, notify flag, pending_key) come from the sender, stage stays READ.
+- `queue-operation` enqueue: `inbox` +1; a peer-message enqueue stamps `enqueued_at` on the oldest unenqueued message from that sender to this session, or is held in `unmatched_enqueues` until the message appears. `dequeue` and `remove`: `inbox` −1, floored at 0.
+- `user` with `origin.kind == peer`: message READ with `read_at`, created from `origin` when the sender's file has not been read yet; receiver `last_text` = `origin.body`, status WORKING.
+- `user` with `turnOrigin == system` and the idle-notice prefix: one `idle_notice` message, stage READ, from the quoted session's PID to this session, key `idle:<entry uuid>`; the watched PID is removed from `watching`.
+- `system` `turn_duration`: IDLE. `agent-name`: name update, emitted only when it changes.
+
+Every `apply(pid, entry)` returns one deep-copied change per touched object: `{"event": "session" | "message", "at": <entry timestamp>, ...object}`. Messages carry `key` and `pending_key`; when they differ, the row under `pending_key` is superseded. This is the line format V3 streams on `/events`.
+
+Decision taken on `remove` (validator V1 note 2): every `remove` in the fake transcripts carries `reason: absorbed_mid_turn`, and per session enqueues equal dequeues plus removes exactly (26 = 14 + 12, 28 = 18 + 10). A `remove` is a queued message consumed mid-turn, so it counts as inbox −1. The receiver-side informational entry "A process claiming the address … asked to be told when this session is next idle" is not used: the sender's `notify_when_idle` already sets `watching`, and reading the receiver's file after the notice would re-add a watch the notice had cleared.
+
+`state PID=PATH [PID=PATH ...] [--events]` registers each PID from the live registry when present (bare session otherwise), feeds each file whole in the given order, and prints the snapshot or the change stream.
 
 Files: `viz/watcher.py`. Nothing else touched.
 
 ## How to test
 
-Real transcript, whole file:
-
-```
-python3 viz/watcher.py tail ~/.claude/projects/-Users-khangnguyen-Documents-path-finder-fake-session/ab5e0a7a-abdf-48ae-b34a-85aebcb80f95.jsonl --stats | wc -l
-```
-
-Expected: 440 lines on stdout; stderr `{"offset": 910321, "buffered_bytes": 0, "unknown_types": ["atis-latch", "file-history-snapshot"], "malformed_lines": 0, "skipped_entries": 110}` (offset grows if the fake session runs again).
-
-Fixture, appended line by line (run from the repo root; uses a temp file):
+The captured fixtures are the 2026-10-08 round trip in the two fake-session transcripts (the timeline in `docs/cross-session-message-format.md` §1). Extract them:
 
 ```
 python3 - <<'PY'
-import sys, json, tempfile, os
-sys.path.insert(0, "viz")
-import watcher
-path = os.path.join(tempfile.mkdtemp(), "t.jsonl")
-open(path, "w").close()
-t = watcher.TranscriptTailer(path)
-def add(s): open(path, "a").write(s)
-def show(label):
-    got = t.poll()
-    print(label, [e["type"] for e in got], "buffered", len(t.partial_line), "unknown", sorted(t.unknown_types), "malformed", t.malformed_lines, "skipped", t.skipped_entries)
-add(json.dumps({"type": "agent-name", "agentName": "a"}) + "\n"); show("complete")
-half = json.dumps({"type": "assistant", "message": {}}); add(half[:20]); show("partial")
-add(half[20:] + "\n"); show("completed")
-add(json.dumps({"type": "marble-origami-commit"}) + "\n"); show("unknown")
-add("{broken\n"); show("malformed")
-add(json.dumps({"type": "user", "isMeta": True, "turnOrigin": "peer"}) + "\n" + json.dumps({"type": "user", "isMeta": True}) + "\n"); show("meta rule")
-open(path, "w").write(json.dumps({"type": "system", "subtype": "turn_duration"}) + "\n"); show("rewritten")
+import json, os, tempfile
+src = os.path.expanduser("~/.claude/projects/-Users-khangnguyen-Documents-path-finder-fake-session/")
+out = tempfile.mkdtemp()
+for sid, name in (("ab5e0a7a-abdf-48ae-b34a-85aebcb80f95", "manager"), ("67139bc5-30c6-43e1-aa4c-71415790bb63", "builder")):
+    with open(f"{out}/{name}.jsonl", "w") as fh:
+        for line in open(src + sid + ".jsonl"):
+            e = json.loads(line)
+            if e.get("type") == "agent-name" or "2026-10-08T04:31:00" <= e.get("timestamp", "") <= "2026-10-08T04:31:30":
+                fh.write(line)
+print(out)
 PY
 ```
 
-Expected:
+Expected: manager 29 lines, builder 16 lines. Then, with `F` set to that folder:
 
 ```
-complete ['agent-name'] buffered 0 unknown [] malformed 0 skipped 0
-partial [] buffered 20 unknown [] malformed 0 skipped 0
-completed ['assistant'] buffered 0 unknown [] malformed 0 skipped 0
-unknown [] buffered 0 unknown ['marble-origami-commit'] malformed 0 skipped 0
-malformed [] buffered 0 unknown ['marble-origami-commit'] malformed 1 skipped 0
-meta rule ['user'] buffered 0 unknown ['marble-origami-commit'] malformed 1 skipped 1
-rewritten ['system'] buffered 0 unknown ['marble-origami-commit'] malformed 1 skipped 1
+python3 viz/watcher.py state 32813=$F/manager.jsonl 33993=$F/builder.jsonl
 ```
 
-Live follow: `python3 viz/watcher.py tail <transcript> --follow --from-end` in one terminal, then send any message to that session; the enqueue and peer `user` entries print within a poll.
+Expected in `messages` (three entries):
+
+| kind | stage | from → to | sent_at | accepted_at | enqueued_at | read_at |
+| :- | :- | :- | :- | :- | :- | :- |
+| message `693b9bd4-…` | READ | 32813 → 33993 | 04:31:10.318 | 04:31:11.281 | 04:31:10.817 | 04:31:11.097 |
+| message `f5ac2c3a-…` | READ | 33993 → 32813 | 04:31:16.750 | 04:31:17.811 | 04:31:17.590 | 04:31:17.638 |
+| idle_notice `idle:97bc…` | READ | 33993 → 32813 | 04:31:21.055 | null | null | 04:31:21.055 |
+
+All timestamps on 2026-10-08. Expected in `sessions`: both IDLE, inbox 0, `watching` empty (32813 watched 33993 from 10.318 until the notice at 21.055), 32813 `last_text` starts "Hi again from fake-session-builder", 33993 `last_text` is "Second hi back to fake-session-manager".
+
+Order independence: `state 33993=$F/builder.jsonl 32813=$F/manager.jsonl` gives the same snapshot apart from `last_seen_at` and message order.
+
+Change stream: `... --events` prints 23 lines; the first is 32813 WORKING with `watching [33993]` at 10.318, and the 32813 line at 21.055 has `watching []`. Inbox goes 0, 1, 0 around each enqueue and dequeue.
 
 ## Requests
 
-- `tests/unit/test_watcher.py`: change the JSON assertion in `test_command_map_empty_exit_code_differs_between_text_and_json` to `== 1` (validator note 3 from the V0 review, now aligned).
-- `docs/cross-session-message-format.md` §3.1: `queue-operation` has a third `operation` value, `remove`, seen 22 times across the two fake transcripts (54 enqueue, 32 dequeue, 22 remove). It is not handled yet; V2 will treat it as inbox minus one unless the manager says otherwise.
-- `docs/jsonl-transcript-spec.md` §2 item 7 still says to skip every `isMeta` entry; the message-format doc already overrides it, but a one-line pointer there would stop the next reader from following the wrong rule.
-- For the user: both fake transcripts hold 82 `hook_non_blocking_error` attachments from a plugin hook (`${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh … webhook/hook`, on `UserPromptSubmit`, `PostToolUse:SendMessage`, and `Stop`). CLAUDE.md says a leftover hook error means the plugin is still installed and that agents must not fix it. Only noting it.
+- `docs/cross-session-message-format.md` §3.1: add `remove` with `reason: absorbed_mid_turn`, `commandUuid`, `deliveryId`, and the wrapped content; it replaces `dequeue` when the message is consumed mid-turn. Inbox = enqueues − dequeues − removes.
+- `docs/plan-visualization.md` §5 says inbox −1 both on `dequeue` and on the peer `user` entry. Observed sequence is enqueue, dequeue (or remove), then the peer entry, so decrementing on both would double count. The model decrements on dequeue and remove only.
+- `tests/fixtures/`: the two slices above are the V2 fixtures; V6 commits them sanitized. If the validator wants them earlier, the extraction script is deterministic.
 
 ## Blocked
 

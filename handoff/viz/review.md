@@ -1,32 +1,37 @@
-# Review: V1 2026-10-08
+# Review: V2 2026-10-08
 
 PASS
 
-## Checked against SPEC.md V1
+## Checked against SPEC.md V2
 
-- Tail by byte offset: `TranscriptTailer.poll()` reads only bytes past the stored offset, advances by what it read, and returns nothing on a second poll with no change.
-- Complete lines only: a line appended in pieces stays in `partial_line` (offset still advances) and parses once the newline lands. Verified with two-piece and three-piece splits.
-- Unknown types skipped without error: recorded once in `unknown_types`, dropped, no exception. A missing `type` lands as `None`.
-- `isMeta` rule: kept for `turnOrigin` `peer` and `system`, dropped for `human` and for absent `turnOrigin`. Matches `docs/cross-session-message-format.md` §0 rule 1 and the census of both fake transcripts (30 peer, 2 system, 2 absent).
-- Real transcript: `tail <fake manager transcript> --stats` prints 440 lines; stats are `offset 910321, buffered 0, unknown [atis-latch, file-history-snapshot], malformed 0, skipped 110`, exactly as ready.md states.
-- The fixture script in ready.md reproduces all seven expected lines.
-- `--follow` prints an appended peer entry well within 1 s (integration test, 250 ms poll).
-- A file that shrinks resets offset and buffer. `--from-end` starts at the current size and prints nothing for existing content.
-- Malformed JSON and non-object JSON (list, string, number) are counted in `malformed_lines` and skipped.
-- `map --json` now exits 1 on an empty match, matching text mode. The pinned test is updated to 1 per the builder's request.
+- Sessions keyed by PID, messages keyed by `msg_id`, socket to PID map (`pid_from_socket` parses the socket; names resolve through `pid_by_name` from registry, `agent-name`, `origin.name`, and `from-name`; a `name [ref]` target is stripped). Stages PENDING, IN_INBOX, READ, FAILED. Idle notices as one-shot `idle_notice` messages.
+- Captured fixtures (manager 29 lines, builder 16 lines, extracted with the script in ready.md) yield exactly two messages READ and one idle notice:
+
+| kind | stage | from, to | sent_at | enqueued_at | read_at | accepted_at |
+| :- | :- | :- | :- | :- | :- | :- |
+| message `693b9bd4` | READ | 32813 to 33993 | 10.318 | 10.817 | 11.097 | 11.281 |
+| message `f5ac2c3a` | READ | 33993 to 32813 | 16.750 | 17.590 | 17.638 | 17.811 |
+| idle_notice | READ | 33993 to 32813 | 21.055 | null | 21.055 | null |
+
+  Every timestamp matches the log in `docs/cross-session-message-format.md` §1.
+- Sessions: both IDLE, inbox 0, `watching` empty; manager `last_text` starts "Hi again from fake-session-builder", builder `last_text` is "Second hi back to fake-session-manager". Manager's `watching` holds 33993 from 10.318 until the notice at 21.055.
+- Order independence: builder-first and manager-first give the same snapshot apart from `last_seen_at`. Receiver-first merge on `msg_id` keeps sender-owned fields and stage READ.
+- `--events` prints 23 change lines; manager inbox goes 0, 1, 0 around each enqueue and dequeue; `remove` counts as inbox minus one per the manager's decision, floored at 0.
+- FAILED on `success: false` and on an `is_error` tool_result without `toolUseResult`.
 - Nothing under `~/.claude` or `discovery/` is written. Only `viz/watcher.py` changed.
 
 ## Tests
 
-`python3 -m pytest tests` runs 106 tests (25 new for V1), all passing, in about 3.5 s.
+`python3 -m pytest tests` runs 146 tests (40 new for V2): 145 pass, 1 strict xfail (note 1), in about 4 s.
 
-- `tests/unit/test_tailer.py`: empty and missing files, offset advance, partial lines over two and three polls, many lines per chunk, unknown and untyped entries, malformed and non-object lines, blank lines, every `isMeta`/`turnOrigin` combination, sidechain, every attachment kind kept and two dropped, all eleven kept types, the three `queue-operation` values, rewrite detection, `--from-end`, `command_tail` output and stats.
-- `tests/integration/test_tail_follow.py`: `tail --follow --from-end` as a subprocess, append one peer entry, expect it on stdout within 1 s.
+- `tests/fixtures/viz/round_trip_manager_32813_33993.jsonl` and `round_trip_builder_32813_33993.jsonl`: the two slices, sanitized (home paths to `/home/user`, user name and email replaced). The sanitized files produce the same snapshot as the raw slices. These are the V2 acceptance fixtures; V6 does not need to re-extract them.
+- `tests/unit/test_state_model.py`: fixture round trip in both orders, snapshot equality, change stream shape, deep copies, socket and name resolution, every stage transition, inbox arithmetic with `remove`, enqueue before and after the sender's file, receiver-first merge, delivery without `msg_id`, idle notice by name and by PID, turn boundaries, unhandled entry types, `PID=PATH` parsing.
+- `tests/integration/test_state_cli.py`: `state` and `state --events` as a subprocess with an empty registry, plus the bad-argument exit code.
 
 ## Notes, not failures
 
-1. User item (docs/): `docs/jsonl-transcript-spec.md` §4.11 lists `progress` under INCLUDE and §7 derives WORKING from it. The tailer drops it, which is consistent with `docs/plan-visualization.md` §5 (status from `assistant` and `turn_duration`). No `progress` entry exists in any transcript on this machine. The jsonl spec should say `progress` is not used by the visualizer.
-2. User item (docs/): `queue-operation` has a third `operation` value, `remove`, in 22 entries across the two fake transcripts (54 enqueue, 32 dequeue, 22 remove). `docs/cross-session-message-format.md` §3.1 lists only two. V2's inbox count depends on how `remove` is treated; the manager should decide before V2 is reviewed.
-3. User item (docs/): `docs/jsonl-transcript-spec.md` §2 item 7 still says skip every `isMeta` entry. The message-format doc §0 overrides it. Builder's request stands.
-4. User item: both fake transcripts hold 82 `hook_non_blocking_error` attachments from `dashboard-hook.js` style plugin hooks (`run-node.sh … webhook/hook`). Per CLAUDE.md the plugin is still installed and agents do not fix it.
-5. Minor: a file rewritten to exactly its previous size is not detected as rewritten. Not a case the visualizer meets (transcripts are append-only).
+1. Code defect, for the builder in V3: the first `agent-name` entry for a session that was not in the registry sets the name without emitting a change. `learn_name` fills the empty name before `apply_agent_name` compares it, so the comparison sees no change. Repro: `StateModel().apply(1, {"type": "agent-name", "agentName": "a"})` returns `[]` while `sessions[1]["name"]` is `"a"`. V3 would never stream that name. Pinned by a strict xfail in `test_state_model.py`; it flips to a failure once fixed, then remove the marker.
+2. Behaviour to know: `success: true` without a `msg_id` (an in-process subagent or teammate send) is marked FAILED with the result text as reason. Out of SPEC scope (cross-session only) but it will show as a red connector if a session in the root uses SendMessage to a subagent.
+3. With no registry entry, a send to a name watches by name until an idle notice quoting that name arrives; `watching` then holds a string, not a PID. Documented in ready.md, pinned in the integration test.
+4. User item (docs/): `docs/plan-visualization.md` §5 decrements inbox on both `dequeue` and the peer `user` entry; the observed order is enqueue, dequeue or remove, then delivery, so the model decrements only on dequeue and remove. The builder's request is correct.
+5. User item (docs/): `docs/cross-session-message-format.md` §3.1 needs `remove` with `reason: absorbed_mid_turn` and inbox = enqueues minus dequeues minus removes, per the manager's decision.
