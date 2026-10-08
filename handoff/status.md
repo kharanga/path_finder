@@ -8,3 +8,8 @@
 - 2026-10-08T07:38Z D3 ready received from discovery-builder; handoff/discovery/ready.md updated. Validator pointed at it.
 - 2026-10-08T07:38Z requests for the user (manager does not edit these): (1) CLAUDE.md "What exists" still says protocol and record "are removed in D3"; they are removed now. (2) Mark D3 done in SPEC.md. (3) .claude/roles/discovery-builder.md says identified_at; older identity files use set_at, both are read.
 - 2026-10-08T07:41Z D3 review PASS (handoff/discovery/review.md). Validator created the pytest layout: tests/conftest.py, tests/unit/, tests/integration/, tests/fixtures/; 48 tests pass. Manager added __pycache__/, .hypothesis/, .pytest_cache/ to .gitignore. Review note for a later D task: identify --role "" is accepted as identified.
+- 2026-10-08T07:42Z committed D3 as e0b584b. User's own edits to CLAUDE.md, SPEC.md, .claude/roles/, docs/ left uncommitted (not task work).
+- 2026-10-08T07:42Z assigned V0 to viz-builder (pid 74170).
+- 2026-10-08T07:47Z V0 ready received from viz-builder; handoff/viz/ready.md. Validator pointed at it. Builder requests doc edits: docs/cross-session-message-format.md §6 (record V0 method, mark sessionId-keyed nodes and SessionStart hook as superseded) and docs/jsonl-transcript-spec.md line 12 (folder encoding replaces every non-alphanumeric char, not only slash).
+- 2026-10-08T07:49Z manager decision: every role file forbids editing docs/, so SPEC V0's "record the method in docs §6" is a user action. Told the validator that docs-only gaps are logged for the user, not FAIL. User: please apply or reassign the docs/ edits listed above.
+- 2026-10-08T07:53Z V0 review PASS (handoff/viz/review.md); 81 tests pass. User items already logged at 07:47Z (docs §6 and folder encoding).

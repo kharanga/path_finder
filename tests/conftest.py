@@ -11,14 +11,23 @@ sys.dont_write_bytecode = True
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DISCOVER_SCRIPT = REPO_ROOT / "discovery" / "discover.py"
+WATCHER_SCRIPT = REPO_ROOT / "viz" / "watcher.py"
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 
-def load_discover_module():
-    spec = importlib.util.spec_from_file_location("discover_under_test", DISCOVER_SCRIPT)
+def load_module_from_path(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_discover_module():
+    return load_module_from_path("discover_under_test", DISCOVER_SCRIPT)
+
+
+def load_watcher_module():
+    return load_module_from_path("watcher_under_test", WATCHER_SCRIPT)
 
 
 def dead_pid():
@@ -72,3 +81,17 @@ def write_identity_file(discover):
         path.write_text(json.dumps(identity))
         return path
     return write
+
+
+@pytest.fixture
+def watcher(tmp_path, monkeypatch):
+    module = load_watcher_module()
+    sessions_dir = tmp_path / "home" / ".claude" / "sessions"
+    projects_dir = tmp_path / "home" / ".claude" / "projects"
+    identity_dir = tmp_path / "discovery" / "identity"
+    for folder in (sessions_dir, projects_dir, identity_dir):
+        folder.mkdir(parents=True)
+    monkeypatch.setattr(module, "SESSIONS_DIR", sessions_dir)
+    monkeypatch.setattr(module, "PROJECTS_DIR", projects_dir)
+    monkeypatch.setattr(module, "IDENTITY_DIR", identity_dir)
+    return module
