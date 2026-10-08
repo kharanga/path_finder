@@ -2,16 +2,25 @@ import argparse
 import copy
 import json
 import os
+import queue
 import re
 import sys
+import threading
 import time
+import urllib.parse
+from datetime import datetime, timezone
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 SESSIONS_DIR = Path.home() / ".claude" / "sessions"
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
 VIZ_DIR = Path(__file__).resolve().parent
-IDENTITY_DIR = VIZ_DIR.parent / "discovery" / "identity"
+DISCOVERY_DIR = VIZ_DIR.parent / "discovery"
+IDENTITY_DIR = DISCOVERY_DIR / "identity"
+STATIC_DIRS = (VIZ_DIR, DISCOVERY_DIR)
+UI_PORT = 4780
 POLL_INTERVAL_S = 0.25
+SSE_KEEPALIVE_S = 15
 
 KEPT_ENTRY_TYPES = {
     "assistant",
@@ -300,9 +309,10 @@ class StateModel:
         if not name:
             return
         session = self.session(pid)
+        name_changed = session["name"] != name
+        session["name"] = name
         self.learn_name(name, pid)
-        if session["name"] != name:
-            session["name"] = name
+        if name_changed:
             touched["sessions"].add(pid)
 
     def apply_assistant(self, pid, entry, touched):
@@ -482,6 +492,187 @@ class StateModel:
             self.set_status(pid, "IDLE", touched)
 
 
+def now_iso():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+class EventBroadcaster:
+    def __init__(self):
+        self.subscribers = set()
+        self.lock = threading.Lock()
+
+    def subscribe(self):
+        subscriber = queue.Queue()
+        with self.lock:
+            self.subscribers.add(subscriber)
+        return subscriber
+
+    def unsubscribe(self, subscriber):
+        with self.lock:
+            self.subscribers.discard(subscriber)
+
+    def publish(self, change):
+        with self.lock:
+            subscribers = list(self.subscribers)
+        for subscriber in subscribers:
+            subscriber.put(change)
+
+
+def identified_live_sessions(root):
+    rows = []
+    for entry in live_sessions():
+        if under_root(entry["cwd"], root):
+            rows.append({**entry, **read_identity(entry["pid"])})
+    return rows
+
+
+class Watcher:
+    def __init__(self, root=None, fixtures=None):
+        self.root = root
+        self.fixtures = fixtures
+        self.model = StateModel()
+        self.tailers = {}
+        self.lock = threading.RLock()
+        self.broadcaster = EventBroadcaster()
+        self.stop_event = threading.Event()
+
+    def session_rows(self):
+        if self.fixtures:
+            known = {row["pid"]: row for row in identified_live_sessions(None)}
+            return [{**known.get(pid, {"pid": pid}), "transcript": path} for pid, path in self.fixtures]
+        rows = []
+        for row in identified_live_sessions(self.root):
+            if row["pid"] in self.tailers:
+                rows.append(row)
+            else:
+                rows.append({**row, **resolve_transcript(row)})
+        return rows
+
+    def refresh_sessions(self):
+        current = {}
+        for row in self.session_rows():
+            if row["pid"] in self.tailers or row.get("transcript"):
+                current[row["pid"]] = row
+        for pid, row in current.items():
+            before = copy.deepcopy(self.model.sessions.get(pid))
+            session = self.model.register_session(row)
+            if pid not in self.tailers:
+                self.tailers[pid] = TranscriptTailer(row["transcript"])
+            if before != session:
+                self.broadcaster.publish({"event": "session", "at": now_iso(), **copy.deepcopy(session)})
+        for pid in list(self.tailers):
+            if pid not in current:
+                del self.tailers[pid]
+                self.model.sessions.pop(pid, None)
+                self.broadcaster.publish({"event": "session_removed", "at": now_iso(), "pid": pid})
+
+    def poll_once(self):
+        with self.lock:
+            self.refresh_sessions()
+            for pid, tailer in list(self.tailers.items()):
+                for entry in tailer.poll():
+                    for change in self.model.apply(pid, entry):
+                        self.broadcaster.publish(change)
+
+    def run(self):
+        while not self.stop_event.is_set():
+            self.poll_once()
+            self.stop_event.wait(POLL_INTERVAL_S)
+
+    def snapshot(self):
+        with self.lock:
+            return {"generated_at": now_iso(), **copy.deepcopy(self.model.snapshot())}
+
+
+class VizRequestHandler(SimpleHTTPRequestHandler):
+    watcher = None
+    quiet = True
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=str(STATIC_DIRS[-1]), **kwargs)
+
+    def log_message(self, format, *args):
+        if not self.quiet:
+            super().log_message(format, *args)
+
+    def do_GET(self):
+        route = urllib.parse.urlparse(self.path).path
+        if route == "/state":
+            self.send_state()
+        elif route == "/events":
+            self.send_events()
+        else:
+            self.directory = str(self.static_dir_for(route))
+            super().do_GET()
+
+    def static_dir_for(self, route):
+        relative = route.lstrip("/") or "index.html"
+        for folder in STATIC_DIRS:
+            if (folder / relative).is_file():
+                return folder
+        return STATIC_DIRS[-1]
+
+    def send_json(self, payload):
+        body = json.dumps(payload).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def send_state(self):
+        self.send_json(self.watcher.snapshot())
+
+    def send_events(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "keep-alive")
+        self.end_headers()
+        subscriber = self.watcher.broadcaster.subscribe()
+        try:
+            self.write_sse({"event": "snapshot", **self.watcher.snapshot()})
+            while True:
+                try:
+                    change = subscriber.get(timeout=SSE_KEEPALIVE_S)
+                except queue.Empty:
+                    self.wfile.write(b": keepalive\n\n")
+                    self.wfile.flush()
+                    continue
+                self.write_sse(change)
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            self.watcher.broadcaster.unsubscribe(subscriber)
+
+    def write_sse(self, payload):
+        self.wfile.write(f"data: {json.dumps(payload)}\n\n".encode())
+        self.wfile.flush()
+
+
+def command_serve(args):
+    watcher = Watcher(root=args.root, fixtures=args.fixture or None)
+    handler = type("BoundVizRequestHandler", (VizRequestHandler,), {"watcher": watcher, "quiet": not args.verbose})
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", args.port), handler)
+    except OSError as error:
+        print(f"cannot bind 127.0.0.1:{args.port}: {error}", file=sys.stderr)
+        return 1
+    server.daemon_threads = True
+    poller = threading.Thread(target=watcher.run, name="watcher-poll", daemon=True)
+    poller.start()
+    print(f"http://127.0.0.1:{args.port}/  (/state, /events)", flush=True)
+    try:
+        server.serve_forever(poll_interval=0.25)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        watcher.stop_event.set()
+        server.server_close()
+    return 0
+
+
 def parse_fixture_argument(text):
     pid_text, _, path = text.partition("=")
     if not pid_text.isdigit() or not path:
@@ -635,6 +826,12 @@ def build_parser():
     state_parser.add_argument("fixtures", nargs="+", type=parse_fixture_argument, metavar="PID=PATH", help="transcript file for the session with this PID, fed whole in the given order")
     state_parser.add_argument("--events", action="store_true", help="print the change stream instead of the snapshot")
     state_parser.set_defaults(func=command_state)
+    serve_parser = sub.add_parser("serve", help="serve /state, /events, and the static page on one port")
+    serve_parser.add_argument("--port", type=int, default=UI_PORT)
+    serve_parser.add_argument("--root", help="only sessions whose cwd is under this path")
+    serve_parser.add_argument("--fixture", action="append", type=parse_fixture_argument, metavar="PID=PATH", help="tail this file for this PID instead of the registry; repeatable")
+    serve_parser.add_argument("--verbose", action="store_true", help="log every request")
+    serve_parser.set_defaults(func=command_serve)
     return parser
 
 
