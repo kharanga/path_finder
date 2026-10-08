@@ -170,3 +170,52 @@ def test_serve_parser_defaults(watcher):
     assert args.fixture == [(1, "/a.jsonl"), (2, "/b.jsonl")]
     assert watcher.SSE_KEEPALIVE_S == 15
     assert watcher.STATIC_DIRS == (watcher.VIZ_DIR, watcher.DISCOVERY_DIR)
+
+
+def test_emit_writes_one_json_line_per_change_and_publishes(watcher, tmp_path):
+    log_path = tmp_path / "logs" / "events.jsonl"
+    w = watcher.Watcher(fixtures=[], log_path=str(log_path))
+    subscriber = w.broadcaster.subscribe()
+    assert not log_path.exists()
+    w.emit({"event": "session", "at": "t1", "pid": 1})
+    w.emit({"event": "session_removed", "at": "t2", "pid": 1})
+    assert [json.loads(l) for l in log_path.read_text().splitlines()] == [{"event": "session", "at": "t1", "pid": 1}, {"event": "session_removed", "at": "t2", "pid": 1}]
+    assert [e["event"] for e in drain(subscriber)] == ["session", "session_removed"]
+    w.close()
+    assert w.log_handle is None and w.stop_event.is_set()
+
+
+def test_emit_without_log_path_only_publishes(watcher, tmp_path):
+    w = watcher.Watcher(fixtures=[])
+    subscriber = w.broadcaster.subscribe()
+    w.emit({"event": "session", "at": "t", "pid": 1})
+    assert len(drain(subscriber)) == 1
+    assert list(tmp_path.rglob("*.jsonl")) == []
+    assert w.log_path is None and w.log_handle is None
+
+
+def test_log_matches_the_stream_for_the_fixture_round_trip(watcher, tmp_path):
+    manager, builder = copy_fixtures(tmp_path)
+    log_path = tmp_path / "events.jsonl"
+    w = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))], log_path=str(log_path))
+    subscriber = w.broadcaster.subscribe()
+    w.poll_once()
+    streamed = drain(subscriber)
+    logged = [json.loads(l) for l in log_path.read_text().splitlines()]
+    assert logged == streamed
+    assert len(logged) == 2 + 24
+    w.poll_once()
+    assert len(log_path.read_text().splitlines()) == 26
+    w.close()
+    w2 = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))], log_path=str(log_path))
+    w2.poll_once()
+    w2.close()
+    assert len(log_path.read_text().splitlines()) == 52
+
+
+def test_serve_parser_log_defaults(watcher):
+    args = watcher.build_parser().parse_args(["serve"])
+    assert (args.log, args.no_log) == (str(watcher.EVENT_LOG_PATH), False)
+    assert watcher.EVENT_LOG_PATH == watcher.VIZ_DIR / "events.jsonl"
+    args = watcher.build_parser().parse_args(["serve", "--no-log", "--log", "/x.jsonl"])
+    assert (args.log, args.no_log) == ("/x.jsonl", True)

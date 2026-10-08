@@ -183,10 +183,10 @@ def test_frame_3_in_inbox_connector(watcher, tmp_path):
     assert capsules_of(rendered)["fake builder"]["badge"] == "1"
 
 
-def test_frame_4_read_connector_shows_body_until_sender_result_merges(watcher, tmp_path):
+def test_frame_4_read_connector_keeps_the_summary_before_the_sender_result(watcher, tmp_path):
     rendered = render(tmp_path, snapshot_at(watcher, "2026-10-08T04:31:11.200Z"))
     assert lines_by_class(rendered) == ["connector READ", "watch"]
-    assert tag_texts(rendered) == [("tag READ", "✓✓ Hi again from fake-session-manage…")]
+    assert tag_texts(rendered) == [("tag READ", f"✓✓ {FIRST_LABEL}")]
     merged = render(tmp_path, snapshot_at(watcher, "2026-10-08T04:31:11.300Z"))
     assert tag_texts(merged) == [("tag READ", f"✓✓ {FIRST_LABEL}")]
 
@@ -194,7 +194,7 @@ def test_frame_4_read_connector_shows_body_until_sender_result_merges(watcher, t
 def test_frames_5_to_7_reply_connector_in_both_directions(watcher, tmp_path):
     rendered = render(tmp_path, snapshot_at(watcher, "2026-10-08T04:31:17.700Z"))
     assert lines_by_class(rendered) == ["connector READ", "connector READ", "watch"]
-    assert sorted(tag_texts(rendered)) == sorted([("tag READ", f"✓✓ {FIRST_LABEL}"), ("tag READ", "✓✓ Hi again from fake-session-builde…")])
+    assert sorted(tag_texts(rendered)) == sorted([("tag READ", f"✓✓ {FIRST_LABEL}"), ("tag READ", f"✓✓ {REPLY_LABEL}")])
     merged = render(tmp_path, snapshot_at(watcher, "2026-10-08T04:31:17.900Z"))
     assert sorted(tag_texts(merged)) == sorted([("tag READ", f"✓✓ {FIRST_LABEL}"), ("tag READ", f"✓✓ {REPLY_LABEL}")])
     first, second = [l for l in rendered["lines"] if l["class"] == "connector READ"]

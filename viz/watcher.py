@@ -18,6 +18,7 @@ VIZ_DIR = Path(__file__).resolve().parent
 DISCOVERY_DIR = VIZ_DIR.parent / "discovery"
 IDENTITY_DIR = DISCOVERY_DIR / "identity"
 STATIC_DIRS = (VIZ_DIR, DISCOVERY_DIR)
+EVENT_LOG_PATH = VIZ_DIR / "events.jsonl"
 UI_PORT = 4780
 POLL_INTERVAL_S = 0.25
 SSE_KEEPALIVE_S = 15
@@ -451,7 +452,7 @@ class StateModel:
         msg_id = origin.get("msg_id") or f"peer:{entry.get('uuid')}"
         message = self.messages.get(msg_id)
         if message is None:
-            message = self.new_message(msg_id, msg_id=msg_id, from_pid=from_pid)
+            message = self.adopt_pending_send(from_pid, pid, msg_id) or self.new_message(msg_id, msg_id=msg_id, from_pid=from_pid)
         message["to_pid"] = pid
         if message["from_pid"] is None:
             message["from_pid"] = from_pid
@@ -465,6 +466,23 @@ class StateModel:
         session["status"] = "WORKING"
         touched["sessions"].add(pid)
         touched["messages"].add(msg_id)
+
+    def adopt_pending_send(self, from_pid, to_pid, msg_id):
+        candidates = [
+            m for m in self.messages.values()
+            if m["msg_id"] is None and m["kind"] == "message" and m["from_pid"] == from_pid
+            and m["stage"] in ("PENDING", "IN_INBOX") and m["to_pid"] in (to_pid, None)
+        ]
+        if not candidates:
+            return None
+        message = min(candidates, key=lambda m: m["sent_at"] or "")
+        del self.messages[message["key"]]
+        message["key"] = msg_id
+        message["msg_id"] = msg_id
+        self.messages[msg_id] = message
+        if message["tool_use_id"] in self.message_key_by_tool_use:
+            self.message_key_by_tool_use[message["tool_use_id"]] = msg_id
+        return message
 
     def apply_idle_notice(self, pid, entry, text, touched):
         watched_name = first_quoted(text)
@@ -529,7 +547,7 @@ def identified_live_sessions(root):
 
 
 class Watcher:
-    def __init__(self, root=None, fixtures=None):
+    def __init__(self, root=None, fixtures=None, log_path=None):
         self.root = root
         self.fixtures = fixtures
         self.model = StateModel()
@@ -537,6 +555,23 @@ class Watcher:
         self.lock = threading.RLock()
         self.broadcaster = EventBroadcaster()
         self.stop_event = threading.Event()
+        self.log_path = Path(log_path) if log_path else None
+        self.log_handle = None
+
+    def emit(self, change):
+        if self.log_path:
+            if self.log_handle is None:
+                self.log_path.parent.mkdir(parents=True, exist_ok=True)
+                self.log_handle = open(self.log_path, "a", encoding="utf-8")
+            self.log_handle.write(json.dumps(change) + "\n")
+            self.log_handle.flush()
+        self.broadcaster.publish(change)
+
+    def close(self):
+        self.stop_event.set()
+        if self.log_handle:
+            self.log_handle.close()
+            self.log_handle = None
 
     def session_rows(self):
         if self.fixtures:
@@ -561,12 +596,12 @@ class Watcher:
             if pid not in self.tailers:
                 self.tailers[pid] = TranscriptTailer(row["transcript"])
             if before != session:
-                self.broadcaster.publish({"event": "session", "at": now_iso(), **copy.deepcopy(session)})
+                self.emit({"event": "session", "at": now_iso(), **copy.deepcopy(session)})
         for pid in list(self.tailers):
             if pid not in current:
                 del self.tailers[pid]
                 self.model.sessions.pop(pid, None)
-                self.broadcaster.publish({"event": "session_removed", "at": now_iso(), "pid": pid})
+                self.emit({"event": "session_removed", "at": now_iso(), "pid": pid})
 
     def poll_once(self):
         with self.lock:
@@ -574,7 +609,7 @@ class Watcher:
             for pid, tailer in list(self.tailers.items()):
                 for entry in tailer.poll():
                     for change in self.model.apply(pid, entry):
-                        self.broadcaster.publish(change)
+                        self.emit(change)
 
     def run(self):
         while not self.stop_event.is_set():
@@ -653,7 +688,7 @@ class VizRequestHandler(SimpleHTTPRequestHandler):
 
 
 def command_serve(args):
-    watcher = Watcher(root=args.root, fixtures=args.fixture or None)
+    watcher = Watcher(root=args.root, fixtures=args.fixture or None, log_path=None if args.no_log else args.log)
     handler = type("BoundVizRequestHandler", (VizRequestHandler,), {"watcher": watcher, "quiet": not args.verbose})
     try:
         server = ThreadingHTTPServer(("127.0.0.1", args.port), handler)
@@ -669,7 +704,7 @@ def command_serve(args):
     except KeyboardInterrupt:
         pass
     finally:
-        watcher.stop_event.set()
+        watcher.close()
         server.server_close()
     return 0
 
@@ -877,6 +912,8 @@ def build_parser():
     serve_parser.add_argument("--root", help="only sessions whose cwd is under this path")
     serve_parser.add_argument("--fixture", action="append", type=parse_fixture_argument, metavar="PID=PATH", help="tail this file for this PID instead of the registry; repeatable")
     serve_parser.add_argument("--verbose", action="store_true", help="log every request")
+    serve_parser.add_argument("--log", default=str(EVENT_LOG_PATH), help="append every change here as one JSON line")
+    serve_parser.add_argument("--no-log", action="store_true", help="do not write the event log")
     serve_parser.set_defaults(func=command_serve)
     replay_parser = sub.add_parser("replay", help="write fixture lines into fresh files in timestamp order, for serve --fixture to tail")
     replay_parser.add_argument("--fixture", action="append", required=True, type=parse_fixture_argument, metavar="PID=PATH")

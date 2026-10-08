@@ -34,3 +34,6 @@
 - 2026-10-08T08:56Z V5 ready received from viz-builder: connectors with stages, watching link, idle-notice connector, legend, side panel in viz/index.html; model change: receiver enqueue promotes PENDING to IN_INBOX. Validator pointed at it with the overnight acceptance; the Node DOM shim update is the validator's.
 - 2026-10-08T08:57Z user doc item from V5: docs/plan-visualization.md §5 stage transitions should add "receiver enqueue → IN_INBOX when still PENDING" (message-format doc §7 already allows it). Port handover, ui retirement, and the missing nine frames remain open as logged.
 - 2026-10-08T09:05Z V5 review PASS on the overnight acceptance; 191 tests pass. One cosmetic label transient noted for the builder in review.md. Live visual check against frames 2 to 9 remains for the user.
+- 2026-10-08T09:06Z committed V5 as e1a40d1. Assigned V6 to viz-builder (last task).
+- 2026-10-08T09:14Z V6 ready received from viz-builder: serve appends every change to viz/events.jsonl (--log, --no-log); fixtures under tests/fixtures/viz/ already sanitized; V5 cosmetic note fixed in the model. Validator pointed at it. Manager added viz/events.jsonl to .gitignore (__pycache__/ was already there).
+- 2026-10-08T09:20Z V6 review PASS; 201 tests pass.

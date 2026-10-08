@@ -386,3 +386,55 @@ def test_parse_fixture_argument(watcher):
     for bad in ("x=/a", "12", "12=", "=/a"):
         with pytest.raises(Exception):
             watcher.parse_fixture_argument(bad)
+
+
+def test_receiver_read_adopts_the_senders_pending_row(watcher):
+    model = watcher.StateModel()
+    model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock", summary="sum", body="hello"))
+    model.apply(2, enqueue_entry(1))
+    changes = model.apply(2, delivery_entry(1, "m-1"))
+    assert list(model.messages) == ["m-1"]
+    message = model.messages["m-1"]
+    assert (message["stage"], message["summary"], message["sent_at"], message["pending_key"], message["accepted_at"]) == (
+        "READ", "sum", "2026-10-08T04:31:10.318Z", "pending:t1", None)
+    assert [(c["key"], c["pending_key"]) for c in changes if c["event"] == "message"] == [("m-1", "pending:t1")]
+    model.apply(1, result_entry("t1", msg_id="m-1"))
+    assert list(model.messages) == ["m-1"]
+    assert (model.messages["m-1"]["accepted_at"], model.messages["m-1"]["stage"]) == ("2026-10-08T04:31:11.281Z", "READ")
+
+
+def test_adoption_picks_oldest_unmerged_send_to_that_receiver(watcher):
+    model = watcher.StateModel()
+    model.apply(1, send_entry("t-other", "uds:/tmp/cc-socks/3.sock", summary="to three", at="2026-10-08T04:31:09.000Z"))
+    model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock", summary="first", at="2026-10-08T04:31:10.000Z"))
+    model.apply(1, send_entry("t2", "uds:/tmp/cc-socks/2.sock", summary="second", at="2026-10-08T04:31:12.000Z"))
+    model.apply(2, delivery_entry(1, "m-1"))
+    assert model.messages["m-1"]["summary"] == "first"
+    assert model.messages["pending:t2"]["stage"] == "PENDING"
+    assert model.messages["pending:t-other"]["stage"] == "PENDING"
+
+
+def test_adoption_skips_sends_already_merged_or_failed(watcher):
+    model = watcher.StateModel()
+    model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock", summary="failed one"))
+    model.apply(1, result_entry("t1", success=False, msg_id=None, message="Not sent"))
+    model.apply(1, send_entry("t2", "uds:/tmp/cc-socks/2.sock", summary="merged one", at="2026-10-08T04:31:12.000Z"))
+    model.apply(1, result_entry("t2", msg_id="m-2"))
+    model.apply(2, delivery_entry(1, "m-3", body="fresh"))
+    assert model.messages["m-3"]["summary"] is None and model.messages["m-3"]["body"] == "fresh"
+    assert model.messages["pending:t1"]["stage"] == "FAILED"
+    assert model.messages["m-2"]["stage"] == "IN_INBOX"
+
+
+def test_fixture_round_trip_has_one_row_per_message_at_every_step(watcher):
+    model = registered = watcher.StateModel()
+    tailer = watcher.TranscriptTailer(MANAGER_FIXTURE)
+    for _timestamp, _index, pid, line in watcher.entries_in_time_order([(MANAGER, MANAGER_FIXTURE), (BUILDER, BUILDER_FIXTURE)]):
+        entry = tailer.parse_line(line)
+        if entry is None:
+            continue
+        model.apply(pid, entry)
+        keys = [k for k in model.messages if not k.startswith("idle:")]
+        assert len(keys) <= 2, keys
+        assert not any(k.startswith("pending:") and any(m["pending_key"] == k and m["key"] != k for m in model.messages.values()) for k in keys)
+    assert [m["summary"] for m in model.snapshot()["messages"] if m["kind"] == "message"] == ["second hello to fake-session-builder", "Second hi back to fake-session-manager"]

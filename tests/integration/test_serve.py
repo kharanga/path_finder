@@ -225,3 +225,43 @@ def test_bind_failure_exits_1(sandbox):
         assert f"cannot bind 127.0.0.1:{port}" in result.stderr
     finally:
         holder.close()
+
+
+def test_event_log_written_during_the_v3_style_test(sandbox, fixture_copies):
+    manager, builder = fixture_copies
+    log_path = sandbox["viz_dir"].parent / "events.jsonl"
+    process, base = start_server(sandbox, "--fixture", f"32813={manager}", "--fixture", f"33993={builder}", "--log", str(log_path))
+    try:
+        get(f"{base}/state")
+        stream = open_event_stream(base)
+        read_frames(stream, 1, 3)
+        with open(builder, "a") as handle:
+            handle.write(json.dumps({"type": "assistant", "timestamp": "2026-10-08T05:00:01.000Z", "message": {"content": [{"type": "text", "text": "hi"}]}}) + "\n")
+        change = read_frames(stream, 1, 1.0)
+        assert change and change[0]["status"] == "WORKING"
+        deadline = time.monotonic() + 1
+        while time.monotonic() < deadline and not log_path.exists():
+            time.sleep(0.05)
+        lines = [json.loads(l) for l in log_path.read_text().splitlines()]
+        assert lines[-1] == change[0]
+        assert len(lines) == 2 + 24 + 1
+        assert all({"event", "at"} <= set(line) for line in lines)
+        stream.close()
+    finally:
+        stop(process)
+    first_run = len(log_path.read_text().splitlines())
+    process, base = start_server(sandbox, "--fixture", f"32813={manager}", "--fixture", f"33993={builder}", "--log", str(log_path))
+    stop(process)
+    assert len(log_path.read_text().splitlines()) == first_run * 2
+
+
+def test_default_log_is_next_to_the_script_and_no_log_disables_it(sandbox, fixture_copies):
+    manager, builder = fixture_copies
+    default_log = sandbox["viz_dir"] / "events.jsonl"
+    process, _ = start_server(sandbox, "--fixture", f"32813={manager}", "--fixture", f"33993={builder}")
+    stop(process)
+    assert default_log.exists() and len(default_log.read_text().splitlines()) == 26
+    default_log.unlink()
+    process, _ = start_server(sandbox, "--fixture", f"32813={manager}", "--fixture", f"33993={builder}", "--no-log")
+    stop(process)
+    assert not default_log.exists()

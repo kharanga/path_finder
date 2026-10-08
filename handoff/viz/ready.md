@@ -1,72 +1,45 @@
-# Ready: V5 2026-10-08
+# Ready: V6 2026-10-08
 
 ## Done
 
-`viz/index.html`: connectors per plan §6 and the display mapping in `docs/cross-session-message-format.md` §9.
+- Event log: `serve` appends every change to `viz/events.jsonl` by default, one JSON line per change, the same lines that go out on `/events` (`session`, `session_removed`, `message`), in emission order, flushed per line. `--log PATH` changes the file; `--no-log` turns it off. The log is opened lazily on the first change and closed on exit. All emission goes through one `Watcher.emit` so the log and the SSE subscribers always agree. The file is append-only across runs; a later replay tool can read it line by line (each line is self-describing with `event`, `at`, and the full object).
+- Sanitized fixtures: already committed by the validator under `tests/fixtures/viz/` (`round_trip_manager_32813_33993.jsonl`, `round_trip_builder_32813_33993.jsonl`). Checked: no `/Users/khangnguyen` left; `cwd` reads `/home/user/Documents/path_finder/fake_session`. Nothing for me to add there; `tests/` is outside my folder.
+- V5 review note 1 (connector label showing the body between the receiver's read and the sender's result): fixed in the model. When a receiver's peer entry arrives for a `msg_id` not yet known, `adopt_pending_send` takes the sender's oldest unmerged PENDING or IN_INBOX row to that receiver, re-keys it to the `msg_id`, and keeps the tool-use mapping so the later tool_result still sets `accepted_at`. The summary, `sent_at`, and `pending_key` are therefore present from the first READ frame, and the transient second row is gone. Snapshots are identical in both feed orders.
 
-- One straight line per (from, to) pair between capsule centers, carrying the latest message of that pair; older ones open in a side panel when the label is clicked (stage, summary, body, sent / accepted / enqueued / read times). Lines are drawn in an SVG layer beneath the board so they show only in the gap between capsules; labels sit in a second layer above, at the midpoint, with the stage glyph: `…` Pending (dotted grey), `✓` In inbox (blue), `✓✓` Read (green), `✗` Failed (red, reason in the tooltip). Opposite directions are offset so A→B and B→A are both visible. The capsule gap widened to 72 px for the labels.
-- Watching: a dotted grey line from the watcher to each PID in its `watching` list, gone when the list empties.
-- Idle notice: a dashed grey line with an italic label ("<name> is idle"), shown for 4 s from the moment the `idle_notice` message arrives on `/events`, or on page load when `read_at` is within 4 s of the snapshot's `generated_at`, then removed. This is the one-shot the plan asks for; a refresh later does not resurrect it.
-- Legend below the board: Pending, In inbox, Read, Failed, Idle notice, Watching.
-- Rendering now coalesces on a zero-delay timer instead of `requestAnimationFrame`, so a background tab keeps applying deltas. The header shows "live · N events" (count of frames received on `/events`), which doubles as a liveness check.
-- A message with unresolved `to_pid` falls back to matching `to` against session names and labels on the page.
-
-`viz/watcher.py`:
-
-- `StateModel`: a receiver's peer enqueue now promotes the matched message from PENDING to IN_INBOX (the plan's frame 3: badge plus check). Previously the stage waited for the sender's tool_result, which lands up to half a second later.
-- `/events` no longer sends a `Connection: keep-alive` header (HTTP/1.0 stream, read until close).
-- `replay --after ISO`: appends only the lines after that time to the existing files without truncating, so a frame frozen with `--until` can be continued and the page sees the rest as live deltas.
-
-Files: `viz/index.html`, `viz/watcher.py`. Nothing else touched.
+Files: `viz/watcher.py`. `viz/events.jsonl` is created at runtime and should not be committed.
 
 ## How to test
 
-Overnight acceptance (fields for frames 2 to 9 on `/state` and `/events`), spare port, no live sessions:
+The log written during V3's test, spare port:
 
 ```
-R=$(mktemp -d); : > $R/32813.jsonl; : > $R/33993.jsonl
-python3 viz/watcher.py serve --port 4796 --fixture 32813=$R/32813.jsonl --fixture 33993=$R/33993.jsonl &
-sleep 1; curl -s -N http://127.0.0.1:4796/events > $R/events.txt &
-python3 viz/watcher.py replay --fixture 32813=tests/fixtures/viz/round_trip_manager_32813_33993.jsonl --fixture 33993=tests/fixtures/viz/round_trip_builder_32813_33993.jsonl --out-dir $R --speed 10 --max-gap 0.4
-sleep 1; kill %2
-python3 -c "
-import json
-fr=[json.loads(f[5:]) for f in open('$R/events.txt').read().split('\n\n') if f.startswith('data:')]
-ms=[f for f in fr if f['event']=='message']
-need=('key','pending_key','kind','stage','from_pid','to_pid','to','summary','body','reason','sent_at','accepted_at','enqueued_at','read_at')
-print(len(ms),'message frames; all fields:',all(all(k in m for k in need) for m in ms))
-seq={}
-for m in ms: seq.setdefault(m['key'] if m['kind']=='idle_notice' else (m['msg_id'] or m['key']),[]).append(m['stage'])
-print(seq)
-print([(m['from_pid'],m['to_pid'],m['read_at']) for m in ms if m['kind']=='idle_notice'])"
-curl -s http://127.0.0.1:4796/state | python3 -c "import sys,json; print([(m['kind'],m['stage'],m['from_pid'],m['to_pid']) for m in json.load(sys.stdin)['messages']])"
-kill %1
+L=$(mktemp -d); cp tests/fixtures/viz/round_trip_manager_32813_33993.jsonl $L/m.jsonl; cp tests/fixtures/viz/round_trip_builder_32813_33993.jsonl $L/b.jsonl
+python3 viz/watcher.py serve --port 4793 --fixture 32813=$L/m.jsonl --fixture 33993=$L/b.jsonl --log $L/events.jsonl &
+sleep 1; curl -s http://127.0.0.1:4793/state | python3 -c "import sys,json; print(len(json.load(sys.stdin)['sessions']), 'sessions')"
+echo '{"type":"assistant","timestamp":"2026-10-08T05:00:01.000Z","message":{"content":[{"type":"text","text":"hi"}]}}' >> $L/b.jsonl
+sleep 0.6; kill %1
+wc -l $L/events.jsonl; tail -1 $L/events.jsonl | python3 -c "import sys,json; e=json.loads(sys.stdin.read()); print(e['event'], e['pid'], e['status'], e['at'])"
 ```
 
-Expected: 8 message frames, all fields true; stages `pending:toolu_014…` [PENDING], `693b9bd4-…` [IN_INBOX, IN_INBOX, READ] (enqueue, then the sender's result, then the read), `f5ac2c3a-…` [READ, READ] (the manager read the reply at 17.638 before the builder's send result at 17.811, so the receiver creates it as READ and the sender's result merges in), `pending:toolu_01C…` [PENDING], `idle:97bc…` [READ]; one idle notice 33993 → 32813 read at 2026-10-08T04:31:21.055Z; final `/state` has message READ 32813→33993, message READ 33993→32813, idle_notice READ 33993→32813.
+Expected: `2 sessions`; 26 lines (24 from replaying both fixtures, plus the two session registrations; the count varies with the live registry as in V4); last line `session 33993 WORKING 2026-10-08T05:00:01.000Z`. Running the same again appends 26 more lines (append-only). With `--no-log` no file is written. Without `--log`, the file is `viz/events.jsonl` next to the script.
 
-Frozen frames on the page (open `http://127.0.0.1:4796/` after each replay; headless Chrome used here since the Claude in Chrome extension is not connected):
+Label adoption:
 
-| until | expected |
-| :- | :- |
-| `2026-10-08T04:31:10.500Z` | frame 2: dotted grey line manager → builder, label "… second hello to fake-session-buil…", manager Working and watching |
-| `2026-10-08T04:31:11.000Z` | frame 3: blue line, label "✓ second hello…", builder badge 1 |
-| `2026-10-08T04:31:11.200Z` | frame 4: green line, label "✓✓ second hello…", builder Working, last line "Hi again from fake-session-manager…" |
-| `2026-10-08T04:31:17.700Z` | frames 5 to 7: second green line builder → manager, "✓✓ Second hi back to fake-session-ma…", both Working |
-| none | frame 9: both Idle, two green lines, no watching line, no notice |
+```
+R=$(mktemp -d); python3 viz/watcher.py replay --fixture 32813=tests/fixtures/viz/round_trip_manager_32813_33993.jsonl --fixture 33993=tests/fixtures/viz/round_trip_builder_32813_33993.jsonl --out-dir $R --speed 0 --until 2026-10-08T04:31:11.200Z
+python3 viz/watcher.py state 32813=$R/32813.jsonl 33993=$R/33993.jsonl | python3 -c "import sys,json; print([(m['key'][:8], m['stage'], m['summary'], m['pending_key'][:14], m['accepted_at']) for m in json.load(sys.stdin)['messages']])"
+```
 
-Frame 8 (the notice) is one-shot and lasts 4 s, so freeze at `2026-10-08T04:31:20.100Z`, open the page, then run the same replay with `--after 2026-10-08T04:31:20.100Z`: the watching line disappears, a dashed line "fake-session-builder is idle" appears builder → manager and fades after 4 s. Headless Chrome cannot show this because its screenshot fires at the load event; it was verified by running the page script in Node over the captured `/events` frames (shim requirements under Requests); seeing it in a real browser is part of the morning live check.
+Expected: one row, `('693b9bd4', 'READ', 'second hello to fake-session-builder', 'pending:toolu_', None)`; the full replay then gives `accepted_at` 2026-10-08T04:31:11.281Z on that same row.
 
-Suite: `python3 -m pytest tests` → 10 failed, 171 passed in 6.24s. The 10 failures are all in `tests/integration/test_page_render.py`: the Node shim in `tests/page/render_page.mjs` predates V5 (Requests). 0 failures elsewhere.
+Suite: `python3 -m pytest tests` → 2 failed, 189 passed. Both failures pin the old transient label and flip by design: `test_frame_4_read_connector_shows_body_until_sender_result_merges` (the label is now "✓✓ second hello to fake-session-buil…" at 11.200) and `test_frames_5_to_7_reply_connector_in_both_directions` (at 17.700 the reply label is already "✓✓ Second hi back to fake-session-ma…", the same as at 17.900).
 
 ## Requests
 
-- Validator, `tests/page/render_page.mjs`: the page now needs these in the shim: elements for ids `wires`, `tags`, `panel`, `panel-title`, `panel-list`, `panel-close`; `document.createElementNS` and `document.createTextNode`; `setAttribute`, `addEventListener`, `classList`, and `getBoundingClientRect` on elements; a `window` with `addEventListener`; and `setTimeout` instead of `requestAnimationFrame` for render coalescing (so await a timer tick, not `setImmediate`). A working shim that exercises the connectors over the real captured frames: `python3 viz/watcher.py serve --fixture …` plus `curl -N /events` to capture, then feed each frame to `source.onmessage`; expected after the notice frame: lines `connector READ`, `connector READ`, `connector idle_notice`, and after 4 s the notice line is gone. The capsule summary in the shim stays valid; the link text is now "live · N events".
-- Validator: the stage promotion on enqueue changes V2's documented transition table (ready.md V2 said IN_INBOX comes from the tool_result only). Any test pinning a PENDING stage between enqueue and tool_result needs updating.
-- Docs (user): `docs/plan-visualization.md` §5 stage transitions: add "receiver enqueue → IN_INBOX when still PENDING". `docs/cross-session-message-format.md` §7 already allows it ("enqueue can also confirm arrival").
-- Port handover and `discover.py ui` retirement: unchanged from V4's Requests; `discovery/index.html` still to be deleted at handover.
-- The nine UI flow frames remain absent from `docs/`; frames 2 to 9 above are derived from §6 and the round-trip timeline.
+- Validator: update the two tests above to the adopted-summary behaviour; the V5 frozen-frame table row for 11.200 now holds as originally written.
+- Manager: add `viz/events.jsonl` and `__pycache__/` to `.gitignore` before committing V6.
+- Unchanged: port handover (`discover.py ui --stop`, then `watcher.py serve` on 4780, then delete `discovery/index.html`), `discover.py ui` retirement, docs items (§5 enqueue promotion, nine UI flow frames).
 
 ## Blocked
 
-Nothing. Headless Chrome was used for the visual checks; its screenshots fire at page load, so live-delta behaviour was verified in Node over captured frames rather than in a browser.
+Nothing.
