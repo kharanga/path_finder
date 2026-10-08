@@ -11,3 +11,4 @@ discovery/ui.pid
 __pycache__/
 .hypothesis/
 .pytest_cache/
+viz/events.jsonl
