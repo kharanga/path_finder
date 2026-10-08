@@ -252,13 +252,25 @@ def test_enqueue_dequeue_and_remove_adjust_inbox_floored_at_zero(watcher):
     assert model.sessions[2]["inbox"] == 0
 
 
-def test_enqueue_stamps_oldest_unenqueued_message_from_sender(watcher):
+def test_enqueue_stamps_oldest_unenqueued_message_from_sender_and_promotes_it(watcher):
     model = watcher.StateModel()
     model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock", at="2026-10-08T04:31:10.000Z"))
     model.apply(1, send_entry("t2", "uds:/tmp/cc-socks/2.sock", at="2026-10-08T04:31:12.000Z"))
-    model.apply(2, enqueue_entry(1, at="2026-10-08T04:31:10.500Z"))
+    changes = model.apply(2, enqueue_entry(1, at="2026-10-08T04:31:10.500Z"))
     assert model.messages["pending:t1"]["enqueued_at"] == "2026-10-08T04:31:10.500Z"
+    assert model.messages["pending:t1"]["stage"] == "IN_INBOX"
+    assert model.messages["pending:t2"]["stage"] == "PENDING"
     assert model.messages["pending:t2"]["enqueued_at"] is None
+    assert [c["stage"] for c in changes if c["event"] == "message"] == ["IN_INBOX"]
+
+
+def test_enqueue_does_not_demote_a_read_message(watcher):
+    model = watcher.StateModel()
+    model.apply(2, delivery_entry(1, "m-1"))
+    model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock"))
+    model.apply(1, result_entry("t1", msg_id="m-1"))
+    model.apply(2, enqueue_entry(1))
+    assert model.messages["m-1"]["stage"] == "READ"
 
 
 def test_enqueue_before_sender_is_held_and_claimed_on_delivery(watcher):
