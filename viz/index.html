@@ -6,153 +6,150 @@
 <title>Session Messages</title>
 <style>
   :root {
-    --bg: #0f1218;
-    --panel: #161b24;
-    --ink: #e8ecf2;
-    --muted: #8a94a6;
-    --line: #2a3340;
-    --accent: #7dd3fc;
-    --warn: #fbbf24;
-    --working: #4ade80;
-    --idle: #8a94a6;
-    --badge: #f472b6;
+    --bg: #141414;
+    --card: #1c1c1c;
+    --card-border: #2e2e2e;
+    --ink: #f2f2f2;
+    --text: #e2e2e2;
+    --muted: #8b8b8b;
+    --pill-idle-bg: #2a2a2a;
+    --pill-idle-ink: #d6d6d6;
+    --pill-busy-bg: #172a45;
+    --pill-busy-ink: #60a5fa;
+    --pill-inbox-bg: #3a2810;
+    --pill-inbox-ink: #f59e0b;
+    --ok: #4ade80;
     --failed: #f87171;
+    --dot-manager: #a78bfa;
+    --dot-builder: #34d399;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
     background: var(--bg);
     color: var(--ink);
-    font: 15px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    padding: 24px 16px;
+    font: 17px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    padding: 28px 36px 48px;
+    position: relative;
   }
   header {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
-    gap: 8px 20px;
-    margin-bottom: 24px;
+    gap: 6px 18px;
+    margin-bottom: 28px;
+    color: var(--muted);
+    font-size: 13px;
+    white-space: nowrap;
   }
-  h1 { font-size: 18px; margin: 0; font-weight: 600; }
-  header span { color: var(--muted); font-size: 13px; }
-  #link.off { color: var(--warn); }
-  body { position: relative; }
+  header h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--text); }
+  #link.off { color: var(--pill-inbox-ink); }
   main { position: relative; z-index: 1; }
-  .row { margin-bottom: 28px; }
+  .row { margin-bottom: 44px; position: relative; }
   .row-title {
     color: var(--muted);
-    font-size: 12px;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    margin: 0 0 10px 4px;
-  }
-  .capsules { display: flex; flex-wrap: wrap; gap: 20px 72px; }
-  .capsule {
-    position: relative;
-    background: var(--panel);
-    border: 2px solid var(--accent);
-    border-radius: 28px;
-    padding: 12px 22px;
-    min-width: 220px;
-    max-width: 320px;
-    animation: fade .3s ease-out;
-  }
-  .capsule.incomplete { border-style: dashed; border-color: var(--warn); }
-  .capsule.working { border-color: var(--working); }
-  .top { display: flex; align-items: center; gap: 10px; }
-  .label { font-size: 17px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pill {
-    font-size: 11px;
+    font-size: 13px;
     letter-spacing: .06em;
     text-transform: uppercase;
-    border-radius: 999px;
-    padding: 2px 9px;
-    border: 1px solid var(--idle);
-    color: var(--idle);
+    margin: 0 0 12px 2px;
+  }
+  .strip { position: relative; display: flex; align-items: stretch; overflow-x: auto; overflow-y: visible; padding-bottom: 4px; }
+  .card {
+    flex: none;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 18px 20px 20px;
+    width: 272px;
+    min-height: 180px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .card.incomplete { border-style: dashed; border-color: #5a5a5a; }
+  .card .top { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .card .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+  .card .label { font-size: 20px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card .pills { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill {
+    font-size: 15px;
+    line-height: 1;
+    padding: 6px 11px;
+    border-radius: 8px;
+    background: var(--pill-idle-bg);
+    color: var(--pill-idle-ink);
     white-space: nowrap;
   }
-  .pill.working { border-color: var(--working); color: var(--working); }
-  .badge {
-    position: absolute;
-    top: -10px;
-    right: 14px;
-    min-width: 22px;
-    height: 22px;
-    padding: 0 7px;
-    border-radius: 999px;
-    background: var(--badge);
-    color: #1a0b13;
-    font-size: 12px;
-    font-weight: 700;
-    line-height: 22px;
+  .pill.busy { background: var(--pill-busy-bg); color: var(--pill-busy-ink); }
+  .pill.inbox { background: var(--pill-inbox-bg); color: var(--pill-inbox-ink); }
+  .card .watching { color: var(--pill-idle-ink); }
+  .card .watching:empty { display: none; }
+  .card .watching svg { width: 20px; height: 20px; vertical-align: -4px; margin-right: 8px; }
+  .card .last { color: var(--text); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .card .last:empty { display: none; }
+  .link {
+    flex: none;
+    min-width: 150px;
+    padding: 0 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
     text-align: center;
+    gap: 6px;
+    cursor: default;
   }
-  .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
-  .last {
-    margin-top: 8px;
-    font-size: 13px;
-    color: var(--ink);
+  .link.clickable { cursor: pointer; }
+  .link .summary { color: var(--text); max-width: 160px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .link .arrow { font-size: 30px; font-weight: 700; line-height: 1; color: var(--ink); }
+  .link .stage { white-space: nowrap; }
+  .link .stage.PENDING, .link .none { color: var(--muted); }
+  .link .stage.IN_INBOX, .link .stage.READ { color: var(--ok); }
+  .link .stage.FAILED { color: var(--failed); }
+  .link .notice { color: var(--muted); font-style: italic; font-size: 15px; animation: notice 4s linear forwards; }
+  .caption {
+    margin-top: 16px;
+    font: 16px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--muted);
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
-    border-top: 1px solid var(--line);
-    padding-top: 6px;
   }
-  .last:empty { display: none; }
-  .watching { margin-top: 4px; font-size: 12px; color: var(--muted); }
-  .watching:empty { display: none; }
+  .caption:empty { display: none; }
   .empty { color: var(--muted); padding: 40px 0; text-align: center; }
-  #wires, #tags { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-  #wires { z-index: 0; }
-  #tags { z-index: 2; }
-  #wires line { fill: none; stroke-width: 2; }
-  #wires .connector.PENDING { stroke: var(--muted); stroke-dasharray: 2 6; }
-  #wires .connector.IN_INBOX { stroke: var(--accent); }
-  #wires .connector.READ { stroke: var(--working); }
-  #wires .connector.FAILED { stroke: var(--failed); }
-  #wires .connector.idle_notice { stroke: var(--muted); stroke-dasharray: 8 6; animation: notice 4s linear forwards; }
-  #wires .watch { stroke: var(--muted); stroke-dasharray: 1 5; stroke-linecap: round; opacity: .7; }
-  #tags .tag { pointer-events: auto; cursor: pointer; }
-  #tags .tag rect { fill: var(--panel); stroke: var(--line); rx: 6; }
-  #tags .tag text { fill: var(--ink); font-size: 12px; }
-  #tags .tag .glyph { font-weight: 700; }
-  #tags .tag.PENDING text { fill: var(--muted); }
-  #tags .tag.IN_INBOX .glyph { fill: var(--accent); }
-  #tags .tag.READ .glyph { fill: var(--working); }
-  #tags .tag.FAILED rect { stroke: var(--failed); }
-  #tags .tag.FAILED .glyph { fill: var(--failed); }
-  #tags .tag.idle_notice text { fill: var(--muted); font-style: italic; }
-  @keyframes notice { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
-  #legend { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--muted); font-size: 12px; margin-top: 8px; }
-  #legend span::before { content: ""; display: inline-block; width: 26px; height: 0; border-top: 2px solid var(--muted); margin-right: 6px; vertical-align: middle; }
-  #legend .l-pending::before { border-top-style: dotted; }
-  #legend .l-inbox::before { border-top-color: var(--accent); }
-  #legend .l-read::before { border-top-color: var(--working); }
-  #legend .l-failed::before { border-top-color: var(--failed); }
-  #legend .l-notice::before { border-top-style: dashed; }
-  #legend .l-watch::before { border-top-style: dotted; opacity: .7; }
+  .arcs { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; z-index: 2; }
+  .arcs path { fill: none; stroke: #4a4a4a; stroke-width: 1.5; }
+  .arcs .arc.PENDING path { stroke-dasharray: 3 6; }
+  .arcs .arc text { fill: var(--text); font-size: 15px; pointer-events: auto; cursor: pointer; paint-order: stroke; stroke: var(--bg); stroke-width: 6px; stroke-linejoin: round; }
+  .arcs .arc .stage.PENDING { fill: var(--muted); }
+  .arcs .arc .stage.IN_INBOX, .arcs .arc .stage.READ { fill: var(--ok); }
+  .arcs .arc .stage.FAILED { fill: var(--failed); }
+  .arcs .arc .notice { fill: var(--muted); font-style: italic; }
   #panel {
     position: fixed;
     top: 0; right: 0; bottom: 0;
-    width: min(420px, 100%);
-    background: var(--panel);
-    border-left: 1px solid var(--line);
-    padding: 16px;
+    width: min(440px, 100%);
+    background: var(--card);
+    border-left: 1px solid var(--card-border);
+    padding: 20px;
     overflow: auto;
     transform: translateX(100%);
     transition: transform .2s ease-out;
+    z-index: 5;
   }
   #panel.open { transform: none; }
-  #panel h2 { font-size: 14px; margin: 0 0 12px; display: flex; justify-content: space-between; }
-  #panel button { background: none; border: 1px solid var(--line); color: var(--ink); border-radius: 6px; padding: 2px 8px; cursor: pointer; }
-  .entry { border-top: 1px solid var(--line); padding: 10px 0; font-size: 13px; }
-  .entry .stage { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-  .entry .summary { font-weight: 600; margin: 2px 0; }
+  #panel h2 { font-size: 16px; margin: 0 0 14px; display: flex; justify-content: space-between; align-items: center; }
+  #panel button { background: none; border: 1px solid var(--card-border); color: var(--text); border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 14px; }
+  .entry { border-top: 1px solid var(--card-border); padding: 12px 0; font-size: 15px; }
+  .entry .stage { font-size: 13px; letter-spacing: .04em; color: var(--muted); }
+  .entry .stage.IN_INBOX, .entry .stage.READ { color: var(--ok); }
+  .entry .stage.FAILED { color: var(--failed); }
+  .entry .summary { font-weight: 600; margin: 3px 0; }
   .entry .body { color: var(--muted); white-space: pre-wrap; word-break: break-word; }
-  .entry .times { color: var(--muted); font-size: 11px; margin-top: 4px; }
-  @media (prefers-reduced-motion: reduce) { #wires .connector.idle_notice { animation: none; } #panel { transition: none; } }
-  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
-  @media (prefers-reduced-motion: reduce) { .capsule { animation: none; } }
+  .entry .times { color: var(--muted); font-size: 12px; margin-top: 6px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  @keyframes notice { 0%, 75% { opacity: 1; } 100% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .link .notice { animation: none; } #panel { transition: none; } }
+  @media (max-width: 720px) { body { padding: 20px 16px 40px; } .card { width: 240px; } .link { min-width: 120px; } }
 </style>
 </head>
 <body>
@@ -163,37 +160,28 @@
   <span id="link"></span>
 </header>
 <main id="board"></main>
-<svg id="wires" aria-hidden="true"></svg>
-<svg id="tags" aria-hidden="true"></svg>
-<div id="legend">
-  <span class="l-pending">Pending</span>
-  <span class="l-inbox">In inbox ✓</span>
-  <span class="l-read">Read ✓✓</span>
-  <span class="l-failed">Failed ✗</span>
-  <span class="l-notice">Idle notice</span>
-  <span class="l-watch">Watching</span>
-</div>
 <aside id="panel"><h2><span id="panel-title"></span><button id="panel-close" type="button">close</button></h2><div id="panel-list"></div></aside>
 <script>
   const board = document.getElementById("board");
   const count = document.getElementById("count");
   const updated = document.getElementById("updated");
   const link = document.getElementById("link");
-  const LAST_LINE_MAX = 90;
-  const LABEL_MAX = 34;
-  const NOTICE_LIFETIME_MS = 4000;
-  const PAIR_OFFSET_PX = 9;
-  const SVG_NS = "http://www.w3.org/2000/svg";
-  const wires = document.getElementById("wires");
-  const tags = document.getElementById("tags");
   const panel = document.getElementById("panel");
   const panelTitle = document.getElementById("panel-title");
   const panelList = document.getElementById("panel-list");
-  const STAGE_GLYPH = { PENDING: "…", IN_INBOX: "✓", READ: "✓✓", FAILED: "✗" };
+  const LAST_LINE_MAX = 90;
+  const SUMMARY_MAX = 60;
+  const NOTICE_LIFETIME_MS = 4000;
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const ARC_BASE_LIFT = 30;
+  const ARC_TIER_STEP = 30;
+  const STAGE_TEXT = { PENDING: "Pending", IN_INBOX: "✓ In inbox", READ: "✓✓ Read", FAILED: "✗ Failed" };
+  const DOT_PALETTE = ["#f472b6", "#fbbf24", "#38bdf8", "#fb923c", "#c084fc", "#2dd4bf", "#a3e635", "#f87171"];
+  const EYE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
   const liveNotices = new Map();
   let openPair = null;
 
-  const state = { sessions: new Map(), messages: new Map(), generatedAt: null };
+  const state = { sessions: new Map(), messages: new Map(), sources: new Map(), sourceSequence: 0, generatedAt: null };
 
   function folderOf(cwd) {
     const parts = (cwd || "").split("/").filter(Boolean);
@@ -205,20 +193,29 @@
     return oneLine.length > max ? oneLine.slice(0, max - 1) + "…" : oneLine;
   }
 
+  function labelOf(session) {
+    return session.label || session.role || session.name || `pid ${session.pid}`;
+  }
+
   function labelFor(target) {
     if (target === null || target === undefined) return "";
     const session = state.sessions.get(Number(target));
-    if (session) return session.label || session.role || session.name || `pid ${session.pid}`;
-    return String(target);
+    return session ? labelOf(session) : String(target);
   }
 
-  function statusText(session) {
-    return session.status === "WORKING" ? "Working" : "Idle";
+  function dotColor(session) {
+    const words = `${session.role || ""} ${session.label || ""}`.toLowerCase();
+    if (words.includes("manager")) return "var(--dot-manager)";
+    if (words.includes("builder")) return "var(--dot-builder)";
+    const order = [...state.sessions.keys()].sort((a, b) => a - b).indexOf(session.pid);
+    return DOT_PALETTE[Math.max(order, 0) % DOT_PALETTE.length];
   }
 
   function applySnapshot(snapshot) {
     state.sessions = new Map((snapshot.sessions || []).map((s) => [s.pid, s]));
     state.messages = new Map((snapshot.messages || []).map((m) => [m.key, m]));
+    state.sources = new Map((snapshot.sources || []).map((s) => [s.pid, s]));
+    state.sourceSequence = Math.max(0, ...[...state.sources.values()].map((s) => s.seq || 0));
     state.generatedAt = snapshot.generated_at || null;
     const now = Date.parse(snapshot.generated_at || "") || Date.now();
     for (const m of state.messages.values()) {
@@ -235,58 +232,115 @@
   function applyChange(change) {
     if (change.event === "snapshot") {
       applySnapshot(change);
-    } else if (change.event === "session") {
+      return;
+    }
+    if (change.event === "session") {
       state.sessions.set(change.pid, change);
     } else if (change.event === "session_removed") {
       state.sessions.delete(change.pid);
+      state.sources.delete(change.pid);
     } else if (change.event === "message") {
       if (change.pending_key && change.pending_key !== change.key) state.messages.delete(change.pending_key);
       state.messages.set(change.key, change);
       if (change.kind === "idle_notice") showNotice(change.key);
     }
+    if (change.source && change.source_pid !== undefined && change.event !== "session_removed") {
+      state.sourceSequence += 1;
+      state.sources.set(change.source_pid, { pid: change.source_pid, at: change.at, source: change.source, seq: state.sourceSequence });
+    }
     if (change.at) state.generatedAt = change.at;
   }
 
-  function buildCapsule(session) {
-    const capsule = document.createElement("div");
-    capsule.className = "capsule" + (session.role ? "" : " incomplete") + (session.status === "WORKING" ? " working" : "");
-    capsule.dataset.pid = session.pid;
-    capsule.id = `session-${session.pid}`;
-    capsule.title = session.role ? `${session.name} · pid ${session.pid}` : "unidentified: this session has not run identify";
+  function messagesOnly() {
+    return [...state.messages.values()].filter((m) => m.kind === "message");
+  }
+
+  function latestSendOf(pid) {
+    let latest = null;
+    for (const m of messagesOnly()) {
+      if (Number(m.from_pid) !== pid || !m.sent_at) continue;
+      if (!latest || m.sent_at > latest.sent_at) latest = m;
+    }
+    return latest;
+  }
+
+  function latestReadBy(pid) {
+    let latest = null;
+    for (const m of messagesOnly()) {
+      if (Number(m.to_pid) !== pid || !m.read_at) continue;
+      if (!latest || m.read_at > latest.read_at) latest = m;
+    }
+    return latest;
+  }
+
+  function isSending(session) {
+    const send = latestSendOf(session.pid);
+    return session.status === "WORKING" && Boolean(send) && send.stage === "PENDING";
+  }
+
+  function statusText(session) {
+    if (session.status !== "WORKING") return "Idle";
+    return isSending(session) ? "Sending" : "Working";
+  }
+
+  function lastLineOf(session) {
+    const send = latestSendOf(session.pid);
+    const read = latestReadBy(session.pid);
+    const sendIsLatest = send && (!read || send.sent_at > read.read_at);
+    if (sendIsLatest) return send.stage === "PENDING" ? (send.summary || send.body || "") : "";
+    return read ? (read.body || read.summary || "") : "";
+  }
+
+  function pill(text, className) {
+    const el = document.createElement("span");
+    el.className = `pill ${className}`.trim();
+    el.textContent = text;
+    return el;
+  }
+
+  function buildCard(session) {
+    const card = document.createElement("div");
+    card.className = "card" + (session.role ? "" : " incomplete");
+    card.dataset.pid = session.pid;
+    card.dataset.status = statusText(session);
+    card.id = `session-${session.pid}`;
+    card.title = session.role ? `${session.name || "unnamed"} · pid ${session.pid}` : "unidentified: this session has not run identify";
 
     const top = document.createElement("div");
     top.className = "top";
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    dot.style.background = dotColor(session);
     const label = document.createElement("div");
     label.className = "label";
-    label.textContent = session.label || session.role || session.name || "unidentified";
-    const pill = document.createElement("span");
-    pill.className = "pill" + (session.status === "WORKING" ? " working" : "");
-    pill.textContent = statusText(session);
-    top.append(label, pill);
+    label.textContent = session.role ? labelOf(session) : (session.name || "unidentified");
+    top.append(dot, label);
 
-    const meta = document.createElement("div");
-    meta.className = "meta";
-    meta.textContent = `${session.name || "unnamed"} · pid ${session.pid}`;
-
-    const last = document.createElement("div");
-    last.className = "last";
-    last.textContent = truncate(session.last_text, LAST_LINE_MAX);
-    if (session.last_text) last.title = session.last_text;
+    const pills = document.createElement("div");
+    pills.className = "pills";
+    const status = statusText(session);
+    pills.append(pill(status, status === "Idle" ? "status" : "status busy"));
+    if (session.inbox > 0) pills.append(pill(`Inbox ${session.inbox}`, "inbox"));
 
     const watching = document.createElement("div");
     watching.className = "watching";
     const watched = (session.watching || []).map(labelFor).filter(Boolean);
-    if (watched.length) watching.textContent = `👁 watching ${watched.join(", ")}`;
-
-    capsule.append(top, meta, last, watching);
-    if (session.inbox > 0) {
-      const badge = document.createElement("span");
-      badge.className = "badge";
-      badge.title = `${session.inbox} in inbox`;
-      badge.textContent = String(session.inbox);
-      capsule.append(badge);
+    if (watched.length) {
+      watching.innerHTML = EYE_ICON;
+      watching.append(document.createTextNode(`Watching ${watched.join(", ")}`));
+      watching.title = `asked to be told when ${watched.join(", ")} ${watched.length > 1 ? "go" : "goes"} idle`;
     }
-    return capsule;
+
+    const last = document.createElement("div");
+    last.className = "last";
+    const lastText = lastLineOf(session);
+    if (lastText) {
+      last.textContent = `“${truncate(lastText, LAST_LINE_MAX)}”`;
+      last.title = lastText;
+    }
+
+    card.append(top, pills, watching, last);
+    return card;
   }
 
   function pidByName(name) {
@@ -302,36 +356,76 @@
   }
 
   function messageTime(message) {
-    return message.read_at || message.accepted_at || message.sent_at || "";
+    return message.read_at || message.accepted_at || message.enqueued_at || message.sent_at || "";
   }
 
-  function latestPerPair() {
+  function pairKeyOf(a, b) {
+    return a < b ? `${a}:${b}` : `${b}:${a}`;
+  }
+
+  function messagesByPair() {
     const pairs = new Map();
-    for (const message of state.messages.values()) {
-      if (message.kind !== "message") continue;
+    for (const message of messagesOnly()) {
       const ends = endpointsOf(message);
       if (!ends) continue;
-      const key = ends.join(">");
+      const key = pairKeyOf(ends[0], ends[1]);
       const list = pairs.get(key) || [];
       list.push({ message, ends });
       pairs.set(key, list);
     }
-    for (const list of pairs.values()) list.sort((a, b) => messageTime(a.message).localeCompare(messageTime(b.message)));
+    for (const list of pairs.values()) list.sort((a, b) => messageTime(a.message).localeCompare(messageTime(b.message)) || (a.message.sent_at || "").localeCompare(b.message.sent_at || ""));
     return pairs;
   }
 
-  function centerOf(pid, origin) {
-    const capsule = document.getElementById(`session-${pid}`);
-    if (!capsule) return null;
-    const rect = capsule.getBoundingClientRect();
-    return { x: rect.left - origin.left + rect.width / 2, y: rect.top - origin.top + rect.height / 2 };
+  function liveNoticeFor(a, b) {
+    for (const key of liveNotices.keys()) {
+      const message = state.messages.get(key);
+      const ends = message && endpointsOf(message);
+      if (ends && pairKeyOf(ends[0], ends[1]) === pairKeyOf(a, b)) return message;
+    }
+    return null;
   }
 
-  function offsetLine(a, b, offset) {
-    const dx = b.x - a.x, dy = b.y - a.y;
-    const length = Math.hypot(dx, dy) || 1;
-    const nx = -dy / length * offset, ny = dx / length * offset;
-    return { x1: a.x + nx, y1: a.y + ny, x2: b.x + nx, y2: b.y + ny };
+  function stageText(message) {
+    return STAGE_TEXT[message.stage] || message.stage;
+  }
+
+  function buildLink(leftPid, rightPid, pairs) {
+    const pairKey = pairKeyOf(leftPid, rightPid);
+    const list = pairs.get(pairKey) || [];
+    const el = document.createElement("div");
+    el.className = "link";
+    el.dataset.pair = `${leftPid}:${rightPid}`;
+    if (!list.length) {
+      const none = document.createElement("div");
+      none.className = "none";
+      none.textContent = "No traffic";
+      el.append(none);
+    } else {
+      const { message, ends } = list[list.length - 1];
+      el.classList.add("clickable");
+      el.dataset.stage = message.stage;
+      const summary = document.createElement("div");
+      summary.className = "summary";
+      summary.textContent = truncate(message.summary || message.body || message.key, SUMMARY_MAX);
+      const arrow = document.createElement("div");
+      arrow.className = "arrow";
+      arrow.textContent = ends[0] === leftPid ? "→" : "←";
+      const stage = document.createElement("div");
+      stage.className = `stage ${message.stage}`;
+      stage.textContent = stageText(message);
+      stage.title = `${message.stage}${message.reason ? ": " + message.reason : ""}\n${message.body || ""}`;
+      el.append(summary, arrow, stage);
+      el.addEventListener("click", () => openPanel(pairKey, [leftPid, rightPid]));
+    }
+    const notice = liveNoticeFor(leftPid, rightPid);
+    if (notice) {
+      const line = document.createElement("div");
+      line.className = "notice";
+      line.textContent = notice.summary || "idle";
+      el.append(line);
+    }
+    return el;
   }
 
   function svgEl(name, attrs) {
@@ -340,66 +434,46 @@
     return el;
   }
 
-  function drawLine(coords, className) {
-    wires.append(svgEl("line", { x1: coords.x1, y1: coords.y1, x2: coords.x2, y2: coords.y2, class: className }));
+  function topCenterOf(pid, origin) {
+    const card = document.getElementById(`session-${pid}`);
+    if (!card) return null;
+    const rect = card.getBoundingClientRect();
+    return { x: rect.left - origin.left + rect.width / 2, y: rect.top - origin.top };
   }
 
-  function drawTag(coords, message, className, onClick) {
-    const text = truncate(message.summary || message.body || message.key, LABEL_MAX);
-    const glyph = message.kind === "idle_notice" ? "" : STAGE_GLYPH[message.stage] || "";
-    const label = glyph ? `${glyph} ${text}` : text;
-    const width = Math.min(420, 12 + label.length * 6.6);
-    const x = (coords.x1 + coords.x2) / 2, y = (coords.y1 + coords.y2) / 2;
-    const g = svgEl("g", { class: `tag ${className}` });
-    g.append(svgEl("rect", { x: x - width / 2, y: y - 11, width, height: 22 }));
-    const t = svgEl("text", { x, y: y + 4, "text-anchor": "middle" });
-    if (glyph) {
-      const span = document.createElementNS(SVG_NS, "tspan");
-      span.setAttribute("class", "glyph");
-      span.textContent = glyph + " ";
-      t.append(span);
-    }
-    t.append(document.createTextNode(text));
-    g.append(t);
-    const title = document.createElementNS(SVG_NS, "title");
-    title.textContent = `${message.stage}${message.reason ? ": " + message.reason : ""}\n${message.body || ""}`;
-    g.append(title);
-    if (onClick) g.addEventListener("click", onClick);
-    tags.append(g);
-  }
-
-  function drawConnectors() {
-    wires.replaceChildren();
-    tags.replaceChildren();
-    const origin = wires.getBoundingClientRect();
-    const pairs = latestPerPair();
-    for (const [pairKey, list] of pairs) {
+  function drawArcs(strip, arcs, rowArcs, pairs) {
+    arcs.replaceChildren();
+    arcs.setAttribute("width", strip.scrollWidth);
+    arcs.setAttribute("height", strip.scrollHeight);
+    const origin = arcs.getBoundingClientRect();
+    for (const { a, b, tier } of rowArcs) {
+      const list = pairs.get(pairKeyOf(a, b));
+      if (!list || !list.length) continue;
       const { message, ends } = list[list.length - 1];
-      const a = centerOf(ends[0], origin), b = centerOf(ends[1], origin);
-      if (!a || !b) continue;
-      const reverseExists = pairs.has(`${ends[1]}>${ends[0]}`);
-      const coords = offsetLine(a, b, reverseExists ? PAIR_OFFSET_PX : 0);
-      drawLine(coords, `connector ${message.stage}`);
-      drawTag(coords, message, message.stage, () => openPanel(pairKey, ends));
-    }
-    for (const session of state.sessions.values()) {
-      for (const target of session.watching || []) {
-        const pid = Number.isInteger(Number(target)) ? Number(target) : pidByName(String(target));
-        const a = centerOf(session.pid, origin), b = pid !== null ? centerOf(pid, origin) : null;
-        if (a && b) drawLine(offsetLine(a, b, -PAIR_OFFSET_PX * 2), "watch");
+      const start = topCenterOf(a, origin), end = topCenterOf(b, origin);
+      if (!start || !end) continue;
+      const apexX = (start.x + end.x) / 2, apexY = Math.min(start.y, end.y) - ARC_BASE_LIFT - tier * ARC_TIER_STEP;
+      const controlY = 2 * (apexY + 10) - (start.y + end.y) / 2;
+      const group = svgEl("g", { class: `arc ${message.stage}` });
+      group.append(svgEl("path", { d: `M ${start.x} ${start.y - 6} Q ${apexX} ${controlY} ${end.x} ${end.y - 6}` }));
+      const arrow = ends[0] === a ? "→" : "←";
+      const text = svgEl("text", { x: apexX, y: apexY + 2, "text-anchor": "middle" });
+      text.append(document.createTextNode(`${truncate(message.summary || message.body || message.key, 40)} ${arrow} `));
+      const stage = document.createElementNS(SVG_NS, "tspan");
+      stage.setAttribute("class", `stage ${message.stage}`);
+      stage.textContent = stageText(message);
+      text.append(stage);
+      const notice = liveNoticeFor(a, b);
+      if (notice) {
+        const span = document.createElementNS(SVG_NS, "tspan");
+        span.setAttribute("class", "notice");
+        span.textContent = ` · ${notice.summary}`;
+        text.append(span);
       }
+      text.addEventListener("click", () => openPanel(pairKeyOf(a, b), [a, b]));
+      group.append(text);
+      arcs.append(group);
     }
-    for (const key of liveNotices.keys()) {
-      const message = state.messages.get(key);
-      const ends = message && endpointsOf(message);
-      if (!ends) continue;
-      const a = centerOf(ends[0], origin), b = centerOf(ends[1], origin);
-      if (!a || !b) continue;
-      const coords = offsetLine(a, b, PAIR_OFFSET_PX * 3);
-      drawLine(coords, "connector idle_notice");
-      drawTag(coords, message, "idle_notice", null);
-    }
-    if (openPair) renderPanel();
   }
 
   function openPanel(pairKey, ends) {
@@ -415,15 +489,15 @@
 
   function renderPanel() {
     if (!openPair) return;
-    const list = latestPerPair().get(openPair.pairKey) || [];
-    panelTitle.textContent = `${labelFor(openPair.ends[0])} → ${labelFor(openPair.ends[1])} (${list.length})`;
+    const list = messagesByPair().get(openPair.pairKey) || [];
+    panelTitle.textContent = `${labelFor(openPair.ends[0])} ↔ ${labelFor(openPair.ends[1])} (${list.length})`;
     panelList.replaceChildren();
-    for (const { message } of [...list].reverse()) {
+    for (const { message, ends } of [...list].reverse()) {
       const entry = document.createElement("div");
       entry.className = "entry";
       const stage = document.createElement("div");
-      stage.className = "stage";
-      stage.textContent = `${STAGE_GLYPH[message.stage] || ""} ${message.stage}${message.reason ? " · " + message.reason : ""}`;
+      stage.className = `stage ${message.stage}`;
+      stage.textContent = `${labelFor(ends[0])} → ${labelFor(ends[1])} · ${stageText(message)}${message.reason ? " · " + message.reason : ""}`;
       const summary = document.createElement("div");
       summary.className = "summary";
       summary.textContent = message.summary || "(no summary)";
@@ -432,8 +506,8 @@
       body.textContent = message.body || "";
       const times = document.createElement("div");
       times.className = "times";
-      times.textContent = ["sent", message.sent_at, "accepted", message.accepted_at, "enqueued", message.enqueued_at, "read", message.read_at]
-        .map((v, i) => i % 2 ? (v ? v.slice(11, 23) : "–") : v).join(" ").replace(/(\S+) (\S+)/g, "$1 $2 ·").replace(/ ·$/, "");
+      times.textContent = [["sent", message.sent_at], ["accepted", message.accepted_at], ["enqueued", message.enqueued_at], ["read", message.read_at]]
+        .map(([name, value]) => `${name} ${value ? value.slice(11, 23) : "–"}`).join(" · ");
       entry.append(stage, summary, body, times);
       panelList.append(entry);
     }
@@ -441,6 +515,15 @@
 
   document.getElementById("panel-close").addEventListener("click", closePanel);
   window.addEventListener("resize", () => scheduleRender());
+
+  function latestSourceAmong(pids) {
+    let latest = null;
+    for (const pid of pids) {
+      const source = state.sources.get(pid);
+      if (source && (!latest || (source.seq || 0) > (latest.seq || 0))) latest = source;
+    }
+    return latest ? latest.source : "";
+  }
 
   function render() {
     const sessions = [...state.sessions.values()];
@@ -454,8 +537,6 @@
       empty.className = "empty";
       empty.textContent = "No sessions discovered yet";
       board.append(empty);
-      wires.replaceChildren();
-      tags.replaceChildren();
       return;
     }
     const byFolder = new Map();
@@ -464,19 +545,45 @@
       if (!byFolder.has(key)) byFolder.set(key, []);
       byFolder.get(key).push(s);
     }
-    for (const [folder, list] of [...byFolder.entries()].sort()) {
+    const pairs = messagesByPair();
+    const arcsByStrip = [];
+    const folders = [...byFolder.entries()].sort();
+    for (const [folder, list] of folders) {
       const row = document.createElement("section");
       row.className = "row";
       const title = document.createElement("div");
       title.className = "row-title";
       title.textContent = folder;
-      const capsules = document.createElement("div");
-      capsules.className = "capsules";
-      for (const s of list.sort((a, b) => a.pid - b.pid)) capsules.append(buildCapsule(s));
-      row.append(title, capsules);
+      if (folders.length < 2) title.hidden = true;
+      const strip = document.createElement("div");
+      strip.className = "strip";
+      const ordered = list.sort((a, b) => a.pid - b.pid);
+      ordered.forEach((s, index) => {
+        strip.append(buildCard(s));
+        if (index < ordered.length - 1) strip.append(buildLink(s.pid, ordered[index + 1].pid, pairs));
+      });
+      const rowArcs = [];
+      for (let i = 0; i < ordered.length; i += 1) {
+        for (let j = i + 2; j < ordered.length; j += 1) {
+          if (pairs.has(pairKeyOf(ordered[i].pid, ordered[j].pid))) rowArcs.push({ a: ordered[i].pid, b: ordered[j].pid, span: j - i, left: i });
+        }
+      }
+      rowArcs.sort((x, y) => x.span - y.span || x.left - y.left);
+      rowArcs.forEach((arc, tier) => { arc.tier = tier; });
+      if (rowArcs.length) {
+        strip.style.paddingTop = `${ARC_BASE_LIFT + rowArcs.length * ARC_TIER_STEP}px`;
+        const arcs = svgEl("svg", { class: "arcs", "aria-hidden": "true" });
+        strip.append(arcs);
+        arcsByStrip.push([strip, arcs, rowArcs]);
+      }
+      const caption = document.createElement("div");
+      caption.className = "caption";
+      caption.textContent = latestSourceAmong(ordered.map((s) => s.pid));
+      row.append(title, strip, caption);
       board.append(row);
     }
-    drawConnectors();
+    for (const [strip, arcs, rowArcs] of arcsByStrip) drawArcs(strip, arcs, rowArcs, pairs);
+    if (openPair) renderPanel();
   }
 
   let renderQueued = false;
