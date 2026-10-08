@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Session Messages</title>
+<style>
+  :root {
+    --bg: #0f1218;
+    --panel: #161b24;
+    --ink: #e8ecf2;
+    --muted: #8a94a6;
+    --line: #2a3340;
+    --accent: #7dd3fc;
+    --warn: #fbbf24;
+    --working: #4ade80;
+    --idle: #8a94a6;
+    --badge: #f472b6;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 24px 16px;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 20px;
+    margin-bottom: 24px;
+  }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header span { color: var(--muted); font-size: 13px; }
+  #link.off { color: var(--warn); }
+  main { position: relative; }
+  .row { margin-bottom: 28px; }
+  .row-title {
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin: 0 0 10px 4px;
+  }
+  .capsules { display: flex; flex-wrap: wrap; gap: 12px; }
+  .capsule {
+    position: relative;
+    background: var(--panel);
+    border: 2px solid var(--accent);
+    border-radius: 28px;
+    padding: 12px 22px;
+    min-width: 220px;
+    max-width: 320px;
+    animation: fade .3s ease-out;
+  }
+  .capsule.incomplete { border-style: dashed; border-color: var(--warn); }
+  .capsule.working { border-color: var(--working); }
+  .top { display: flex; align-items: center; gap: 10px; }
+  .label { font-size: 17px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill {
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 2px 9px;
+    border: 1px solid var(--idle);
+    color: var(--idle);
+    white-space: nowrap;
+  }
+  .pill.working { border-color: var(--working); color: var(--working); }
+  .badge {
+    position: absolute;
+    top: -10px;
+    right: 14px;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: var(--badge);
+    color: #1a0b13;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 22px;
+    text-align: center;
+  }
+  .meta { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .last {
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-top: 1px solid var(--line);
+    padding-top: 6px;
+  }
+  .last:empty { display: none; }
+  .watching { margin-top: 4px; font-size: 12px; color: var(--muted); }
+  .watching:empty { display: none; }
+  .empty { color: var(--muted); padding: 40px 0; text-align: center; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .capsule { animation: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Session Messages</h1>
+  <span id="count"></span>
+  <span id="updated"></span>
+  <span id="link"></span>
+</header>
+<main id="board"></main>
+<script>
+  const board = document.getElementById("board");
+  const count = document.getElementById("count");
+  const updated = document.getElementById("updated");
+  const link = document.getElementById("link");
+  const LAST_LINE_MAX = 90;
+
+  const state = { sessions: new Map(), messages: new Map(), generatedAt: null };
+
+  function folderOf(cwd) {
+    const parts = (cwd || "").split("/").filter(Boolean);
+    return parts[parts.length - 1] || "(unknown)";
+  }
+
+  function truncate(text, max) {
+    const oneLine = (text || "").replace(/\s+/g, " ").trim();
+    return oneLine.length > max ? oneLine.slice(0, max - 1) + "…" : oneLine;
+  }
+
+  function labelFor(target) {
+    if (target === null || target === undefined) return "";
+    const session = state.sessions.get(Number(target));
+    if (session) return session.label || session.role || session.name || `pid ${session.pid}`;
+    return String(target);
+  }
+
+  function statusText(session) {
+    return session.status === "WORKING" ? "Working" : "Idle";
+  }
+
+  function applySnapshot(snapshot) {
+    state.sessions = new Map((snapshot.sessions || []).map((s) => [s.pid, s]));
+    state.messages = new Map((snapshot.messages || []).map((m) => [m.key, m]));
+    state.generatedAt = snapshot.generated_at || null;
+  }
+
+  function applyChange(change) {
+    if (change.event === "snapshot") {
+      applySnapshot(change);
+    } else if (change.event === "session") {
+      state.sessions.set(change.pid, change);
+    } else if (change.event === "session_removed") {
+      state.sessions.delete(change.pid);
+    } else if (change.event === "message") {
+      if (change.pending_key && change.pending_key !== change.key) state.messages.delete(change.pending_key);
+      state.messages.set(change.key, change);
+    }
+    if (change.at) state.generatedAt = change.at;
+  }
+
+  function buildCapsule(session) {
+    const capsule = document.createElement("div");
+    capsule.className = "capsule" + (session.role ? "" : " incomplete") + (session.status === "WORKING" ? " working" : "");
+    capsule.dataset.pid = session.pid;
+    capsule.id = `session-${session.pid}`;
+    capsule.title = session.role ? `${session.name} · pid ${session.pid}` : "unidentified: this session has not run identify";
+
+    const top = document.createElement("div");
+    top.className = "top";
+    const label = document.createElement("div");
+    label.className = "label";
+    label.textContent = session.label || session.role || session.name || "unidentified";
+    const pill = document.createElement("span");
+    pill.className = "pill" + (session.status === "WORKING" ? " working" : "");
+    pill.textContent = statusText(session);
+    top.append(label, pill);
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = `${session.name || "unnamed"} · pid ${session.pid}`;
+
+    const last = document.createElement("div");
+    last.className = "last";
+    last.textContent = truncate(session.last_text, LAST_LINE_MAX);
+    if (session.last_text) last.title = session.last_text;
+
+    const watching = document.createElement("div");
+    watching.className = "watching";
+    const watched = (session.watching || []).map(labelFor).filter(Boolean);
+    if (watched.length) watching.textContent = `👁 watching ${watched.join(", ")}`;
+
+    capsule.append(top, meta, last, watching);
+    if (session.inbox > 0) {
+      const badge = document.createElement("span");
+      badge.className = "badge";
+      badge.title = `${session.inbox} in inbox`;
+      badge.textContent = String(session.inbox);
+      capsule.append(badge);
+    }
+    return capsule;
+  }
+
+  function render() {
+    const sessions = [...state.sessions.values()];
+    const identified = sessions.filter((s) => s.role).length;
+    const working = sessions.filter((s) => s.status === "WORKING").length;
+    count.textContent = sessions.length ? `${sessions.length} sessions, ${identified} identified, ${working} working` : "";
+    updated.textContent = state.generatedAt ? `updated ${state.generatedAt}` : "";
+    board.replaceChildren();
+    if (!sessions.length) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "No sessions discovered yet";
+      board.append(empty);
+      return;
+    }
+    const byFolder = new Map();
+    for (const s of sessions) {
+      const key = folderOf(s.cwd);
+      if (!byFolder.has(key)) byFolder.set(key, []);
+      byFolder.get(key).push(s);
+    }
+    for (const [folder, list] of [...byFolder.entries()].sort()) {
+      const row = document.createElement("section");
+      row.className = "row";
+      const title = document.createElement("div");
+      title.className = "row-title";
+      title.textContent = folder;
+      const capsules = document.createElement("div");
+      capsules.className = "capsules";
+      for (const s of list.sort((a, b) => a.pid - b.pid)) capsules.append(buildCapsule(s));
+      row.append(title, capsules);
+      board.append(row);
+    }
+  }
+
+  let renderQueued = false;
+  function scheduleRender() {
+    if (renderQueued) return;
+    renderQueued = true;
+    requestAnimationFrame(() => { renderQueued = false; render(); });
+  }
+
+  async function loadState() {
+    try {
+      const response = await fetch("./state", { cache: "no-store" });
+      if (response.ok) {
+        applySnapshot(await response.json());
+        scheduleRender();
+      }
+    } catch {
+      scheduleRender();
+    }
+  }
+
+  let fallbackTimer = null;
+  function connectEvents() {
+    const source = new EventSource("./events");
+    source.onopen = () => {
+      link.textContent = "live";
+      link.className = "";
+      if (fallbackTimer) { clearInterval(fallbackTimer); fallbackTimer = null; }
+    };
+    source.onmessage = (event) => {
+      try {
+        applyChange(JSON.parse(event.data));
+        scheduleRender();
+      } catch {}
+    };
+    source.onerror = () => {
+      link.textContent = "reconnecting";
+      link.className = "off";
+      if (!fallbackTimer) fallbackTimer = setInterval(loadState, 2000);
+    };
+  }
+
+  loadState();
+  connectEvents();
+</script>
+</body>
+</html>
