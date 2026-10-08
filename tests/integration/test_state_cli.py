@@ -49,9 +49,10 @@ def test_state_events_stream(sandbox):
     result = run_state(sandbox, f"32813={MANAGER_FIXTURE}", f"33993={BUILDER_FIXTURE}", "--events")
     assert result.returncode == 0, result.stderr
     lines = [json.loads(line) for line in result.stdout.splitlines()]
-    assert len(lines) == 23
+    assert len(lines) == 24
     assert all(line["event"] in ("session", "message") and "at" in line for line in lines)
-    assert lines[0]["watching"] == ["fake-session-builder"]
+    assert (lines[0]["event"], lines[0]["pid"], lines[0]["name"], lines[0]["at"]) == ("session", 32813, "fake-session-manager", None)
+    assert lines[1]["watching"] == ["fake-session-builder"]
     final_manager = [l for l in lines if l["event"] == "session" and l["pid"] == 32813][-1]
     assert final_manager["watching"] == []
 

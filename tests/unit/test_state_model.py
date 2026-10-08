@@ -346,7 +346,6 @@ def test_agent_name_rename_emits_once_and_updates_name_map(watcher):
     assert model.pid_by_name["new"] == 1
 
 
-@pytest.mark.xfail(strict=True, reason="first agent-name on a bare session is applied without a change event (V2 review note)")
 def test_first_agent_name_on_bare_session_emits_a_change(watcher):
     model = watcher.StateModel()
     changes = model.apply(1, {"type": "agent-name", "agentName": "a"})
