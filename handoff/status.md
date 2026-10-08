@@ -1,0 +1,10 @@
+# Status log
+
+- 2026-10-08T07:30Z manager (pid 73830) identified. validator (pid 74335) and viz-builder (pid 74170) reported ready; not replied, nothing assignable until D3 passes.
+- 2026-10-08T07:31Z assigned D3 to discovery-builder (pid 74018).
+- 2026-10-08T07:34Z user run instructions received: D3, then V0..V6 in order, one task per PASS, one commit per PASS; validator may propose the pytest layout to the manager; V4/V5 overnight acceptance is fixture replay through the watcher yielding /state and /events with every frame 1-9 field (status, inbox count, last line, watching, connector stage, idle notice); live visual check deferred to the user. Stop only on Blocked or after V6.
+- 2026-10-08T07:34Z note: instructions say fixtures are in tests/fixtures/, but no tests/ directory exists in the workspace and no *.jsonl under the repo. Not blocking D3. If viz-builder requests fixtures at V2, this will be logged under Blocked unless the captures can be produced from the 2026-10-08 transcripts.
+- 2026-10-08T07:36Z discovery-builder received D3 at 07:31:03Z, then its transcript shows "[Request interrupted by user]" at 07:31:40Z before any change; it went idle with ready.md untouched. Re-sent D3 once per the overnight instructions.
+- 2026-10-08T07:38Z D3 ready received from discovery-builder; handoff/discovery/ready.md updated. Validator pointed at it.
+- 2026-10-08T07:38Z requests for the user (manager does not edit these): (1) CLAUDE.md "What exists" still says protocol and record "are removed in D3"; they are removed now. (2) Mark D3 done in SPEC.md. (3) .claude/roles/discovery-builder.md says identified_at; older identity files use set_at, both are read.
+- 2026-10-08T07:41Z D3 review PASS (handoff/discovery/review.md). Validator created the pytest layout: tests/conftest.py, tests/unit/, tests/integration/, tests/fixtures/; 48 tests pass. Manager added __pycache__/, .hypothesis/, .pytest_cache/ to .gitignore. Review note for a later D task: identify --role "" is accepted as identified.

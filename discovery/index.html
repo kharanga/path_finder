@@ -75,7 +75,8 @@
 
   function render(data) {
     const sessions = (data && data.sessions) || [];
-    count.textContent = sessions.length ? `${sessions.length} sessions, ${(data.participants || []).length} participants` : "";
+    const identified = sessions.filter((s) => s.role).length;
+    count.textContent = sessions.length ? `${sessions.length} sessions, ${identified} identified` : "";
     updated.textContent = data && data.updated_at ? `updated ${data.updated_at}` : "";
     board.replaceChildren();
     if (!sessions.length) {
@@ -85,7 +86,6 @@
       board.append(empty);
       return;
     }
-    const fullMesh = sessions.length - 1;
     const byFolder = new Map();
     for (const s of sessions) {
       const key = folderOf(s.cwd);
@@ -101,13 +101,12 @@
       const capsules = document.createElement("div");
       capsules.className = "capsules";
       for (const s of list.sort((a, b) => a.pid - b.pid)) {
-        const heard = (s.heard_by || []).length;
         const capsule = document.createElement("div");
-        capsule.className = "capsule" + (heard < fullMesh ? " incomplete" : "");
-        capsule.title = `heard by ${heard} of ${fullMesh}`;
+        capsule.className = "capsule" + (s.role ? "" : " incomplete");
+        capsule.title = s.role ? `identified ${s.identified_at}` : "unidentified: this session has not run identify";
         const label = document.createElement("div");
         label.className = "label";
-        label.textContent = s.label || s.role || "(no role)";
+        label.textContent = s.label || s.role || "unidentified";
         const meta = document.createElement("div");
         meta.className = "meta";
         meta.textContent = `${s.name} · pid ${s.pid}`;

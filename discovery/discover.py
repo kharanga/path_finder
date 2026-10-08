@@ -4,14 +4,19 @@ import json
 import os
 import subprocess
 import sys
+import time
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 SESSIONS_DIR = Path.home() / ".claude" / "sessions"
 SCRIPT_PATH = Path(__file__).resolve()
 DISCOVERY_DIR = SCRIPT_PATH.parent
-DEFAULT_OUT = DISCOVERY_DIR / "sessions.json"
+DIRECTORY_PATH = DISCOVERY_DIR / "sessions.json"
 IDENTITY_DIR = DISCOVERY_DIR / "identity"
+UI_PORT = 4780
+UI_LOG = DISCOVERY_DIR / "ui.log"
+UI_PID = DISCOVERY_DIR / "ui.pid"
 
 
 def now_iso():
@@ -56,6 +61,10 @@ def find_claude_ancestor_pid(start_pid=None, max_depth=8):
     return None
 
 
+def socket_address(pid):
+    return f"uds:/tmp/cc-socks/{pid}.sock"
+
+
 def read_registry_entry(path):
     try:
         with open(path) as handle:
@@ -64,7 +73,13 @@ def read_registry_entry(path):
         return None
     if not isinstance(entry.get("pid"), int):
         return None
-    return {"name": entry.get("name"), "pid": entry["pid"], "cwd": entry.get("cwd")}
+    return {
+        "pid": entry["pid"],
+        "name": entry.get("name"),
+        "cwd": entry.get("cwd"),
+        "socket": socket_address(entry["pid"]),
+        "session_id": entry.get("sessionId"),
+    }
 
 
 def live_sessions():
@@ -91,14 +106,6 @@ def own_session():
     return read_registry_entry(SESSIONS_DIR / f"{pid}.json")
 
 
-def own_pid(args):
-    override = getattr(args, "as_pid", None)
-    if override is not None:
-        return override
-    me = own_session()
-    return me["pid"] if me else None
-
-
 def identity_path(pid):
     return IDENTITY_DIR / f"{pid}.json"
 
@@ -111,33 +118,66 @@ def read_identity(pid):
         return None
 
 
-def empty_directory():
-    return {"participants": [], "updated_at": None, "sessions": []}
+def write_identity(session, role):
+    identity = {**session, "role": role, "label": role, "identified_at": now_iso()}
+    IDENTITY_DIR.mkdir(parents=True, exist_ok=True)
+    with open(identity_path(session["pid"]), "w") as handle:
+        json.dump(identity, handle, indent=2)
+        handle.write("\n")
+    return identity
 
 
-def locked_directory(out_path):
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    lock_path = out_path.with_suffix(out_path.suffix + ".lock")
-    lock_handle = open(lock_path, "w")
+def drop_identities_of_dead_sessions(live_pids):
+    IDENTITY_DIR.mkdir(parents=True, exist_ok=True)
+    for path in IDENTITY_DIR.glob("*.json"):
+        if not path.stem.isdigit() or int(path.stem) not in live_pids:
+            path.unlink(missing_ok=True)
+
+
+def with_identity(session):
+    identity = read_identity(session["pid"]) or {}
+    return {
+        **session,
+        "role": identity.get("role"),
+        "label": identity.get("label"),
+        "identified_at": identity.get("identified_at") or identity.get("set_at"),
+    }
+
+
+def is_identified(entry):
+    return entry.get("role") is not None
+
+
+def directory_entries():
+    sessions = live_sessions()
+    drop_identities_of_dead_sessions({s["pid"] for s in sessions})
+    return [with_identity(s) for s in sessions]
+
+
+def lock_directory():
+    DIRECTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    lock_handle = open(DIRECTORY_PATH.with_suffix(".json.lock"), "w")
     fcntl.flock(lock_handle, fcntl.LOCK_EX)
     return lock_handle
 
 
-def read_directory(out_path):
-    try:
-        with open(out_path) as handle:
-            return json.load(handle)
-    except (OSError, ValueError):
-        return empty_directory()
-
-
-def write_directory(out_path, data):
-    data["updated_at"] = now_iso()
-    tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+def write_directory(entries):
+    data = {"updated_at": now_iso(), "sessions": entries}
+    tmp_path = DIRECTORY_PATH.with_suffix(".json.tmp")
     with open(tmp_path, "w") as handle:
         json.dump(data, handle, indent=2)
         handle.write("\n")
-    os.replace(tmp_path, out_path)
+    os.replace(tmp_path, DIRECTORY_PATH)
+
+
+def rebuild_directory():
+    lock = lock_directory()
+    try:
+        entries = directory_entries()
+        write_directory(entries)
+    finally:
+        lock.close()
+    return entries
 
 
 def command_identify(args):
@@ -145,11 +185,8 @@ def command_identify(args):
     if me is None:
         print("not running inside a Claude Code session", file=sys.stderr)
         return 1
-    identity = {**me, "role": args.role, "label": args.role, "set_at": now_iso()}
-    IDENTITY_DIR.mkdir(parents=True, exist_ok=True)
-    with open(identity_path(me["pid"]), "w") as handle:
-        json.dump(identity, handle, indent=2)
-        handle.write("\n")
+    identity = write_identity(me, args.role)
+    rebuild_directory()
     print(json.dumps(identity))
     return 0
 
@@ -161,82 +198,39 @@ def command_self(_args):
         return 1
     identity = read_identity(me["pid"])
     if identity is None:
-        print("identity not set: ask your human for role and label, then run identify", file=sys.stderr)
+        print("identity not set: ask your human for the role, then run identify", file=sys.stderr)
         return 2
     print(json.dumps({**me, "role": identity.get("role"), "label": identity.get("label")}))
     return 0
 
 
 def command_list(args):
-    my_pid = own_pid(args)
-    for session in live_sessions():
-        if not under_root(session["cwd"], args.root):
+    me = own_session()
+    my_pid = me["pid"] if me else None
+    for entry in rebuild_directory():
+        if not under_root(entry["cwd"], args.root):
             continue
-        row = dict(session)
-        if session["pid"] == my_pid:
+        row = {**entry, "identified": is_identified(entry)}
+        if entry["pid"] == my_pid:
             row["self"] = True
         print(json.dumps(row))
     return 0
 
 
-def command_record(args):
-    reporter = own_pid(args)
-    if reporter is None:
-        print("cannot determine own session pid, pass --as-pid PID", file=sys.stderr)
-        return 1
-    lock = locked_directory(args.out)
-    try:
-        data = read_directory(args.out)
-        existing = next((s for s in data["sessions"] if s["pid"] == args.pid), None) or {}
-        heard_by = sorted(set(existing.get("heard_by", [])) | {reporter})
-        entry = {
-            "name": args.name,
-            "pid": args.pid,
-            "cwd": args.path,
-            "role": args.role if args.role is not None else existing.get("role"),
-            "label": args.label if args.label is not None else (args.role if args.role is not None else existing.get("label")),
-            "replied_at": now_iso(),
-            "heard_by": heard_by,
-        }
-        data["sessions"] = [s for s in data["sessions"] if s["pid"] != args.pid] + [entry]
-        data["participants"] = sorted(set(data["participants"]) | {reporter})
-        write_directory(args.out, data)
-    finally:
-        lock.close()
-    print(json.dumps(entry))
-    return 0
-
-
 def command_done(args):
-    reporter = own_pid(args)
-    data = read_directory(args.out)
-    heard_by_me = {s["pid"] for s in data["sessions"] if reporter in s.get("heard_by", [])}
-    missing = [
-        s for s in live_sessions()
-        if s["pid"] != reporter and under_root(s["cwd"], args.root) and s["pid"] not in heard_by_me
+    unidentified = [
+        entry for entry in rebuild_directory()
+        if under_root(entry["cwd"], args.root) and not is_identified(entry)
     ]
-    print(json.dumps(data, indent=2))
-    if missing:
-        names = ", ".join(f"{s['name']} (pid {s['pid']})" for s in missing)
-        print(f"pid {reporter} is still missing replies from: {names}", file=sys.stderr)
+    if unidentified:
+        names = ", ".join(f"{e['name']} (pid {e['pid']})" for e in unidentified)
+        print(f"unidentified sessions: {names}", file=sys.stderr)
         return 1
+    print("every live session under the root has an identity")
     return 0
-
-
-ASK_TEXT = f"discovery: reply with the one-line output of python3 {SCRIPT_PATH} self"
-
-IDENTIFY_INSTRUCTION = "\n".join([
-    "Ask your human with AskUserQuestion, one question: \"What is this session's role?\"",
-    f"   Then run: python3 {SCRIPT_PATH} identify --role \"<role>\"",
-])
-
-UI_PORT = 4780
-UI_LOG = DISCOVERY_DIR / "ui.log"
-UI_PID = DISCOVERY_DIR / "ui.pid"
 
 
 def ui_is_up(port):
-    import urllib.request
     try:
         urllib.request.urlopen(f"http://127.0.0.1:{port}/sessions.json", timeout=1)
         return True
@@ -244,114 +238,65 @@ def ui_is_up(port):
         return False
 
 
+def stop_ui():
+    try:
+        pid = int(UI_PID.read_text().strip())
+        os.kill(pid, 15)
+        UI_PID.unlink()
+        print(f"stopped ui server pid {pid}")
+    except (OSError, ValueError):
+        print("no ui server pid file", file=sys.stderr)
+        return 1
+    return 0
+
+
+def start_ui(port):
+    with open(UI_LOG, "a") as log:
+        server = subprocess.Popen(
+            [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1", "--directory", str(DISCOVERY_DIR)],
+            stdout=log, stderr=log, start_new_session=True,
+        )
+    UI_PID.write_text(f"{server.pid}\n")
+    for _ in range(20):
+        if ui_is_up(port):
+            break
+        time.sleep(0.1)
+
+
 def command_ui(args):
-    url = f"http://127.0.0.1:{args.port}/"
     if args.stop:
-        try:
-            pid = int(UI_PID.read_text().strip())
-            os.kill(pid, 15)
-            UI_PID.unlink()
-            print(f"stopped ui server pid {pid}")
-        except (OSError, ValueError):
-            print("no ui server pid file", file=sys.stderr)
-            return 1
-        return 0
+        return stop_ui()
+    rebuild_directory()
     if not ui_is_up(args.port):
-        with open(UI_LOG, "a") as log:
-            server = subprocess.Popen(
-                [sys.executable, "-m", "http.server", str(args.port), "--bind", "127.0.0.1", "--directory", str(DISCOVERY_DIR)],
-                stdout=log, stderr=log, start_new_session=True,
-            )
-        UI_PID.write_text(f"{server.pid}\n")
-        import time
-        for _ in range(20):
-            if ui_is_up(args.port):
-                break
-            time.sleep(0.1)
+        start_ui(args.port)
+    url = f"http://127.0.0.1:{args.port}/"
     subprocess.run(["open", url], check=False)
     print(url)
     return 0
 
 
-def start_text(root, report_to):
-    root_flag = f" --root {root}" if root else ""
-    return "\n".join([
-        f"discovery: start{root_flag}",
-        "You are one node in a discovery mesh. Do exactly this, then stop.",
-        f"0. {IDENTIFY_INSTRUCTION}",
-        "   Do this first, before step 1 and before answering any ask.",
-        f"1. Run: python3 {SCRIPT_PATH} list{root_flag}",
-        "   One JSON line per live session; the line with \"self\": true is you.",
-        "2. For every other line, send that session (by its name) this exact message with SendMessage:",
-        f"   {ASK_TEXT}",
-        "3. Each reply is one JSON line with name, pid, cwd, role, label. For each reply run:",
-        f"   python3 {SCRIPT_PATH} record --name <name> --pid <pid> --path <cwd> --role \"<role>\" --label \"<label>\"",
-        f"4. Run: python3 {SCRIPT_PATH} done{root_flag}",
-        "   Exit 0 means you heard from everyone. Exit 1 names who is missing: ask each of them once more, record, run done again.",
-        f"5. Message {report_to} with one line: discovery done, exit <code>, heard from <n> sessions.",
-        f"   The initiator ({report_to}) also runs: python3 {SCRIPT_PATH} ui   to open the capsule page.",
-        "While doing this, if you receive a message starting with \"discovery: reply with\", run",
-        f"   python3 {SCRIPT_PATH} self",
-        "and send its one output line back to that sender. If self exits 2, do step 0 first, then run self again and reply.",
-        "Answer every such request, even after your own round is done.",
-        "Do not edit files other than what the script writes. Do not run git.",
-    ])
-
-
-def command_protocol(args):
-    me = own_session()
-    report_to = args.report_to or (me["name"] if me else "the manager")
-    print("=== ask ===")
-    print(ASK_TEXT)
-    print("=== start ===")
-    print(start_text(args.root, report_to))
-    return 0
-
-
-def add_as_pid(parser):
-    parser.add_argument("--as-pid", dest="as_pid", type=int, help="override own session pid, for local tests")
-
-
 def build_parser():
-    parser = argparse.ArgumentParser(description="Discovery helper: who is running, who they are, and what they replied")
+    parser = argparse.ArgumentParser(description="Discovery helper: which sessions are live and what role each one has")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    identify_parser = sub.add_parser("identify")
+    identify_parser = sub.add_parser("identify", help="store this session's role; run first, when the session starts")
     identify_parser.add_argument("--role", required=True)
     identify_parser.set_defaults(func=command_identify)
 
-    sub.add_parser("self").set_defaults(func=command_self)
+    sub.add_parser("self", help="print this session's name, pid, path, role, and label").set_defaults(func=command_self)
 
-    list_parser = sub.add_parser("list")
-    list_parser.add_argument("--root", help="keep only sessions whose cwd is under this path")
-    add_as_pid(list_parser)
+    list_parser = sub.add_parser("list", help="rebuild sessions.json and print live sessions with roles")
+    list_parser.add_argument("--root", help="print only sessions whose cwd is under this path")
     list_parser.set_defaults(func=command_list)
 
-    record_parser = sub.add_parser("record")
-    record_parser.add_argument("--name", required=True)
-    record_parser.add_argument("--pid", required=True, type=int)
-    record_parser.add_argument("--path", required=True)
-    record_parser.add_argument("--role")
-    record_parser.add_argument("--label")
-    record_parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    add_as_pid(record_parser)
-    record_parser.set_defaults(func=command_record)
-
-    done_parser = sub.add_parser("done")
-    done_parser.add_argument("--root", help="only require replies from sessions under this path")
-    done_parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
-    add_as_pid(done_parser)
+    done_parser = sub.add_parser("done", help="exit 0 when every live session under the root has an identity")
+    done_parser.add_argument("--root", help="only require identities from sessions under this path")
     done_parser.set_defaults(func=command_done)
 
-    ui_parser = sub.add_parser("ui")
+    ui_parser = sub.add_parser("ui", help="serve the capsule page")
     ui_parser.add_argument("--port", type=int, default=UI_PORT)
     ui_parser.add_argument("--stop", action="store_true")
     ui_parser.set_defaults(func=command_ui)
-
-    protocol_parser = sub.add_parser("protocol")
-    protocol_parser.add_argument("--root")
-    protocol_parser.add_argument("--report-to", help="session name that collects results, defaults to the caller")
-    protocol_parser.set_defaults(func=command_protocol)
 
     return parser
 
