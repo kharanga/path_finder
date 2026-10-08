@@ -673,6 +673,48 @@ def command_serve(args):
     return 0
 
 
+def entries_in_time_order(fixtures):
+    timed = []
+    for pid, path in fixtures:
+        last_timestamp = ""
+        for index, line in enumerate(open(path, "rb").read().split(b"\n")):
+            if not line.strip():
+                continue
+            try:
+                timestamp = json.loads(line).get("timestamp") or last_timestamp
+            except (ValueError, AttributeError):
+                timestamp = last_timestamp
+            last_timestamp = timestamp
+            timed.append((timestamp, index, pid, line))
+    timed.sort(key=lambda item: (item[0], item[2], item[1]))
+    return timed
+
+
+def command_replay(args):
+    outputs = {}
+    for pid, _path in args.fixture:
+        target = Path(args.out_dir) / f"{pid}.jsonl"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"")
+        outputs[pid] = target
+    print(" ".join(f"{pid}={path}" for pid, path in outputs.items()), flush=True)
+    previous_timestamp = None
+    for timestamp, _index, pid, line in entries_in_time_order(args.fixture):
+        if args.until and timestamp and timestamp > args.until:
+            break
+        if previous_timestamp and timestamp and args.speed > 0:
+            gap_s = (parse_timestamp(timestamp) - parse_timestamp(previous_timestamp)).total_seconds()
+            time.sleep(max(0.0, min(gap_s / args.speed, args.max_gap)))
+        with open(outputs[pid], "ab") as handle:
+            handle.write(line + b"\n")
+        previous_timestamp = timestamp or previous_timestamp
+    return 0
+
+
+def parse_timestamp(text):
+    return datetime.strptime(text, "%Y-%m-%dT%H:%M:%S.%fZ").replace(tzinfo=timezone.utc)
+
+
 def parse_fixture_argument(text):
     pid_text, _, path = text.partition("=")
     if not pid_text.isdigit() or not path:
@@ -832,6 +874,13 @@ def build_parser():
     serve_parser.add_argument("--fixture", action="append", type=parse_fixture_argument, metavar="PID=PATH", help="tail this file for this PID instead of the registry; repeatable")
     serve_parser.add_argument("--verbose", action="store_true", help="log every request")
     serve_parser.set_defaults(func=command_serve)
+    replay_parser = sub.add_parser("replay", help="write fixture lines into fresh files in timestamp order, for serve --fixture to tail")
+    replay_parser.add_argument("--fixture", action="append", required=True, type=parse_fixture_argument, metavar="PID=PATH")
+    replay_parser.add_argument("--out-dir", required=True, help="folder for the replayed <pid>.jsonl files")
+    replay_parser.add_argument("--speed", type=float, default=1.0, help="time scale; 0 writes everything at once")
+    replay_parser.add_argument("--max-gap", type=float, default=2.0, help="longest pause between lines in seconds")
+    replay_parser.add_argument("--until", help="stop before the first line whose timestamp is after this ISO time, to freeze a frame")
+    replay_parser.set_defaults(func=command_replay)
     return parser
 
 

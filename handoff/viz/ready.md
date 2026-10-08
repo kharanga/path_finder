@@ -1,57 +1,56 @@
-# Ready: V3 2026-10-08
+# Ready: V4 2026-10-08
 
 ## Done
 
-`viz/watcher.py` gains `Watcher`, `EventBroadcaster`, `VizRequestHandler`, and a `serve` command.
+- `viz/index.html`: the D2 capsule page extended per plan §6. Each capsule shows the label (role fallback, then name), a status pill (Working in green, Idle in grey; the capsule border turns green while working), an inbox badge at the top right when `inbox` > 0, a last-message line (`last_text`, one line, truncated at 90 characters with the full text as a tooltip), and a watching line ("👁 watching <label>" for every PID in `watching`, resolved to that session's label; a bare name shows as is). Unidentified sessions keep the dashed amber border. Capsules are grouped by folder as in D2, each carries `id="session-<pid>"` and `data-pid` for V5's connectors, and `main` is positioned for an SVG overlay.
+- Data flow: `GET ./state` on load, then `EventSource("./events")`; the first frame is the snapshot, later frames are applied as deltas (`session`, `session_removed`, `message`; a message whose `pending_key` differs from its `key` replaces the pending row). The header shows session, identified, and working counts, the last change time, and "live" or "reconnecting"; while reconnecting the page polls `/state` every 2 s. Renders are coalesced to one per animation frame.
+- `discovery/index.html` is left in place: the 4780 server the user told us not to stop serves it, and the watcher serves `viz/` first, so the viz page wins on any port the watcher owns. Delete the discovery copy at the port handover (Requests).
+- `watcher.py replay --fixture PID=PATH ... --out-dir DIR [--speed N] [--max-gap S] [--until ISO]`: writes the fixtures' lines into fresh `DIR/<pid>.jsonl` files in timestamp order, pausing by the real gaps divided by `--speed` (0 writes everything at once, `--max-gap` caps a pause), stopping before the first line after `--until`. With `serve --fixture` tailing those files, this drives the page through the round trip without live sessions and can freeze it at any frame.
 
-- `serve [--port 4780] [--root PATH] [--fixture PID=PATH ...] [--verbose]` binds `127.0.0.1:<port>` with `ThreadingHTTPServer` and runs the poll loop in a daemon thread every 250 ms. Each poll re-reads the registry and `discovery/identity/`, registers new live sessions under the root (resolving their transcript once, then tailing it from byte 0 so the state is rebuilt from history), drops sessions whose PID is gone with a `session_removed` event, and feeds every new transcript line through `StateModel`.
-- `GET /state`: the full snapshot, `{"generated_at", "sessions", "messages"}`, `application/json`, no-store.
-- `GET /events`: `text/event-stream`. The first frame is `{"event": "snapshot", ...}` with the same content as `/state`, so a page can connect without a separate fetch; every later frame is one change line as V2 emits it (`session`, `message`, or `session_removed`), `data: <json>` followed by a blank line. A `: keepalive` comment goes out after 15 s of silence. Each subscriber has its own queue; a dropped connection unsubscribes.
-- Every other path is served statically, `viz/` first, then `discovery/`. With nothing in `viz/` yet, `/` is the D2 page and `/sessions.json` the D2 directory, so `discover.py ui`'s health check (`ui_is_up` fetches `/sessions.json`) reports the watcher as up and does not spawn a second server. This is how the port 4780 server is reused: the watcher serves the same files plus the two endpoints.
-- `--fixture PID=PATH` tails the given files instead of the registry, for offline tests; a listed PID that is live in the registry still gets its name and label from it.
-- `--port` other than 4780 is for tests. Bind failure prints the error and exits 1.
-- V2 review note 1 fixed: the first `agent-name` on a bare session now emits a change (`name_changed` is computed before `learn_name` fills the name).
-
-Files: `viz/watcher.py`. Nothing else touched.
+Files: `viz/index.html` (new), `viz/watcher.py`. Nothing else touched.
 
 ## How to test
 
-Registry mode (the two fake sessions are live). Port 4780 is held by the D2 `http.server` process (pid in `discovery/ui.pid`), which this session did not start, so use another port:
+Overnight acceptance (no live sessions, spare port):
 
 ```
-python3 viz/watcher.py serve --port 4799 --root fake_session &
-sleep 1
-curl -s http://127.0.0.1:4799/state | python3 -c "import sys,json; s=json.load(sys.stdin); print([(x['pid'], x['label'], x['status']) for x in s['sessions']], len(s['messages']))"
-curl -s -o /dev/null -w '%{http_code} %{content_type}\n' http://127.0.0.1:4799/sessions.json
-kill %1
+R=$(mktemp -d); : > $R/32813.jsonl; : > $R/33993.jsonl
+python3 viz/watcher.py serve --port 4797 --fixture 32813=$R/32813.jsonl --fixture 33993=$R/33993.jsonl &
+sleep 1; curl -s -N http://127.0.0.1:4797/events > $R/events.txt &
+python3 viz/watcher.py replay --fixture 32813=tests/fixtures/viz/round_trip_manager_32813_33993.jsonl --fixture 33993=tests/fixtures/viz/round_trip_builder_32813_33993.jsonl --out-dir $R --speed 10 --max-gap 0.5
+sleep 1; kill %1 %2
+python3 -c "
+import json,sys
+fr=[json.loads(f[5:]) for f in open('$R/events.txt').read().split('\n\n') if f.startswith('data:')]
+ss=[f for f in fr if f['event']=='session']
+need=('pid','label','role','name','cwd','status','inbox','last_text','watching')
+print(len(fr), 'frames;', all(all(k in f for k in need) for f in ss), 'all fields;', sorted({f['status'] for f in ss}), sorted({f['inbox'] for f in ss}), sum(bool(f['watching']) for f in ss), 'watching frames')"
 ```
 
-Expected: `[(32813, 'fake manager', 'IDLE'), (33993, 'fake builder', 'IDLE')] 73` (message count grows if the fake sessions talk again; stages are READ plus IN_INBOX for sends to sessions outside the root), then `200 application/json`.
+Expected: `25 frames; True all fields; ['IDLE', 'WORKING'] [0, 1] 8 watching frames`. Sampling `/state` during the replay shows the frames in order: (1) both IDLE, inbox 0, no last line; (2) 32813 WORKING, last line "second hello to fake-session-builder", watching [33993]; (3) 33993 inbox 1; (4) 33993 WORKING, last line "Hi again from fake-session-manager…", inbox 0; then 32813 reads the reply, the idle notice clears its watching, both end IDLE.
 
-Fixture mode, change within 1 s of an append (copies so the committed fixtures stay untouched):
+Freeze frame 3 and look at the page (any browser, or headless Chrome):
 
 ```
-T=$(mktemp -d); cp tests/fixtures/viz/round_trip_manager_32813_33993.jsonl $T/m.jsonl; cp tests/fixtures/viz/round_trip_builder_32813_33993.jsonl $T/b.jsonl
-python3 viz/watcher.py serve --port 4798 --fixture 32813=$T/m.jsonl --fixture 33993=$T/b.jsonl &
-sleep 1
-curl -s -N http://127.0.0.1:4798/events > $T/events.txt &
-sleep 0.5; date +%s.%N
-echo '{"type":"assistant","timestamp":"2026-10-08T05:00:01.000Z","message":{"content":[{"type":"text","text":"hi"}]}}' >> $T/b.jsonl
-sleep 1; date +%s.%N; grep -c '^data:' $T/events.txt; grep -o '"status": "WORKING"' $T/events.txt | head -1
-kill %1 %2
+R=$(mktemp -d); : > $R/32813.jsonl; : > $R/33993.jsonl
+python3 viz/watcher.py serve --port 4797 --fixture 32813=$R/32813.jsonl --fixture 33993=$R/33993.jsonl &
+sleep 1; python3 viz/watcher.py replay --fixture 32813=tests/fixtures/viz/round_trip_manager_32813_33993.jsonl --fixture 33993=tests/fixtures/viz/round_trip_builder_32813_33993.jsonl --out-dir $R --speed 0 --until 2026-10-08T04:31:11.000Z
+open http://127.0.0.1:4797/
 ```
 
-Expected: two `data:` frames (the snapshot, then the 33993 session change with `"status": "WORKING"`). Measured here: 56 ms from append to frame. Any `turn_duration` line appended afterwards yields an IDLE frame the same way.
+Expected on the page: "fake manager" with a green WORKING pill, last line "second hello to fake-session-builder", "👁 watching fake builder"; "fake builder" IDLE with a pink badge "1" and no last line; header "2 sessions, 2 identified, 1 working … live". Verified here with headless Chrome (`--headless=new --timeout=4000 --screenshot`; the Claude in Chrome extension was not connected). Replaying without `--until` ends with both IDLE, badge gone, watching gone, last lines "Hi again from fake-session-builder…" and "Second hi back to fake-session-manager".
 
-Full suite after the test updates under Requests: `python3 -m pytest tests`.
+Suite: `python3 -m pytest tests` → 164 passed in 5.77s.
+
+Morning live check (deferred by the user): stop the D2 server, run `python3 viz/watcher.py serve --root fake_session` on 4780, open the page, send one message with `notify_when_idle` between the fake sessions, compare with frames 1 to 4.
 
 ## Requests
 
-- `tests/unit/test_state_model.py`: remove the strict xfail marker on `test_first_agent_name_on_bare_session_emits_a_change`; it passes now.
-- `tests/integration/test_state_cli.py::test_state_events_stream`: the stream is 24 lines, not 23; the new first line is the bare manager session's `agent-name` change with `at` null, so the `watching == ["fake-session-builder"]` check belongs on `lines[1]`. The builder gets no such line because its name is learned from the manager's delivery entries before its own file is fed.
-- For the manager, before V4 goes live on 4780: stop the D2 server (`python3 discovery/discover.py ui --stop`, which kills the pid in `discovery/ui.pid`) and start `python3 viz/watcher.py serve` in its place. Ask the discovery-builder to make `discover.py ui` start the watcher instead of `http.server`, or to leave `ui` alone and document that the watcher owns the port. Either way the health check keeps working.
-- V6 note: `viz/events.jsonl` is not written yet; the broadcaster is the single point where every change passes, so V6 appends there.
+- Port handover (manager): `python3 discovery/discover.py ui --stop`, then `python3 viz/watcher.py serve` on 4780, then delete `discovery/index.html` (viz-builder can do the delete once told; the role allows touching `discovery/` only for this move). Until then both copies exist and the watcher prefers `viz/`.
+- Discovery-builder: `discover.py ui` should start `viz/watcher.py serve` instead of `http.server`, or be retired. Its health check keeps working either way.
+- Validator: `replay` is new and untested on your side; `entries_in_time_order` carries untimestamped lines (`agent-name`) at the timestamp of the previous line in the same file.
+- Plan §6 and SPEC name nine UI flow frames; no such document exists in the repo. The frames used here are derived from §6 and the round-trip timeline and are listed above under expected output. If the user has the frames, add them to `docs/`.
 
 ## Blocked
 
-Nothing.
+Nothing. The Claude in Chrome extension is not connected tonight, so the visual check used headless Chrome instead.
