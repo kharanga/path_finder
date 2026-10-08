@@ -206,12 +206,12 @@ def test_command_map_json_output(watcher, monkeypatch, capsys):
     assert set(rows[0]) == {"pid", "name", "cwd", "socket", "session_id", "started_at_ms", "role", "label", "transcript", "method"}
 
 
-def test_command_map_empty_exit_code_differs_between_text_and_json(watcher, capsys):
+def test_command_map_empty_exits_1_in_text_and_json_modes(watcher, capsys):
     text_args = watcher.build_parser().parse_args(["map", "--root", "/nowhere"])
     json_args = watcher.build_parser().parse_args(["map", "--root", "/nowhere", "--json"])
     assert watcher.command_map(text_args) == 1
-    assert watcher.command_map(json_args) == 0
-    capsys.readouterr()
+    assert watcher.command_map(json_args) == 1
+    assert json.loads(capsys.readouterr().out.strip().splitlines()[-1]) == []
 
 
 def test_parser_rejects_unknown_command(watcher):

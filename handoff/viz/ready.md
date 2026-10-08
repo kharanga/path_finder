@@ -1,48 +1,71 @@
-# Ready: V0 2026-10-08
+# Ready: V1 2026-10-08
 
 ## Done
 
-`viz/watcher.py map` maps each live session's PID to its session id and transcript path.
+`viz/watcher.py` gains `TranscriptTailer` and a `tail` command.
 
-Method, in the order the plan lists them:
+- `TranscriptTailer(path, start_at_end=False)`: keeps a byte offset and a partial-line buffer per file. `poll()` reads only the new bytes, splits on newline, buffers the trailing fragment, parses each complete line, and returns the kept entries as dicts. A file that shrinks below the stored offset is treated as rewritten: offset and buffer reset to zero.
+- Filter, in order: a type outside `KEPT_ENTRY_TYPES` is recorded once in `unknown_types` and dropped; `isSidechain` dropped; `isMeta` dropped unless `turnOrigin` is `peer` or `system`; `attachment` kept only for `queued_command` and the four `hook_*` kinds. Malformed JSON is counted in `malformed_lines` and dropped. Nothing raises.
+- Kept types: `assistant`, `user`, `system`, `queue-operation`, `attachment`, `agent-name`, `custom-title`, `ai-title`, `permission-mode`, `mode`, `last-prompt`, `summary`. These are everything the V2 state model and the capsule labels read.
+- `tail <transcript> [--follow] [--from-end] [--stats]`: prints one JSON line per kept entry. `--follow` polls every 250 ms. `--stats` prints offset, buffered bytes, unknown types, malformed and skipped counts to stderr at exit.
+- `map` exit code aligned: text and JSON modes both exit 1 when no session matches the root or one is unmapped. This changes the behaviour pinned by `test_command_map_empty_exit_code_differs_between_text_and_json`; that test now fails by design and needs its JSON assertion changed to 1.
 
-1. The registry file `~/.claude/sessions/<pid>.json` holds `sessionId` (also `cwd`, `startedAt`, `messagingSocketPath`, `name`). The transcript is `~/.claude/projects/*/<sessionId>.jsonl`, found by globbing on the session id rather than by re-encoding `cwd`, because the folder encoding is lossy (every non-alphanumeric character becomes `-`). When the same id shows up under more than one folder, the file under the encoded `cwd` wins.
-2. Fallback when `sessionId` is absent: the encoded `cwd` folder is scanned for transcripts modified since `startedAt`. One candidate is used; zero or several are reported as ambiguous with no path.
-3. `origin.verifiedPeerPid` was not needed: every registry file on this machine (Claude Code 2.1.292 and 2.1.293) carries `sessionId`.
-
-Files: `viz/watcher.py` (new). Nothing else touched.
-
-Run: `python3 viz/watcher.py map [--root PATH] [--json]`. Output is one line per live session: pid, session id, transcript path, label (name when no identity), method. Exit 1 when any live session could not be mapped.
+Files: `viz/watcher.py`. Nothing else touched.
 
 ## How to test
 
-```
-python3 viz/watcher.py map --root fake_session
-```
-
-Expected (two lines, both method `registry sessionId`):
+Real transcript, whole file:
 
 ```
-32813	ab5e0a7a-abdf-48ae-b34a-85aebcb80f95	/Users/<home>/.claude/projects/-Users-khangnguyen-Documents-path-finder-fake-session/ab5e0a7a-abdf-48ae-b34a-85aebcb80f95.jsonl	fake manager	registry sessionId
-33993	67139bc5-30c6-43e1-aa4c-71415790bb63	/Users/<home>/.claude/projects/-Users-khangnguyen-Documents-path-finder-fake-session/67139bc5-30c6-43e1-aa4c-71415790bb63.jsonl	fake builder	registry sessionId
+python3 viz/watcher.py tail ~/.claude/projects/-Users-khangnguyen-Documents-path-finder-fake-session/ab5e0a7a-abdf-48ae-b34a-85aebcb80f95.jsonl --stats | wc -l
 ```
 
-Cross-checks:
+Expected: 440 lines on stdout; stderr `{"offset": 910321, "buffered_bytes": 0, "unknown_types": ["atis-latch", "file-history-snapshot"], "malformed_lines": 0, "skipped_entries": 110}` (offset grows if the fake session runs again).
 
-- `grep -o '"sessionId":"[^"]*"' <transcript> | sort -u` prints exactly the mapped id for each file.
-- `python3 viz/watcher.py map` with no root lists every live session on the machine (ten at the time of writing) with exit 0.
-- `python3 viz/watcher.py map --json` returns the same rows as a JSON array, including `role`, `label`, `socket`, and `cwd`.
-
-Fallback check without editing anything: the two fake sessions share a folder, so a registry entry with no `sessionId` resolves to `cwd folder, ambiguous (2 candidates)`:
+Fixture, appended line by line (run from the repo root; uses a temp file):
 
 ```
-python3 -c "import sys; sys.path.insert(0,'viz'); import watcher; print(watcher.resolve_transcript({'pid':32813,'name':'x','cwd':'/Users/khangnguyen/Documents/path_finder/fake_session','socket':'','session_id':None,'started_at_ms':1791349700855}))"
+python3 - <<'PY'
+import sys, json, tempfile, os
+sys.path.insert(0, "viz")
+import watcher
+path = os.path.join(tempfile.mkdtemp(), "t.jsonl")
+open(path, "w").close()
+t = watcher.TranscriptTailer(path)
+def add(s): open(path, "a").write(s)
+def show(label):
+    got = t.poll()
+    print(label, [e["type"] for e in got], "buffered", len(t.partial_line), "unknown", sorted(t.unknown_types), "malformed", t.malformed_lines, "skipped", t.skipped_entries)
+add(json.dumps({"type": "agent-name", "agentName": "a"}) + "\n"); show("complete")
+half = json.dumps({"type": "assistant", "message": {}}); add(half[:20]); show("partial")
+add(half[20:] + "\n"); show("completed")
+add(json.dumps({"type": "marble-origami-commit"}) + "\n"); show("unknown")
+add("{broken\n"); show("malformed")
+add(json.dumps({"type": "user", "isMeta": True, "turnOrigin": "peer"}) + "\n" + json.dumps({"type": "user", "isMeta": True}) + "\n"); show("meta rule")
+open(path, "w").write(json.dumps({"type": "system", "subtype": "turn_duration"}) + "\n"); show("rewritten")
+PY
 ```
+
+Expected:
+
+```
+complete ['agent-name'] buffered 0 unknown [] malformed 0 skipped 0
+partial [] buffered 20 unknown [] malformed 0 skipped 0
+completed ['assistant'] buffered 0 unknown [] malformed 0 skipped 0
+unknown [] buffered 0 unknown ['marble-origami-commit'] malformed 0 skipped 0
+malformed [] buffered 0 unknown ['marble-origami-commit'] malformed 1 skipped 0
+meta rule ['user'] buffered 0 unknown ['marble-origami-commit'] malformed 1 skipped 1
+rewritten ['system'] buffered 0 unknown ['marble-origami-commit'] malformed 1 skipped 1
+```
+
+Live follow: `python3 viz/watcher.py tail <transcript> --follow --from-end` in one terminal, then send any message to that session; the enqueue and peer `user` entries print within a poll.
 
 ## Requests
 
-- `docs/cross-session-message-format.md` §6: record the V0 method. Suggested text: "PID to session id: `~/.claude/sessions/<pid>.json` carries `sessionId`; the transcript is `~/.claude/projects/*/<sessionId>.jsonl`, located by globbing on the id. Fallback when the field is missing: the encoded `cwd` folder, single transcript modified since `startedAt`; otherwise ambiguous. `origin.verifiedPeerPid` is not needed for the map." The same section currently says to key nodes by `sessionId` and recommends a `SessionStart` hook; both contradict SPEC.md (keyed by PID, no hooks) and should be marked superseded.
-- `docs/jsonl-transcript-spec.md` line 12 says only `/` becomes `-` in the folder name. Observed: every non-alphanumeric character becomes `-` (`path_finder` is `path-finder`; `/private/tmp/claude-501/-Users-...` is `-private-tmp-claude-501--Users-...`). The doc's advice not to reverse the encoding still holds.
+- `tests/unit/test_watcher.py`: change the JSON assertion in `test_command_map_empty_exit_code_differs_between_text_and_json` to `== 1` (validator note 3 from the V0 review, now aligned).
+- `docs/cross-session-message-format.md` §3.1: `queue-operation` has a third `operation` value, `remove`, seen 22 times across the two fake transcripts (54 enqueue, 32 dequeue, 22 remove). It is not handled yet; V2 will treat it as inbox minus one unless the manager says otherwise.
+- `docs/jsonl-transcript-spec.md` §2 item 7 still says to skip every `isMeta` entry; the message-format doc already overrides it, but a one-line pointer there would stop the next reader from following the wrong rule.
+- For the user: both fake transcripts hold 82 `hook_non_blocking_error` attachments from a plugin hook (`${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh … webhook/hook`, on `UserPromptSubmit`, `PostToolUse:SendMessage`, and `Stop`). CLAUDE.md says a leftover hook error means the plugin is still installed and that agents must not fix it. Only noting it.
 
 ## Blocked
 
