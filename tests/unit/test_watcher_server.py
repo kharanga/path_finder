@@ -58,9 +58,12 @@ def test_fixture_watcher_first_poll_registers_sessions_and_replays_history(watch
     assert [e["event"] for e in events[:2]] == ["session", "session"]
     assert {e["pid"] for e in events[:2]} == {32813, 33993}
     assert events[0]["transcript"] == str(manager)
-    assert len(events) == 2 + 24
+    assert len(events) == 2 + 26
     snapshot = w.snapshot()
-    assert set(snapshot) == {"generated_at", "sessions", "messages"}
+    assert set(snapshot) == {"generated_at", "sessions", "messages", "sources"}
+    assert [(e["source"], e["source_pid"]) for e in events[:2]] == [("registry", 32813), ("registry", 33993)]
+    assert all(e["source"] and e["source_pid"] in (32813, 33993) for e in events[2:])
+    assert [s["pid"] for s in snapshot["sources"]] == [32813, 33993]
     assert [(m["kind"], m["stage"]) for m in snapshot["messages"]] == [("message", "READ"), ("message", "READ"), ("idle_notice", "READ")]
     assert w.poll_once() is None
     assert drain(subscriber) == []
@@ -203,14 +206,14 @@ def test_log_matches_the_stream_for_the_fixture_round_trip(watcher, tmp_path):
     streamed = drain(subscriber)
     logged = [json.loads(l) for l in log_path.read_text().splitlines()]
     assert logged == streamed
-    assert len(logged) == 2 + 24
+    assert len(logged) == 2 + 26
     w.poll_once()
-    assert len(log_path.read_text().splitlines()) == 26
+    assert len(log_path.read_text().splitlines()) == 28
     w.close()
     w2 = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))], log_path=str(log_path))
     w2.poll_once()
     w2.close()
-    assert len(log_path.read_text().splitlines()) == 52
+    assert len(log_path.read_text().splitlines()) == 56
 
 
 def test_serve_parser_log_defaults(watcher):
@@ -219,3 +222,88 @@ def test_serve_parser_log_defaults(watcher):
     assert watcher.EVENT_LOG_PATH == watcher.VIZ_DIR / "events.jsonl"
     args = watcher.build_parser().parse_args(["serve", "--no-log", "--log", "/x.jsonl"])
     assert (args.log, args.no_log) == ("/x.jsonl", True)
+
+
+def truncate_fixture(source, target, until):
+    kept = []
+    for line in source.read_text().splitlines():
+        timestamp = json.loads(line).get("timestamp")
+        if timestamp and timestamp > until:
+            break
+        kept.append(line)
+    target.write_text("\n".join(kept) + "\n")
+
+
+def test_first_poll_newest_source_is_the_newest_transcript_entry_across_files(watcher, tmp_path):
+    manager, builder = tmp_path / "m.jsonl", tmp_path / "b.jsonl"
+    truncate_fixture(MANAGER_FIXTURE, manager, "2026-10-08T04:31:17.600Z")
+    truncate_fixture(BUILDER_FIXTURE, builder, "2026-10-08T04:31:17.600Z")
+    w = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))])
+    w.poll_once()
+    sources = {s["pid"]: s for s in w.snapshot()["sources"]}
+    assert (sources[32813]["source"], sources[32813]["at"]) == ("queue-operation · enqueue", "2026-10-08T04:31:17.590Z")
+    assert (sources[33993]["source"], sources[33993]["at"]) == ("assistant → tool_use SendMessage", "2026-10-08T04:31:16.750Z")
+    assert sources[32813]["seq"] > sources[33993]["seq"]
+
+
+def test_registry_watcher_session_removed_carries_source_and_drops_its_source_row(watcher, monkeypatch):
+    alive = {100, 101}
+    monkeypatch.setattr(watcher, "pid_is_alive", lambda pid: pid in alive)
+    cwd = "/home/user/path_finder"
+    folder = watcher.PROJECTS_DIR / watcher.encoded_cwd(cwd)
+    folder.mkdir()
+    for pid in (100, 101):
+        (watcher.SESSIONS_DIR / f"{pid}.json").write_text(json.dumps({"pid": pid, "name": f"s{pid}", "cwd": cwd, "sessionId": f"sid-{pid}"}))
+        (folder / f"sid-{pid}.jsonl").write_text("")
+    w = watcher.Watcher(root=cwd)
+    subscriber = w.broadcaster.subscribe()
+    w.poll_once()
+    first = drain(subscriber)
+    assert [(e["event"], e["source"], e["source_pid"]) for e in first] == [("session", "registry", 100), ("session", "registry", 101)]
+    assert [(s["pid"], s["source"], s["seq"]) for s in w.snapshot()["sources"]] == [(100, "registry", 1), (101, "registry", 2)]
+    alive.discard(101)
+    w.poll_once()
+    removed = drain(subscriber)
+    assert [(e["event"], e["pid"], e["source"], e["source_pid"]) for e in removed] == [("session_removed", 101, "registry", 101)]
+    assert [s["pid"] for s in w.snapshot()["sources"]] == [100]
+
+
+def test_first_poll_applies_both_files_in_timestamp_order(watcher, tmp_path):
+    manager, builder = copy_fixtures(tmp_path)
+    w = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))])
+    subscriber = w.broadcaster.subscribe()
+    w.poll_once()
+    streamed = [(e["event"], e["source_pid"], e["source"], e["at"]) for e in drain(subscriber)[2:] if e["source"] != "agent-name"]
+    model = watcher.StateModel()
+    model.register_session({"pid": 32813, "name": "fake-session-manager"})
+    model.register_session({"pid": 33993, "name": "fake-session-builder"})
+    tailer = watcher.TranscriptTailer(str(manager))
+    expected = []
+    for _timestamp, _index, pid, line in watcher.entries_in_time_order([(32813, str(manager)), (33993, str(builder))]):
+        entry = tailer.parse_line(line)
+        if entry is not None:
+            expected += [(c["event"], c["source_pid"], c["source"], c["at"]) for c in model.apply(pid, entry) if c["source"] != "agent-name"]
+    assert streamed == expected
+    assert [at for _e, _p, _s, at in streamed] == sorted(at for _e, _p, _s, at in streamed)
+    assert [s["source"] for s in w.snapshot()["sources"]] == ["system · turn_duration", "system · turn_duration"]
+
+
+def write_lines(path, entries):
+    path.write_text("".join(json.dumps(entry) + "\n" for entry in entries))
+
+
+def test_timestamp_less_lines_inherit_the_previous_timestamp_in_their_file_across_polls(watcher, tmp_path):
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    write_lines(a, [{"type": "user", "turnOrigin": "human", "timestamp": "2026-10-08T04:31:12.000Z", "message": {"content": "go"}}, {"type": "agent-name", "agentName": "a-renamed"}])
+    write_lines(b, [{"type": "user", "turnOrigin": "human", "timestamp": "2026-10-08T04:31:11.000Z", "message": {"content": "go"}}])
+    w = watcher.Watcher(fixtures=[(1, str(a)), (2, str(b))])
+    subscriber = w.broadcaster.subscribe()
+    w.poll_once()
+    first = [(e["source_pid"], e["source"]) for e in drain(subscriber)[2:]]
+    assert first == [(2, "user"), (1, "user"), (1, "agent-name")]
+    with open(a, "a") as handle:
+        handle.write(json.dumps({"type": "agent-name", "agentName": "a-again"}) + "\n")
+    with open(b, "a") as handle:
+        handle.write(json.dumps({"type": "system", "subtype": "turn_duration", "timestamp": "2026-10-08T04:31:13.000Z"}) + "\n")
+    w.poll_once()
+    assert [(e["source_pid"], e["source"]) for e in drain(subscriber)] == [(1, "agent-name"), (2, "system · turn_duration")]

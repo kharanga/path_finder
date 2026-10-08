@@ -47,6 +47,7 @@ KEPT_ATTACHMENT_TYPES = {
 KEPT_META_TURN_ORIGINS = {"peer", "system"}
 SOCKET_PREFIX = "uds:/tmp/cc-socks/"
 PEER_MESSAGE_PREFIX = "<cross-session-message"
+REGISTRY_SOURCE = "registry"
 IDLE_NOTICE_PREFIX = "[Cross-session idle notice]"
 SENDER_OWNED_MESSAGE_FIELDS = ("pending_key", "tool_use_id", "from_pid", "to", "summary", "body", "notify_when_idle", "sent_at")
 
@@ -202,6 +203,31 @@ def send_result_from(entry, block):
     return {"success": not block.get("is_error", False), "message": text if isinstance(text, str) else ""}
 
 
+def entry_source(entry):
+    kind = entry.get("type")
+    if kind == "assistant":
+        content = entry.get("message", {}).get("content")
+        blocks = content if isinstance(content, list) else []
+        if any(isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") == "SendMessage" for block in blocks):
+            return "assistant → tool_use SendMessage"
+        return "assistant"
+    if kind == "user":
+        if (entry.get("origin") or {}).get("kind") == "peer":
+            return "user · origin.kind = peer"
+        if entry.get("turnOrigin") == "system" and content_text(entry.get("message", {})).startswith(IDLE_NOTICE_PREFIX):
+            return "user · cross-session idle notice"
+        results = tool_result_blocks(entry)
+        if results:
+            succeeded = all(send_result_from(entry, block).get("success") for block in results)
+            return "toolUseResult.success" if succeeded else "toolUseResult.error"
+        return "user"
+    if kind == "system":
+        return f"system · {entry.get('subtype')}"
+    if kind == "queue-operation":
+        return f"queue-operation · {entry.get('operation')}"
+    return str(kind)
+
+
 class StateModel:
     def __init__(self):
         self.sessions = {}
@@ -209,6 +235,8 @@ class StateModel:
         self.message_key_by_tool_use = {}
         self.pid_by_name = {}
         self.unmatched_enqueues = {}
+        self.latest_source_by_pid = {}
+        self.source_sequence = 0
 
     def register_session(self, row):
         pid = row["pid"]
@@ -253,7 +281,12 @@ class StateModel:
         return {
             "sessions": [self.sessions[pid] for pid in sorted(self.sessions)],
             "messages": sorted(self.messages.values(), key=lambda m: (m.get("sent_at") or m.get("read_at") or "", m["key"])),
+            "sources": [self.latest_source_by_pid[pid] for pid in sorted(self.latest_source_by_pid)],
         }
+
+    def note_source(self, pid, timestamp, source):
+        self.source_sequence += 1
+        self.latest_source_by_pid[pid] = {"pid": pid, "at": timestamp, "source": source, "seq": self.source_sequence}
 
     def apply(self, pid, entry):
         touched = {"sessions": set(), "messages": set()}
@@ -271,8 +304,11 @@ class StateModel:
         for session_pid in self.sessions:
             if session_pid in touched["sessions"] and timestamp:
                 self.sessions[session_pid]["last_seen_at"] = timestamp
-        changes = [{"event": "session", "at": timestamp, **self.sessions[p]} for p in sorted(touched["sessions"]) if p in self.sessions]
-        changes += [{"event": "message", "at": timestamp, **self.messages[k]} for k in touched["messages"] if k in self.messages]
+        source = entry_source(entry)
+        changes = [{"event": "session", "at": timestamp, "source": source, "source_pid": pid, **self.sessions[p]} for p in sorted(touched["sessions"]) if p in self.sessions]
+        changes += [{"event": "message", "at": timestamp, "source": source, "source_pid": pid, **self.messages[k]} for k in touched["messages"] if k in self.messages]
+        if changes:
+            self.note_source(pid, timestamp, source)
         return copy.deepcopy(changes)
 
     def set_status(self, pid, status, touched):
@@ -345,6 +381,9 @@ class StateModel:
             sent_at=entry.get("timestamp"),
         )
         self.message_key_by_tool_use[block.get("id")] = key
+        self.claim_unmatched_enqueue(message)
+        if message["enqueued_at"] is not None:
+            message["stage"] = "IN_INBOX"
         session = self.session(pid)
         if summary or body:
             session["last_text"] = summary or body
@@ -552,6 +591,7 @@ class Watcher:
         self.fixtures = fixtures
         self.model = StateModel()
         self.tailers = {}
+        self.last_timestamp_by_pid = {}
         self.lock = threading.RLock()
         self.broadcaster = EventBroadcaster()
         self.stop_event = threading.Event()
@@ -596,20 +636,33 @@ class Watcher:
             if pid not in self.tailers:
                 self.tailers[pid] = TranscriptTailer(row["transcript"])
             if before != session:
-                self.emit({"event": "session", "at": now_iso(), **copy.deepcopy(session)})
+                registered_at = now_iso()
+                self.model.note_source(pid, registered_at, REGISTRY_SOURCE)
+                self.emit({"event": "session", "at": registered_at, "source": REGISTRY_SOURCE, "source_pid": pid, **copy.deepcopy(session)})
         for pid in list(self.tailers):
             if pid not in current:
                 del self.tailers[pid]
                 self.model.sessions.pop(pid, None)
-                self.emit({"event": "session_removed", "at": now_iso(), "pid": pid})
+                self.model.latest_source_by_pid.pop(pid, None)
+                self.emit({"event": "session_removed", "at": now_iso(), "source": REGISTRY_SOURCE, "source_pid": pid, "pid": pid})
 
     def poll_once(self):
         with self.lock:
             self.refresh_sessions()
-            for pid, tailer in list(self.tailers.items()):
-                for entry in tailer.poll():
-                    for change in self.model.apply(pid, entry):
-                        self.emit(change)
+            for pid, entry in self.entries_in_time_order():
+                for change in self.model.apply(pid, entry):
+                    self.emit(change)
+
+    def entries_in_time_order(self):
+        timed = []
+        for file_index, (pid, tailer) in enumerate(list(self.tailers.items())):
+            last_timestamp = self.last_timestamp_by_pid.get(pid, "")
+            for line_index, entry in enumerate(tailer.poll()):
+                last_timestamp = entry.get("timestamp") or last_timestamp
+                timed.append((last_timestamp, file_index, line_index, pid, entry))
+            self.last_timestamp_by_pid[pid] = last_timestamp
+        timed.sort(key=lambda item: item[:3])
+        return [(pid, entry) for _timestamp, _file_index, _line_index, pid, entry in timed]
 
     def run(self):
         while not self.stop_event.is_set():

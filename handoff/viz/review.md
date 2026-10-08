@@ -1,25 +1,32 @@
-# Review: V6 2026-10-08
+# Review: V4+V5 rework 2026-10-08 (round 2)
 
 PASS
 
-## Checked against SPEC.md V6
+## Round 2
 
-- Event log written during the V3-style test: `serve --fixture … --log $L/events.jsonl` on a spare port, `/state` returned 2 sessions, one line appended to the builder transcript, and the log held 26 lines ending with `session 33993 WORKING 2026-10-08T05:00:01.000Z`. Every line has `event` and `at` plus the full object. The last SSE frame received by a subscriber equals the last log line. A second run appended 26 more (52 total). `--no-log` writes nothing. Without `--log` the file is `viz/events.jsonl` next to the script (verified in the integration sandbox, not in the repo).
-- Sanitized fixtures under `tests/fixtures/`: `tests/fixtures/viz/round_trip_manager_32813_33993.jsonl` and `round_trip_builder_32813_33993.jsonl`, plus `tests/fixtures/discovery/`. No home path, user name, or email remains. All are tracked in git already (`git ls-files tests/fixtures`), as are `viz/index.html`, `viz/watcher.py`, and every test file. `viz/events.jsonl` is in the uncommitted `.gitignore` change and is not in the tree.
-- V5 note 1 fixed: with the fixtures replayed to 11.200, `state` shows one row `693b9bd4 READ "second hello to fake-session-builder" pending:toolu_ accepted_at null`; the full replay sets `accepted_at` 11.281 on that same row. The page label no longer flips to the body. Snapshots stay identical in both feed orders.
-- Nothing under `~/.claude` or `discovery/` is written. Only `viz/watcher.py` changed.
+- Round 1 item 1 (frozen-frame caption followed file order) is fixed: `Watcher.poll_once` applies the entries from every tailer in one timestamp-ordered pass, timestamp-less lines inheriting the previous timestamp in their file and remembered across polls. Re-frozen all eight times on port 4795 (stopped): the newest `seq` in `/state.sources` now gives frame 4 `system · turn_duration`, frame 6 `queue-operation · enqueue`, frame 7 `system · turn_duration`, frame 9 `system · turn_duration`; frames 1, 2, 3, 5 unchanged (`registry`, SendMessage, enqueue, SendMessage). `/state` sessions and messages at every freeze still match ready.md's table.
+- First-poll change stream for the two fixtures is now 28 (2 registry + 26), the same sequence, change for change, as feeding the fixtures through `StateModel` in time order; every `at` in it is non-decreasing. The reply's enqueue is its own `IN_INBOX` change and the sender's results come after the reads, as they do live.
+- Count pins re-pinned (26→28, 52→56, 2+24+1→2+26+1) in `tests/unit/test_watcher_server.py` and `tests/integration/test_serve.py`. New: `test_first_poll_applies_both_files_in_timestamp_order`, `test_timestamp_less_lines_inherit_the_previous_timestamp_in_their_file_across_polls`.
+- `python3 -m pytest tests` → 237 passed.
+
+## Verified in round 1 (unchanged, `viz/index.html` untouched this round)
+
+- The eight freezes from ready.md rebuilt and `/state` matches the table at every one: frame 1 both IDLE, no messages; 2 manager WORKING watching 33993, first message PENDING; 3 builder inbox 1, IN_INBOX; 4 manager IDLE, builder WORKING, READ; 5 reply PENDING, builder WORKING; 6 manager inbox 1, reply IN_INBOX (the `apply_send` claim); 7 reply READ, manager WORKING, builder IDLE; 9 both IDLE, watching cleared, idle notice READ. `/state` keys are `generated_at`, `sessions`, `messages`, `sources`; every `/events` change carries `source` and `source_pid`.
+- Headless Chrome works here with `--timeout=2500`. Screenshots of my freezes: `/private/tmp/claude-501/-Users-khangnguyen-Documents-path-finder/9e6343e0-d664-4782-b79a-a6cac9debb65/scratchpad/freeze{1,2,3,4,5,6,7,9}.png`. Against `handoff/viz/ui-frames.png`: cards, dots, pills, eye line, quoted last line, connector summary, bold arrow, stage colours and `No traffic` match frames 1 to 6. Differences are under Notes.
+- The page script renders frames 2 to 9 from the change stream identically to the frozen snapshots, the idle-notice line shows for 4 s and on a snapshot loaded within 4 s of `read_at`, the pair panel lists both messages newest first, non-neighbour pairs get tiered clickable arcs, FAILED shows `✗ Failed` with the reason in the tooltip, unidentified sessions are dashed, `session_removed` drops the card and its caption source, a `snapshot` event replaces state, a stream error switches to polling.
 
 ## Tests
 
-`python3 -m pytest tests` runs 201 tests (10 new for V6), all passing, in about 7 s.
+- `tests/page/render_page.mjs` replaced (based on the builder's `smoke_page.mjs`, plus `error`, `closePanel`, `clickArc`, `updated`, `linkClass`, `eventsUrl`, `fallbackPolls`, stage tooltips, arc geometry).
+- `tests/integration/test_page_render.py` rewritten for the new DOM: 29 tests.
+- `tests/unit/test_state_model.py`: 23 new (every `entry_source` label, `source`/`source_pid` on changes, `sources` in the snapshot, `note_source`, the `apply_send` enqueue claim in three variants, the receiver-first replay freeze).
+- `tests/unit/test_watcher_server.py`: snapshot keys include `sources`; registry changes and `session_removed` carry `source: registry`; source row dropped on removal; first-poll ordering tests.
+- `tests/fixtures/` unchanged. No home paths or user names in any new test file.
 
-- `tests/unit/test_state_model.py`: receiver read adopts the sender's pending row (one row, summary and `sent_at` present from the first READ, tool result still sets `accepted_at`), oldest unmerged send to that receiver is chosen, failed and already-merged sends are skipped, the fixture round trip never has more than one row per message at any step.
-- `tests/unit/test_watcher_server.py`: `emit` writes one JSON line per change and publishes, lazy open and `close`, no file without a log path, log equals stream for the fixture round trip and is append-only across watchers, parser defaults for `--log` and `--no-log`.
-- `tests/integration/test_serve.py`: the V3-style test with `--log` (last log line equals the streamed change, 27 lines, doubled on a second run), default log next to the script, `--no-log` disables it.
-- The two page tests pinning the old transient label are updated to the adopted summary; the V5 frozen-frame row for 11.200 now holds as the builder wrote it.
+## Notes
 
-## Notes, not failures
-
-1. For the manager: commit the `.gitignore` change (`viz/events.jsonl`, `__pycache__/`, `.hypothesis/`, `.pytest_cache/`) with V6.
-2. The log count (26 here) varies with the live registry exactly as the V4 frame count does; the integration test runs with an empty registry and pins 27 including the appended line.
-3. Unchanged user and manager items: port handover (`discover.py ui --stop`, `watcher.py serve` on 4780, delete `discovery/index.html`), `discover.py ui` retirement, docs items (plan §5 enqueue promotion, message-format §3.1 `remove`, jsonl spec `progress` and `isMeta`, nine UI flow frames), and the morning live checks for V4 and V5.
+- Differences from `ui-frames.png` that the fixture cannot reproduce and the page does not try to; for the user to rule on: frame 1 caption is `registry` (image: `agent-name · permission-mode`; the fixture's agent-name entries change nothing and it has no permission-mode entries); frame 2 shows `Watching fake builder` already (image: from frame 3; `notify_when_idle` is known at send time); frame 3 caption `queue-operation · enqueue` (image joins two entries, `toolUseResult.success · enqueue`; the result lands at 11.281, after the read at 11.097); frame 4 at 13.500 shows the manager `Idle` as in the image but the caption is `system · turn_duration`, since no single time gives both. The image's labels and summaries are shortened mock text; the fixture's are longer.
+- Sorting a poll by timestamp also reorders within one file where the transcript itself is out of order (the manager fixture has 11.281 before 11.278 and 21.038 before 21.035); only attachment and informational entries are affected and they produce no change.
+- Panel times line reads `sent · accepted · enqueued · read`; enqueued precedes accepted in every fixture message. Cosmetic.
+- For the manager: the 4781 (or 4780 after the handover) server must be restarted on the new `viz/watcher.py` for captions and `sources`. The `.gitignore` change for `viz/events.jsonl` is still uncommitted.
+- Docs user items unchanged from V6; plan §4/§5 should add `sources` and `source`/`source_pid`, plan §6 the frames' look (ready.md Requests).

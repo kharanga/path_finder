@@ -244,7 +244,7 @@ def test_event_log_written_during_the_v3_style_test(sandbox, fixture_copies):
             time.sleep(0.05)
         lines = [json.loads(l) for l in log_path.read_text().splitlines()]
         assert lines[-1] == change[0]
-        assert len(lines) == 2 + 24 + 1
+        assert len(lines) == 2 + 26 + 1
         assert all({"event", "at"} <= set(line) for line in lines)
         stream.close()
     finally:
@@ -260,7 +260,7 @@ def test_default_log_is_next_to_the_script_and_no_log_disables_it(sandbox, fixtu
     default_log = sandbox["viz_dir"] / "events.jsonl"
     process, _ = start_server(sandbox, "--fixture", f"32813={manager}", "--fixture", f"33993={builder}")
     stop(process)
-    assert default_log.exists() and len(default_log.read_text().splitlines()) == 26
+    assert default_log.exists() and len(default_log.read_text().splitlines()) == 28
     default_log.unlink()
     process, _ = start_server(sandbox, "--fixture", f"32813={manager}", "--fixture", f"33993={builder}", "--no-log")
     stop(process)

@@ -438,3 +438,107 @@ def test_fixture_round_trip_has_one_row_per_message_at_every_step(watcher):
         assert len(keys) <= 2, keys
         assert not any(k.startswith("pending:") and any(m["pending_key"] == k and m["key"] != k for m in model.messages.values()) for k in keys)
     assert [m["summary"] for m in model.snapshot()["messages"] if m["kind"] == "message"] == ["second hello to fake-session-builder", "Second hi back to fake-session-manager"]
+
+
+def human_prompt(at="2026-10-08T04:31:09.000Z"):
+    return {"type": "user", "turnOrigin": "human", "timestamp": at, "message": {"role": "user", "content": "hi"}}
+
+
+@pytest.mark.parametrize("entry, label", [
+    (send_entry("t1", "uds:/tmp/cc-socks/2.sock"), "assistant → tool_use SendMessage"),
+    ({"type": "assistant", "message": {"content": [{"type": "text", "text": "plain"}]}}, "assistant"),
+    ({"type": "assistant", "message": {"content": "not a list"}}, "assistant"),
+    (delivery_entry(1, "m-1"), "user · origin.kind = peer"),
+    (idle_notice_entry("sender"), "user · cross-session idle notice"),
+    (result_entry("t1"), "toolUseResult.success"),
+    (result_entry("t1", success=False, msg_id=None), "toolUseResult.error"),
+    (human_prompt(), "user"),
+    (turn_end(), "system · turn_duration"),
+    ({"type": "system", "subtype": "informational"}, "system · informational"),
+    (enqueue_entry(1), "queue-operation · enqueue"),
+    (queue_entry("dequeue"), "queue-operation · dequeue"),
+    (queue_entry("remove"), "queue-operation · remove"),
+    ({"type": "attachment", "attachment": {"type": "x"}}, "attachment"),
+    ({"type": "agent-name", "agentName": "n"}, "agent-name"),
+])
+def test_entry_source_labels(watcher, entry, label):
+    assert watcher.entry_source(entry) == label
+
+
+def test_changes_carry_source_and_source_pid_and_snapshot_notes_the_source(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 1, "name": "one"})
+    model.register_session({"pid": 2, "name": "two"})
+    changes = model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock"))
+    assert [(c["event"], c["source"], c["source_pid"]) for c in changes] == [("session", "assistant → tool_use SendMessage", 1), ("message", "assistant → tool_use SendMessage", 1)]
+    assert model.snapshot()["sources"] == [{"pid": 1, "at": "2026-10-08T04:31:10.318Z", "source": "assistant → tool_use SendMessage", "seq": 1}]
+    assert model.apply(2, enqueue_entry(1, at="2026-10-08T04:31:10.817Z"))[0]["source_pid"] == 2
+    assert [(s["pid"], s["source"], s["seq"]) for s in model.snapshot()["sources"]] == [(1, "assistant → tool_use SendMessage", 1), (2, "queue-operation · enqueue", 2)]
+
+
+def test_entries_without_a_change_do_not_touch_sources(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 1, "name": "one"})
+    assert model.apply(1, {"type": "attachment", "timestamp": "2026-10-08T04:31:10.000Z"}) == []
+    assert model.apply(1, {"type": "agent-name", "agentName": "one"}) == []
+    assert model.snapshot()["sources"] == [] and model.source_sequence == 0
+
+
+def test_note_source_keeps_one_row_per_pid_with_a_growing_seq(watcher):
+    model = watcher.StateModel()
+    model.note_source(1, "2026-10-08T04:31:00.000Z", watcher.REGISTRY_SOURCE)
+    model.note_source(2, "2026-10-08T04:31:00.000Z", watcher.REGISTRY_SOURCE)
+    model.note_source(1, "2026-10-08T04:31:01.000Z", "assistant")
+    assert model.snapshot()["sources"] == [{"pid": 1, "at": "2026-10-08T04:31:01.000Z", "source": "assistant", "seq": 3}, {"pid": 2, "at": "2026-10-08T04:31:00.000Z", "source": "registry", "seq": 2}]
+
+
+def test_send_claims_a_held_enqueue_and_starts_in_inbox(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 1, "name": "one"})
+    model.register_session({"pid": 2, "name": "two"})
+    model.apply(2, enqueue_entry(1, from_name="one", at="2026-10-08T04:31:10.817Z"))
+    assert model.unmatched_enqueues == {(1, 2): ["2026-10-08T04:31:10.817Z"]}
+    changes = model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock"))
+    pending = by_key_prefix(model, "pending:t1")
+    assert (pending["stage"], pending["enqueued_at"], pending["to_pid"]) == ("IN_INBOX", "2026-10-08T04:31:10.817Z", 2)
+    assert model.unmatched_enqueues == {(1, 2): []}
+    assert [c["stage"] for c in changes if c["event"] == "message"] == ["IN_INBOX"]
+    model.apply(1, result_entry("t1", msg_id="m-1"))
+    assert (model.messages["m-1"]["stage"], model.messages["m-1"]["enqueued_at"]) == ("IN_INBOX", "2026-10-08T04:31:10.817Z")
+    model.apply(2, delivery_entry(1, "m-1"))
+    assert model.messages["m-1"]["stage"] == "READ" and len(model.messages) == 1
+
+
+def test_send_without_a_held_enqueue_stays_pending(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 1, "name": "one"})
+    model.register_session({"pid": 2, "name": "two"})
+    model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock"))
+    pending = by_key_prefix(model, "pending:t1")
+    assert (pending["stage"], pending["enqueued_at"]) == ("PENDING", None)
+
+
+def test_send_to_an_unresolved_name_does_not_claim_a_held_enqueue(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 1, "name": "one"})
+    model.register_session({"pid": 2, "name": "two"})
+    model.apply(2, enqueue_entry(1, from_name="one"))
+    model.apply(1, send_entry("t1", "stranger"))
+    pending = by_key_prefix(model, "pending:t1")
+    assert (pending["stage"], pending["to_pid"], pending["enqueued_at"]) == ("PENDING", None, None)
+    assert model.unmatched_enqueues == {(1, 2): ["2026-10-08T04:31:10.817Z"]}
+
+
+def test_replay_freeze_of_the_reply_is_in_inbox_when_the_receiver_is_fed_first(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": MANAGER, "name": "fake-session-manager"})
+    model.register_session({"pid": BUILDER, "name": "fake-session-builder"})
+    until = "2026-10-08T04:31:17.600Z"
+    for pid, path in [(MANAGER, MANAGER_FIXTURE), (BUILDER, BUILDER_FIXTURE)]:
+        for entry in entries_of(path):
+            if entry.get("timestamp") and entry["timestamp"] > until:
+                break
+            model.apply(pid, entry)
+    reply = by_key_prefix(model, "pending:")
+    assert (reply["from_pid"], reply["to_pid"], reply["stage"], reply["enqueued_at"]) == (BUILDER, MANAGER, "IN_INBOX", "2026-10-08T04:31:17.590Z")
+    assert model.sessions[MANAGER]["inbox"] == 1
