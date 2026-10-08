@@ -8,3 +8,6 @@ discovery/sessions.json.lock
 discovery/identity/
 discovery/ui.log
 discovery/ui.pid
+__pycache__/
+.hypothesis/
+.pytest_cache/
