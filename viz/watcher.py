@@ -439,6 +439,8 @@ class StateModel:
             message = min(candidates, key=lambda m: m["sent_at"] or "")
             message["enqueued_at"] = entry.get("timestamp")
             message["to_pid"] = pid
+            if message["stage"] == "PENDING":
+                message["stage"] = "IN_INBOX"
             touched["messages"].add(message["key"])
         else:
             self.unmatched_enqueues.setdefault((from_pid, pid), []).append(entry.get("timestamp"))
@@ -628,7 +630,6 @@ class VizRequestHandler(SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
-        self.send_header("Connection", "keep-alive")
         self.end_headers()
         subscriber = self.watcher.broadcaster.subscribe()
         try:
@@ -695,11 +696,14 @@ def command_replay(args):
     for pid, _path in args.fixture:
         target = Path(args.out_dir) / f"{pid}.jsonl"
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(b"")
+        if not args.after:
+            target.write_bytes(b"")
         outputs[pid] = target
     print(" ".join(f"{pid}={path}" for pid, path in outputs.items()), flush=True)
     previous_timestamp = None
     for timestamp, _index, pid, line in entries_in_time_order(args.fixture):
+        if args.after and (not timestamp or timestamp <= args.after):
+            continue
         if args.until and timestamp and timestamp > args.until:
             break
         if previous_timestamp and timestamp and args.speed > 0:
@@ -880,6 +884,7 @@ def build_parser():
     replay_parser.add_argument("--speed", type=float, default=1.0, help="time scale; 0 writes everything at once")
     replay_parser.add_argument("--max-gap", type=float, default=2.0, help="longest pause between lines in seconds")
     replay_parser.add_argument("--until", help="stop before the first line whose timestamp is after this ISO time, to freeze a frame")
+    replay_parser.add_argument("--after", help="append only lines after this ISO time to the existing files, to continue a frozen frame")
     replay_parser.set_defaults(func=command_replay)
     return parser
 

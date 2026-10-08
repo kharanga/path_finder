@@ -16,6 +16,7 @@
     --working: #4ade80;
     --idle: #8a94a6;
     --badge: #f472b6;
+    --failed: #f87171;
   }
   * { box-sizing: border-box; }
   body {
@@ -35,7 +36,8 @@
   h1 { font-size: 18px; margin: 0; font-weight: 600; }
   header span { color: var(--muted); font-size: 13px; }
   #link.off { color: var(--warn); }
-  main { position: relative; }
+  body { position: relative; }
+  main { position: relative; z-index: 1; }
   .row { margin-bottom: 28px; }
   .row-title {
     color: var(--muted);
@@ -44,7 +46,7 @@
     text-transform: uppercase;
     margin: 0 0 10px 4px;
   }
-  .capsules { display: flex; flex-wrap: wrap; gap: 12px; }
+  .capsules { display: flex; flex-wrap: wrap; gap: 20px 72px; }
   .capsule {
     position: relative;
     background: var(--panel);
@@ -100,6 +102,55 @@
   .watching { margin-top: 4px; font-size: 12px; color: var(--muted); }
   .watching:empty { display: none; }
   .empty { color: var(--muted); padding: 40px 0; text-align: center; }
+  #wires, #tags { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+  #wires { z-index: 0; }
+  #tags { z-index: 2; }
+  #wires line { fill: none; stroke-width: 2; }
+  #wires .connector.PENDING { stroke: var(--muted); stroke-dasharray: 2 6; }
+  #wires .connector.IN_INBOX { stroke: var(--accent); }
+  #wires .connector.READ { stroke: var(--working); }
+  #wires .connector.FAILED { stroke: var(--failed); }
+  #wires .connector.idle_notice { stroke: var(--muted); stroke-dasharray: 8 6; animation: notice 4s linear forwards; }
+  #wires .watch { stroke: var(--muted); stroke-dasharray: 1 5; stroke-linecap: round; opacity: .7; }
+  #tags .tag { pointer-events: auto; cursor: pointer; }
+  #tags .tag rect { fill: var(--panel); stroke: var(--line); rx: 6; }
+  #tags .tag text { fill: var(--ink); font-size: 12px; }
+  #tags .tag .glyph { font-weight: 700; }
+  #tags .tag.PENDING text { fill: var(--muted); }
+  #tags .tag.IN_INBOX .glyph { fill: var(--accent); }
+  #tags .tag.READ .glyph { fill: var(--working); }
+  #tags .tag.FAILED rect { stroke: var(--failed); }
+  #tags .tag.FAILED .glyph { fill: var(--failed); }
+  #tags .tag.idle_notice text { fill: var(--muted); font-style: italic; }
+  @keyframes notice { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+  #legend { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--muted); font-size: 12px; margin-top: 8px; }
+  #legend span::before { content: ""; display: inline-block; width: 26px; height: 0; border-top: 2px solid var(--muted); margin-right: 6px; vertical-align: middle; }
+  #legend .l-pending::before { border-top-style: dotted; }
+  #legend .l-inbox::before { border-top-color: var(--accent); }
+  #legend .l-read::before { border-top-color: var(--working); }
+  #legend .l-failed::before { border-top-color: var(--failed); }
+  #legend .l-notice::before { border-top-style: dashed; }
+  #legend .l-watch::before { border-top-style: dotted; opacity: .7; }
+  #panel {
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: min(420px, 100%);
+    background: var(--panel);
+    border-left: 1px solid var(--line);
+    padding: 16px;
+    overflow: auto;
+    transform: translateX(100%);
+    transition: transform .2s ease-out;
+  }
+  #panel.open { transform: none; }
+  #panel h2 { font-size: 14px; margin: 0 0 12px; display: flex; justify-content: space-between; }
+  #panel button { background: none; border: 1px solid var(--line); color: var(--ink); border-radius: 6px; padding: 2px 8px; cursor: pointer; }
+  .entry { border-top: 1px solid var(--line); padding: 10px 0; font-size: 13px; }
+  .entry .stage { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .entry .summary { font-weight: 600; margin: 2px 0; }
+  .entry .body { color: var(--muted); white-space: pre-wrap; word-break: break-word; }
+  .entry .times { color: var(--muted); font-size: 11px; margin-top: 4px; }
+  @media (prefers-reduced-motion: reduce) { #wires .connector.idle_notice { animation: none; } #panel { transition: none; } }
   @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
   @media (prefers-reduced-motion: reduce) { .capsule { animation: none; } }
 </style>
@@ -112,12 +163,35 @@
   <span id="link"></span>
 </header>
 <main id="board"></main>
+<svg id="wires" aria-hidden="true"></svg>
+<svg id="tags" aria-hidden="true"></svg>
+<div id="legend">
+  <span class="l-pending">Pending</span>
+  <span class="l-inbox">In inbox ✓</span>
+  <span class="l-read">Read ✓✓</span>
+  <span class="l-failed">Failed ✗</span>
+  <span class="l-notice">Idle notice</span>
+  <span class="l-watch">Watching</span>
+</div>
+<aside id="panel"><h2><span id="panel-title"></span><button id="panel-close" type="button">close</button></h2><div id="panel-list"></div></aside>
 <script>
   const board = document.getElementById("board");
   const count = document.getElementById("count");
   const updated = document.getElementById("updated");
   const link = document.getElementById("link");
   const LAST_LINE_MAX = 90;
+  const LABEL_MAX = 34;
+  const NOTICE_LIFETIME_MS = 4000;
+  const PAIR_OFFSET_PX = 9;
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const wires = document.getElementById("wires");
+  const tags = document.getElementById("tags");
+  const panel = document.getElementById("panel");
+  const panelTitle = document.getElementById("panel-title");
+  const panelList = document.getElementById("panel-list");
+  const STAGE_GLYPH = { PENDING: "…", IN_INBOX: "✓", READ: "✓✓", FAILED: "✗" };
+  const liveNotices = new Map();
+  let openPair = null;
 
   const state = { sessions: new Map(), messages: new Map(), generatedAt: null };
 
@@ -146,6 +220,16 @@
     state.sessions = new Map((snapshot.sessions || []).map((s) => [s.pid, s]));
     state.messages = new Map((snapshot.messages || []).map((m) => [m.key, m]));
     state.generatedAt = snapshot.generated_at || null;
+    const now = Date.parse(snapshot.generated_at || "") || Date.now();
+    for (const m of state.messages.values()) {
+      if (m.kind === "idle_notice" && m.read_at && now - Date.parse(m.read_at) < NOTICE_LIFETIME_MS) showNotice(m.key);
+    }
+  }
+
+  function showNotice(key) {
+    if (liveNotices.has(key)) return;
+    liveNotices.set(key, Date.now());
+    setTimeout(() => { liveNotices.delete(key); scheduleRender(); }, NOTICE_LIFETIME_MS);
   }
 
   function applyChange(change) {
@@ -158,6 +242,7 @@
     } else if (change.event === "message") {
       if (change.pending_key && change.pending_key !== change.key) state.messages.delete(change.pending_key);
       state.messages.set(change.key, change);
+      if (change.kind === "idle_notice") showNotice(change.key);
     }
     if (change.at) state.generatedAt = change.at;
   }
@@ -204,6 +289,159 @@
     return capsule;
   }
 
+  function pidByName(name) {
+    for (const s of state.sessions.values()) if (s.name === name || s.label === name) return s.pid;
+    return null;
+  }
+
+  function endpointsOf(message) {
+    const from = message.from_pid;
+    let to = message.to_pid;
+    if (to === null || to === undefined) to = pidByName(String(message.to || "").replace(/\s*\[[0-9a-f]+\]$/, ""));
+    return (from === null || from === undefined || to === null || to === undefined) ? null : [Number(from), Number(to)];
+  }
+
+  function messageTime(message) {
+    return message.read_at || message.accepted_at || message.sent_at || "";
+  }
+
+  function latestPerPair() {
+    const pairs = new Map();
+    for (const message of state.messages.values()) {
+      if (message.kind !== "message") continue;
+      const ends = endpointsOf(message);
+      if (!ends) continue;
+      const key = ends.join(">");
+      const list = pairs.get(key) || [];
+      list.push({ message, ends });
+      pairs.set(key, list);
+    }
+    for (const list of pairs.values()) list.sort((a, b) => messageTime(a.message).localeCompare(messageTime(b.message)));
+    return pairs;
+  }
+
+  function centerOf(pid, origin) {
+    const capsule = document.getElementById(`session-${pid}`);
+    if (!capsule) return null;
+    const rect = capsule.getBoundingClientRect();
+    return { x: rect.left - origin.left + rect.width / 2, y: rect.top - origin.top + rect.height / 2 };
+  }
+
+  function offsetLine(a, b, offset) {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const length = Math.hypot(dx, dy) || 1;
+    const nx = -dy / length * offset, ny = dx / length * offset;
+    return { x1: a.x + nx, y1: a.y + ny, x2: b.x + nx, y2: b.y + ny };
+  }
+
+  function svgEl(name, attrs) {
+    const el = document.createElementNS(SVG_NS, name);
+    for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
+    return el;
+  }
+
+  function drawLine(coords, className) {
+    wires.append(svgEl("line", { x1: coords.x1, y1: coords.y1, x2: coords.x2, y2: coords.y2, class: className }));
+  }
+
+  function drawTag(coords, message, className, onClick) {
+    const text = truncate(message.summary || message.body || message.key, LABEL_MAX);
+    const glyph = message.kind === "idle_notice" ? "" : STAGE_GLYPH[message.stage] || "";
+    const label = glyph ? `${glyph} ${text}` : text;
+    const width = Math.min(420, 12 + label.length * 6.6);
+    const x = (coords.x1 + coords.x2) / 2, y = (coords.y1 + coords.y2) / 2;
+    const g = svgEl("g", { class: `tag ${className}` });
+    g.append(svgEl("rect", { x: x - width / 2, y: y - 11, width, height: 22 }));
+    const t = svgEl("text", { x, y: y + 4, "text-anchor": "middle" });
+    if (glyph) {
+      const span = document.createElementNS(SVG_NS, "tspan");
+      span.setAttribute("class", "glyph");
+      span.textContent = glyph + " ";
+      t.append(span);
+    }
+    t.append(document.createTextNode(text));
+    g.append(t);
+    const title = document.createElementNS(SVG_NS, "title");
+    title.textContent = `${message.stage}${message.reason ? ": " + message.reason : ""}\n${message.body || ""}`;
+    g.append(title);
+    if (onClick) g.addEventListener("click", onClick);
+    tags.append(g);
+  }
+
+  function drawConnectors() {
+    wires.replaceChildren();
+    tags.replaceChildren();
+    const origin = wires.getBoundingClientRect();
+    const pairs = latestPerPair();
+    for (const [pairKey, list] of pairs) {
+      const { message, ends } = list[list.length - 1];
+      const a = centerOf(ends[0], origin), b = centerOf(ends[1], origin);
+      if (!a || !b) continue;
+      const reverseExists = pairs.has(`${ends[1]}>${ends[0]}`);
+      const coords = offsetLine(a, b, reverseExists ? PAIR_OFFSET_PX : 0);
+      drawLine(coords, `connector ${message.stage}`);
+      drawTag(coords, message, message.stage, () => openPanel(pairKey, ends));
+    }
+    for (const session of state.sessions.values()) {
+      for (const target of session.watching || []) {
+        const pid = Number.isInteger(Number(target)) ? Number(target) : pidByName(String(target));
+        const a = centerOf(session.pid, origin), b = pid !== null ? centerOf(pid, origin) : null;
+        if (a && b) drawLine(offsetLine(a, b, -PAIR_OFFSET_PX * 2), "watch");
+      }
+    }
+    for (const key of liveNotices.keys()) {
+      const message = state.messages.get(key);
+      const ends = message && endpointsOf(message);
+      if (!ends) continue;
+      const a = centerOf(ends[0], origin), b = centerOf(ends[1], origin);
+      if (!a || !b) continue;
+      const coords = offsetLine(a, b, PAIR_OFFSET_PX * 3);
+      drawLine(coords, "connector idle_notice");
+      drawTag(coords, message, "idle_notice", null);
+    }
+    if (openPair) renderPanel();
+  }
+
+  function openPanel(pairKey, ends) {
+    openPair = { pairKey, ends };
+    panel.classList.add("open");
+    renderPanel();
+  }
+
+  function closePanel() {
+    openPair = null;
+    panel.classList.remove("open");
+  }
+
+  function renderPanel() {
+    if (!openPair) return;
+    const list = latestPerPair().get(openPair.pairKey) || [];
+    panelTitle.textContent = `${labelFor(openPair.ends[0])} → ${labelFor(openPair.ends[1])} (${list.length})`;
+    panelList.replaceChildren();
+    for (const { message } of [...list].reverse()) {
+      const entry = document.createElement("div");
+      entry.className = "entry";
+      const stage = document.createElement("div");
+      stage.className = "stage";
+      stage.textContent = `${STAGE_GLYPH[message.stage] || ""} ${message.stage}${message.reason ? " · " + message.reason : ""}`;
+      const summary = document.createElement("div");
+      summary.className = "summary";
+      summary.textContent = message.summary || "(no summary)";
+      const body = document.createElement("div");
+      body.className = "body";
+      body.textContent = message.body || "";
+      const times = document.createElement("div");
+      times.className = "times";
+      times.textContent = ["sent", message.sent_at, "accepted", message.accepted_at, "enqueued", message.enqueued_at, "read", message.read_at]
+        .map((v, i) => i % 2 ? (v ? v.slice(11, 23) : "–") : v).join(" ").replace(/(\S+) (\S+)/g, "$1 $2 ·").replace(/ ·$/, "");
+      entry.append(stage, summary, body, times);
+      panelList.append(entry);
+    }
+  }
+
+  document.getElementById("panel-close").addEventListener("click", closePanel);
+  window.addEventListener("resize", () => scheduleRender());
+
   function render() {
     const sessions = [...state.sessions.values()];
     const identified = sessions.filter((s) => s.role).length;
@@ -216,6 +454,8 @@
       empty.className = "empty";
       empty.textContent = "No sessions discovered yet";
       board.append(empty);
+      wires.replaceChildren();
+      tags.replaceChildren();
       return;
     }
     const byFolder = new Map();
@@ -236,13 +476,14 @@
       row.append(title, capsules);
       board.append(row);
     }
+    drawConnectors();
   }
 
   let renderQueued = false;
   function scheduleRender() {
     if (renderQueued) return;
     renderQueued = true;
-    requestAnimationFrame(() => { renderQueued = false; render(); });
+    setTimeout(() => { renderQueued = false; render(); }, 0);
   }
 
   async function loadState() {
@@ -258,18 +499,23 @@
   }
 
   let fallbackTimer = null;
+  let eventsReceived = 0;
   function connectEvents() {
     const source = new EventSource("./events");
     source.onopen = () => {
-      link.textContent = "live";
+      link.textContent = `live · ${eventsReceived} events`;
       link.className = "";
       if (fallbackTimer) { clearInterval(fallbackTimer); fallbackTimer = null; }
     };
     source.onmessage = (event) => {
+      eventsReceived += 1;
+      link.textContent = `live · ${eventsReceived} events`;
       try {
         applyChange(JSON.parse(event.data));
         scheduleRender();
-      } catch {}
+      } catch (error) {
+        link.textContent = `live · ${eventsReceived} events · parse error`;
+      }
     };
     source.onerror = () => {
       link.textContent = "reconnecting";
