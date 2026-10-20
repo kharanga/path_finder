@@ -141,3 +141,6 @@ All edits below are applied. CLAUDE.md, SPEC.md, .claude/roles/, docs/ remain un
 - 2026-10-20T21:25Z User asked to drag and rearrange the pods. Added V15 to SPEC.md as [ ] (pinned positions in localStorage keyed by role, Reset layout control), queued behind V14.
 - 2026-10-20T21:45Z V14 ready received from viz-builder (handoff/viz/ready.md, viz/web.html only, no watcher restart needed); builder pointed the validator at it. Waiting on the V14 review.
 - 2026-10-20T22:00Z V14 review PASS; 354 tests pass. Marked V14 done and V15 in progress in SPEC.md; plan §6 records the lingering arrows and task hover. Cosmetic note: the pod graph grows briefly during the fade. Committing and pushing, assigning V15.
+- 2026-10-20T22:02Z Committed d145aeb and pushed. Assigned V15 to viz-builder. Live: http://127.0.0.1:4780/web.
+- 2026-10-20T22:20Z V15 ready received from viz-builder (handoff/viz/ready.md, viz/web.html only, no restart needed); builder pointed the validator at it. Waiting on the V15 review.
+- 2026-10-20T22:40Z V15 review PASS; 361 tests pass. Marked V15 done in SPEC.md; plan §6 records the drag pins and Reset layout. Committing and pushing. All tasks D1 to V15 done; no open assignments. Manager idle.

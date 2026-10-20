@@ -790,3 +790,135 @@ def test_task_hover_and_wrap_rules_are_in_the_page_css():
     assert ".task.open .tfull, .task.hover .tfull, .task:hover .tfull { display: block; }" in css
     assert ".task.open .ttitle, .task.hover .ttitle, .task:hover .ttitle { white-space: normal; }" in css
     assert re.search(r"\.task \.tfull \{[^}]*white-space: pre-wrap;[^}]*word-break: break-word;", css)
+
+
+def seven_render(watcher, tmp_path, steps, width=356, local_storage=None, window_height=1000, build=seven_sessions_round):
+    fixtures = build().write(tmp_path / "ring")
+    w = watcher.Watcher(fixtures=fixtures, spec_path=None)
+    w.poll_once()
+    input_path = tmp_path / "input.json"
+    input_path.write_text(json.dumps({"snapshot": w.snapshot(), "steps": steps, "wallStart": TEN_WALL, "graphWidth": width, "localStorage": local_storage or {}, "windowHeight": window_height}))
+    result = subprocess.run(["node", str(HARNESS), str(PAGE), str(input_path)], capture_output=True, text=True, check=True)
+    return {step["name"]: step["view"] for step in json.loads(result.stdout)}
+
+
+def node_pos(view, pid):
+    node = next(node for node in view["nodes"] if node["pid"] == pid)
+    return float(node["left"][:-2]), float(node["top"][:-2])
+
+
+def path_end(view, key):
+    d = next(path for path in view["paths"] if path["key"] == key)["d"]
+    numbers = [float(x) for x in re.findall(r"-?\d+\.?\d*", d)]
+    return numbers[4], numbers[5]
+
+
+def pin_keys(view):
+    return {key: json.loads(value) for key, value in view["storage"].items() if key.startswith("viz-web-pin:")}
+
+
+def test_dragging_a_node_pins_it_and_its_arrow_follows(watcher, tmp_path):
+    steps = [{"name": "start"}, {"name": "hold", "pointer": {"pid": 901, "moves": [[-30, 60], [-100, 200]], "hold": True}}, {"name": "drop", "releaseNode": 901}, {"name": "tick"}]
+    views = seven_render(watcher, tmp_path, steps)
+    start = views["start"]
+    assert all(node["draggable"] for node in start["nodes"]) and start["resetHidden"] is True and pin_keys(start) == {}
+    left0, top0 = node_pos(start, 901)
+    held = views["hold"]
+    held_node = nodes_of(held)["viz-builder"]
+    assert held_node["className"] == "node incomplete work pinned dragging" and held_node["captured"] is True and held["graphClass"] == "dragging"
+    assert node_pos(held, 901) == pytest.approx((left0 - 100, top0 + 200))
+    dropped = views["drop"]
+    node = nodes_of(dropped)["viz-builder"]
+    assert node["className"] == "node incomplete work pinned" and node["captured"] is False and dropped["graphClass"] == ""
+    assert node_pos(dropped, 901) == pytest.approx((left0 - 100, top0 + 200)) and node_pos(views["tick"], 901) == pytest.approx((left0 - 100, top0 + 200))
+    rect = node_rect(node)
+    assert pin_keys(dropped) == {"viz-web-pin:901": {"x": round(left0 - 100 + 58), "y": round(top0 + 200 + (rect[3] - rect[1]) / 2)}}
+    assert dropped["resetHidden"] is False
+    before_end, after_end = path_end(start, "900>901"), path_end(dropped, "900>901")
+    assert after_end[1] > before_end[1] + 150 and after_end[0] < before_end[0]
+    assert node_pos(dropped, 900) == node_pos(start, 900) and node_pos(dropped, 906) == node_pos(start, 906)
+    assert float(dropped["graphHeight"][:-2]) >= top0 + 200 + (rect[3] - rect[1]) + 12
+    rects = {n["name"]: node_rect(n) for n in dropped["nodes"]}
+    names = list(rects)
+    for i, first in enumerate(names):
+        for second in names[i + 1:]:
+            assert not rects_overlap(rects[first], rects[second]), (first, second)
+    for label in dropped["labels"]:
+        if label["clear"] == "1":
+            for name, r in rects.items():
+                assert not rects_overlap(label_rect(label), r), (label["key"], name)
+
+
+def test_a_press_under_four_pixels_is_a_click_and_a_click_right_after_a_drop_is_ignored(watcher, tmp_path):
+    steps = [{"name": "start"}, {"name": "wiggle", "pointer": {"pid": 901, "moves": [[2, 2]], "thenClick": True}}, {"name": "unpick", "clickNode": 901},
+        {"name": "drag", "pointer": {"pid": 901, "dx": -60, "dy": 120, "thenClick": True}}, {"name": "late click", "advanceMs": 1000, "clickNode": 901}, {"name": "cancelled", "pointer": {"pid": 903, "moves": [[20, 80]], "cancel": True}}]
+    views = seven_render(watcher, tmp_path, steps)
+    left0, top0 = node_pos(views["start"], 901)
+    wiggled = nodes_of(views["wiggle"])["viz-builder"]
+    assert wiggled["className"] == "node incomplete picked work" and node_pos(views["wiggle"], 901) == (left0, top0) and pin_keys(views["wiggle"]) == {} and views["wiggle"]["resetHidden"] is True
+    assert "picked" not in nodes_of(views["unpick"])["viz-builder"]["className"].split()
+    dragged = nodes_of(views["drag"])["viz-builder"]
+    assert dragged["className"] == "node incomplete work pinned" and node_pos(views["drag"], 901) == pytest.approx((left0 - 60, top0 + 120))
+    assert nodes_of(views["late click"])["viz-builder"]["className"] == "node incomplete picked work pinned"
+    assert nodes_of(views["cancelled"])["discovery-builder"]["className"] == "node incomplete pinned" and "viz-web-pin:903" in pin_keys(views["cancelled"])
+
+
+def test_drops_are_clamped_to_the_graph_sides_and_window_bottom_and_the_graph_grows(watcher, tmp_path):
+    steps = [{"name": "start"}, {"name": "left", "pointer": {"pid": 905, "dx": -1000, "dy": 0}}, {"name": "up", "pointer": {"pid": 900, "dx": 0, "dy": -1000}}, {"name": "right", "pointer": {"pid": 902, "dx": 1000, "dy": 0}}, {"name": "down", "pointer": {"pid": 904, "dx": 0, "dy": 5000}}]
+    views = seven_render(watcher, tmp_path, steps, window_height=900)
+    assert node_pos(views["left"], 905)[0] == 0
+    assert node_pos(views["up"], 900)[1] == 0
+    assert node_pos(views["right"], 902)[0] == 356 - 116
+    rect = node_rect(nodes_of(views["down"])["fake manager"])
+    height = rect[3] - rect[1]
+    assert node_pos(views["down"], 904)[1] == 900 - height and views["down"]["graphHeight"] == "912px" and views["down"]["viewBox"] == "0 0 356 912"
+    assert pin_keys(views["down"])["viz-web-pin:904"] == {"x": round(node_pos(views["down"], 904)[0] + 58), "y": round(900 - height / 2)}
+
+
+def test_pins_are_stored_by_label_then_role_then_pid(tmp_path):
+    sessions = [session(1, "a"), session(2, "b"), session(3, "c")]
+    sessions[1]["label"] = None
+    sessions[2]["label"] = sessions[2]["role"] = None
+    steps = [{"name": "start"}, {"name": "one", "pointer": {"pid": 1, "dx": 0, "dy": 150}}, {"name": "two", "pointer": {"pid": 2, "dx": 0, "dy": 150}}, {"name": "three", "pointer": {"pid": 3, "dx": 0, "dy": 150}}]
+    views = render(tmp_path, synthetic(sessions), steps, wall_start=TEN_START, local_storage={"viz-web-panel-collapsed": "0"})
+    assert set(pin_keys(views["three"])) == {"viz-web-pin:a", "viz-web-pin:r", "viz-web-pin:3"}
+    assert views["three"]["storage"]["viz-web-panel-collapsed"] == "0"
+    assert all("pinned" in node["className"].split() for node in views["three"]["nodes"])
+
+
+def test_saved_pins_land_a_session_and_a_later_session_with_the_same_label_at_the_same_spot(tmp_path):
+    sessions = [session(1, "a"), session(2, "b"), session(3, "c")]
+    plain = render(tmp_path, synthetic(sessions), [{"name": "now"}], wall_start=TEN_START)["now"]
+    seeded = render(tmp_path, synthetic(sessions), [{"name": "now"}], wall_start=TEN_START, local_storage={"viz-web-pin:b": json.dumps({"x": 70, "y": 300})})["now"]
+    assert node_pos(seeded, 2) == (70 - 58, 300 - 31) and nodes_of(seeded)["b"]["className"] == "node pinned" and seeded["resetHidden"] is False
+    assert node_pos(seeded, 1) == node_pos(plain, 1) and nodes_of(seeded)["a"]["className"] == "node"
+    restarted = [session(1, "a"), session(9, "b"), session(3, "c")]
+    again = render(tmp_path, synthetic(restarted), [{"name": "now"}], wall_start=TEN_START, local_storage={"viz-web-pin:b": json.dumps({"x": 70, "y": 300})})["now"]
+    assert node_pos(again, 9) == (70 - 58, 300 - 31) and nodes_of(again)["b"]["className"] == "node pinned"
+    broken = render(tmp_path, synthetic(sessions), [{"name": "now"}], wall_start=TEN_START, local_storage={"viz-web-pin:b": "not json"})["now"]
+    assert node_pos(broken, 2) == node_pos(plain, 2) and broken["resetHidden"] is True
+    blocked = render(tmp_path, synthetic(sessions), [{"name": "now"}, {"name": "drag", "pointer": {"pid": 2, "dx": 0, "dy": 100}}], wall_start=TEN_START, storage_throws=True)
+    assert node_pos(blocked["drag"], 2) == pytest.approx((node_pos(blocked["now"], 2)[0], node_pos(blocked["now"], 2)[1] + 100)) and "pinned" in nodes_of(blocked["drag"])["b"]["className"].split()
+
+
+def test_reset_layout_clears_every_pin_and_returns_to_the_ring(watcher, tmp_path):
+    steps = [{"name": "start"}, {"name": "drag one", "pointer": {"pid": 901, "dx": -100, "dy": 200}}, {"name": "drag two", "pointer": {"pid": 905, "dx": 40, "dy": 10}}, {"name": "reset", "clickReset": True}, {"name": "tick"}]
+    views = seven_render(watcher, tmp_path, steps, local_storage={"viz-web-folder-closed:Discovery": "1", "viz-web-pin:999": json.dumps({"x": 1, "y": 2})})
+    assert set(pin_keys(views["drag two"])) == {"viz-web-pin:901", "viz-web-pin:905", "viz-web-pin:999"} and views["drag two"]["resetHidden"] is False
+    reset = views["reset"]
+    assert pin_keys(reset) == {} and reset["storage"] == {"viz-web-folder-closed:Discovery": "1"} and reset["resetHidden"] is True
+    for pid in (900, 901, 902, 903, 904, 905, 906):
+        assert node_pos(reset, pid) == node_pos(views["start"], pid) and node_pos(views["tick"], pid) == node_pos(views["start"], pid), pid
+    assert not any("pinned" in node["className"].split() for node in reset["nodes"])
+    assert reset["graphHeight"] == views["start"]["graphHeight"]
+
+
+def test_pod_and_compact_nodes_drag_too(watcher, tmp_path):
+    pod = render(tmp_path, snapshot_at(watcher, at("10.500")), [{"name": "now"}, {"name": "drag", "pointer": {"pid": 32813, "dx": 30, "dy": 120}}], wall_start=at("10.500"))
+    left0, top0 = node_pos(pod["now"], 32813)
+    assert node_pos(pod["drag"], 32813) == pytest.approx((left0 + 30, top0 + 120)) and "pinned" in nodes_of(pod["drag"])["fake manager"]["className"].split()
+    assert path_end(pod["drag"], "32813>33993") != path_end(pod["now"], "32813>33993") and float(pod["drag"]["graphHeight"][:-2]) > 150
+    compact = seven_render(watcher, tmp_path, [{"name": "now"}, {"name": "drag", "pointer": {"pid": 900, "dx": 50, "dy": 100}}], build=ten_sessions_round)
+    left0, top0 = node_pos(compact["now"], 900)
+    assert node_pos(compact["drag"], 900) == pytest.approx((left0 + 50, top0 + 100)) and {"compact", "pinned"} <= set(nodes_of(compact["drag"])["manager"]["className"].split())
+    assert nodes_of(compact["drag"])["manager"]["height"] == f"{COMPACT_NODE_HEIGHT}px" and pin_keys(compact["drag"]) == {"viz-web-pin:900": {"x": round(left0 + 50 + 50), "y": round(top0 + 100 + 12)}}
