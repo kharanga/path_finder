@@ -564,3 +564,56 @@ def test_panel_without_tasks_says_so(tmp_path):
     replaced = {"event": "snapshot", **with_tasks(synthetic([session(1, "a")]))}
     after = render(tmp_path, synthetic([session(1, "a")]), [{"name": "snapshot", "frames": [replaced]}], wall_start=TEN_START)["snapshot"]
     assert [t["id"] for t in after["panel"]["tasks"]] == ["V8", "V9", "D5", "D6"]
+
+
+def folder_summary(view):
+    return [(f["area"], f["closed"], f["className"], f["name"], f["counts"], f["chevron"], f["title"], [t["id"] for t in f["tasks"]]) for f in view["panel"]["folders"]]
+
+
+def test_panel_groups_tasks_into_folders_with_their_own_counts(tmp_path):
+    view = render(tmp_path, with_tasks(synthetic([session(1, "a")])), [{"name": "open"}], wall_start=TEN_START)["open"]
+    assert folder_summary(view) == [
+        ("Visualization", "0", "folder", "Visualization", "· 1 done · 1 in progress", "▾", "hide the Visualization tasks", ["V8", "V9"]),
+        ("Discovery", "0", "folder", "Discovery", "· 1 in progress · 1 to do", "▾", "hide the Discovery tasks", ["D5", "D6"]),
+    ]
+    assert all(f["clickable"] for f in view["panel"]["folders"])
+    assert view["panel"]["counts"] == "1 done · 2 in progress · 1 to do" and [t["id"] for t in view["panel"]["tasks"]] == ["V8", "V9", "D5", "D6"]
+    assert view["panel"]["storage"] == {}
+
+
+def test_folders_follow_the_area_field_and_name_other_series_after_the_letter(tmp_path):
+    tasks = [{**task("D1", "done", "first", owner="discovery-builder"), "area": "Discovery"}, {**task("V1", "done", "second"), "area": "Visualization"}, {**task("X1", "todo", "third", owner=None), "area": "X"}, {**task("D2", "todo", "fourth", owner="discovery-builder"), "area": "Discovery"}]
+    counts = {"done": 2, "in_progress": 0, "todo": 2}
+    view = render(tmp_path, with_tasks(synthetic([session(1, "a")]), tasks, counts), [{"name": "open"}], wall_start=TEN_START)["open"]
+    assert [(f["area"], f["counts"], [t["id"] for t in f["tasks"]]) for f in view["panel"]["folders"]] == [("Discovery", "· 1 done · 1 to do", ["D1", "D2"]), ("Visualization", "· 1 done", ["V1"]), ("X", "· 1 to do", ["X1"])]
+    assert view["panel"]["counts"] == "2 done · 0 in progress · 2 to do"
+
+
+def test_closing_a_folder_hides_its_tasks_and_the_choice_is_remembered(tmp_path):
+    changed = {"event": "tasks", "at": "2026-10-20T12:00:06.000Z", "source": "spec", "source_pid": None, "tasks": [task("V9", "done", "task panel"), task("D5", "todo", "next discovery step", owner="discovery-builder")], "task_counts": {"done": 1, "in_progress": 0, "todo": 1}, "spec_path": "/x"}
+    steps = [{"name": "open"}, {"name": "close", "clickFolder": "Discovery"}, {"name": "expand", "clickTask": "V9"}, {"name": "collapse", "clickTab": True}, {"name": "reopen", "clickTab": True}, {"name": "changed", "frames": [changed]}, {"name": "open again", "clickFolder": "Discovery"}]
+    views = render(tmp_path, with_tasks(synthetic([session(1, "a")])), steps, wall_start=TEN_START)
+    by_area = lambda name: {f["area"]: f for f in views[name]["panel"]["folders"]}
+    closed = by_area("close")["Discovery"]
+    assert (closed["closed"], closed["className"], closed["chevron"], closed["title"]) == ("1", "folder closed", "▸", "show the Discovery tasks")
+    assert [t["id"] for t in closed["tasks"]] == ["D5", "D6"] and by_area("close")["Visualization"]["closed"] == "0"
+    assert views["close"]["panel"]["storage"] == {"viz-web-folder-closed:Discovery": "1"} and views["close"]["panel"]["counts"] == "1 done · 2 in progress · 1 to do"
+    assert by_area("expand")["Discovery"]["closed"] == "1" and by_area("expand")["Visualization"]["tasks"][1]["className"] == "task in_progress open"
+    assert views["collapse"]["panel"]["collapsed"] is True and by_area("collapse")["Discovery"]["closed"] == "1"
+    assert views["reopen"]["panel"]["collapsed"] is False and by_area("reopen")["Discovery"]["closed"] == "1"
+    assert [(f["area"], f["closed"], f["counts"], [t["id"] for t in f["tasks"]]) for f in views["changed"]["panel"]["folders"]] == [("Visualization", "0", "· 1 done", ["V9"]), ("Discovery", "1", "· 1 to do", ["D5"])]
+    assert views["changed"]["panel"]["counts"] == "1 done · 0 in progress · 1 to do"
+    reopened = by_area("open again")["Discovery"]
+    assert (reopened["closed"], reopened["className"], reopened["chevron"], reopened["title"]) == ("0", "folder", "▾", "hide the Discovery tasks")
+    assert views["open again"]["panel"]["storage"] == {"viz-web-folder-closed:Discovery": "0", "viz-web-panel-collapsed": "0"}
+
+
+def test_folder_state_survives_a_rerun_with_stored_choices_and_blocked_storage_means_open(tmp_path):
+    stored = {"viz-web-folder-closed:Visualization": "1", "viz-web-folder-closed:Discovery": "0"}
+    remembered = render(tmp_path, with_tasks(synthetic([session(1, "a")])), [{"name": "open"}], wall_start=TEN_START, local_storage=stored)["open"]
+    assert [(f["area"], f["closed"]) for f in remembered["panel"]["folders"]] == [("Visualization", "1"), ("Discovery", "0")]
+    assert remembered["panel"]["collapsed"] is False and remembered["panel"]["counts"] == "1 done · 2 in progress · 1 to do"
+    blocked = render(tmp_path, with_tasks(synthetic([session(1, "a")])), [{"name": "open"}, {"name": "close", "clickFolder": "Visualization"}, {"name": "reopen", "clickFolder": "Visualization"}], wall_start=TEN_START, storage_throws=True)
+    assert [(f["area"], f["closed"]) for f in blocked["open"]["panel"]["folders"]] == [("Visualization", "0"), ("Discovery", "0")]
+    assert [(f["area"], f["closed"]) for f in blocked["close"]["panel"]["folders"]] == [("Visualization", "0"), ("Discovery", "0")]
+    assert blocked["close"]["panel"]["storage"] == {}

@@ -127,10 +127,26 @@ function taskView(item) {
     owner: owner ? textOf(owner) : null, ownerDot: ownerDot ? ownerDot.style.background : null, full: full ? textOf(full) : null, clickable: Boolean(item.listeners.click) };
 }
 
+function folderView(folder) {
+  const head = findByClass(folder, "fhead"), body = findByClass(folder, "fbody");
+  const name = head.children.find((c) => c.tag === "b");
+  return { area: folder.dataset.area, closed: folder.dataset.closed, className: folder.className, name: name ? textOf(name) : "", counts: textOf(findByClass(head, "fcounts") || { text: "" }),
+    chevron: textOf(findByClass(head, "chev") || { text: "" }), title: head.title, clickable: Boolean(head.listeners.click), tasks: body.children.map(taskView) };
+}
+
+function folders() {
+  return fixed.plist.children.filter((c) => c.className.split(" ").includes("folder"));
+}
+
+function taskCards() {
+  return folders().flatMap((folder) => findByClass(folder, "fbody").children);
+}
+
 function panelView() {
   const tab = fixed.ptab;
+  const items = folders().length ? taskCards() : fixed.plist.children;
   return { collapsed: fixed.panel.classList.contains("collapsed"), tab: textOf(tab), tabTitle: tab.title, counts: textOf(findByClass(tab, "counts") || { text: "" }), chevron: textOf(findByClass(tab, "chev") || { text: "" }),
-    tasks: fixed.plist.children.map(taskView), storage: { ...storage } };
+    folders: folders().map(folderView), tasks: items.map(taskView), storage: { ...storage } };
 }
 
 function view() {
@@ -151,7 +167,8 @@ for (const step of input.steps || []) {
   if (step.clickNode !== undefined) fixed.graph.children.find((c) => c.className.startsWith("node") && Number(c.dataset.pid) === Number(step.clickNode)).listeners.click();
   if (step.clickRow !== undefined) fixed.rows.children.find((r) => Number(r.dataset.pid) === Number(step.clickRow)).listeners.click();
   if (step.clickTab) fixed.ptab.listeners.click();
-  if (step.clickTask !== undefined) fixed.plist.children.find((t) => t.dataset.id === step.clickTask).listeners.click();
+  if (step.clickTask !== undefined) taskCards().find((t) => t.dataset.id === step.clickTask).listeners.click();
+  if (step.clickFolder !== undefined) findByClass(folders().find((f) => f.dataset.area === step.clickFolder), "fhead").listeners.click();
   if (step.hoverPath !== undefined) fixed.arrows.children.find((p) => p.attrs["data-key"] === step.hoverPath).listeners.mouseenter();
   if (step.leavePath !== undefined) fixed.arrows.children.find((p) => p.attrs["data-key"] === step.leavePath).listeners.mouseleave();
   if (step.resize) windowListeners.resize();
