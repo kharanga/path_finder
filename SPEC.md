@@ -1,19 +1,52 @@
 # SPEC: path_finder
 
-Status: reset 2026-10-07. The architecture and the feature list are to be written by the user.
+Status: updated 2026-10-08, decisions closed. The architecture and the feature list are written by the user. Discovery (D-series) is the existing building block; visualization (V-series) is the next block.
 
 ## Existing building block
 
 `discovery/discover.py`, see `CLAUDE.md`. Verified on 2026-10-07 with a six-session mesh round: every session asked every other for its path and all answers landed in one shared `discovery/sessions.json`.
 
+## Docs
+
+Read the one that matches the task before starting it.
+
+- `docs/plan-visualization.md`: goal, scope, architecture, state model, UI spec, and test plan for the V-series. Read before any V task.
+- `docs/cross-session-message-format.md`: confirmed JSONL format of a message round trip (send, result, enqueue, peer entry, idle notice), the `msg_id` join, and the connector state machine. Read before V1, V2, V5.
+- `docs/jsonl-transcript-spec.md`: every transcript entry type, which to keep and which to skip, listener rules. Read before V1.
+
 ## Decisions so far
 
-- The discovery directory should be persistent: a session is added when it starts and removed when it leaves, for as long as the application runs.
-- Each session's human enters that session's role in its own CLI when discovery starts.
-- Directory entries are keyed by PID, not display name, because names change.
-- No hooks for now.
+- The discovery directory is persistent: a session is added when it starts and removed when it leaves, for as long as the application runs.
+- Discovery is self-registration, no messages. Each session's human enters that session's role in its own CLI when the session starts (`identify`). `list`, `done`, and the UI read the registry plus `discovery/identity/`; the mesh round is retired (D3). Reason: every received message costs the receiver a full turn (74k to 94k cached tokens in the 2026-10-08 test), and everything the mesh collected is already on disk.
+- Directory entries are keyed by PID, not display name, because names change. The PID also names the session's socket, `uds:/tmp/cc-socks/<pid>.sock`, and matches `origin.verifiedPeerPid` in transcripts.
+- Replies go to the sender's socket address (the reply address), never to a looked-up display name, so a rename mid-run cannot break a reply.
+- Transcripts under `~/.claude/projects/` are a read-only data source. The visualization reads them; nothing writes to them.
+- Messages are tracked by `msg_id`: the sender's `toolUseResult.msg_id` equals the receiver's `origin.msg_id`.
+- Visualization only in v1. No routing, holding, or blocking of messages.
+- Backend in Python, page in static HTML, no framework. The watcher owns port 4780 and serves the page; `discover.py ui` is retired (D4).
+- The watcher polls every 250 ms. No filesystem-event library.
+- Role split: a `viz-builder` owns `viz/` (`watcher.py`, the `/state` and `/events` endpoints, and `index.html`, which moves there from `discovery/` at V4). The discovery-builder keeps `discovery/`. Role file: `.claude/roles/viz-builder.md`.
+- No hooks for now. The leftover `dashboard-hook.js` plugin is removed by the user; a `hook_non_blocking_error` entry in a new transcript means it is still installed.
+
+## Open questions
+
+- Held and refused messages: format not yet observed. Test later with `crossSessionInbound: hold` on one session, capture the sender's `[Cross-session delivery notice]`, then add HELD and REFUSED stages.
 
 ## Tasks
 
+The manager assigns every task by ID. V0 to V2 are testable offline with fixtures and do not need running sessions.
+
 - [x] D1: role prompt in discovery (label equals role). When a round starts, each session asks its human for a role and a label in its own CLI, stores them with `identify`, and carries them in its reply. Directory keyed by PID.
-- [~] D2: capsule UI. `discover.py ui` serves `discovery/index.html` with the built-in http server; one capsule per discovered session showing its label, grouped by folder, dashed when its mesh is incomplete. The initiator opens it after `done`.
+- [x] D3: self-registration. `identify` runs when a session starts, before any other discovery step. `list --root R` reads the registry and `identity/` and prints every live session under R with its role and label, marking sessions that have not run `identify`. `done --root R` exits 0 when every live session under R has an identity. `protocol` and `record` are removed. `sessions.json` is rebuilt from the registry plus `identity/` on every `list`; a PID that is no longer alive is dropped. Done when two fake sessions appear in `list` with roles without any message being sent, and one of them exiting removes it on the next `list`.
+- [x] D2: capsule UI (superseded by the viz page at V4). `discover.py ui` serves `discovery/index.html` with the built-in http server; one capsule per discovered session showing its label, grouped by folder, dashed when its mesh is incomplete. The initiator opens it after `done`.
+- [x] V0: map PID to session id to transcript path. Check whether `~/.claude/sessions/<pid>.json` holds the session id; else match on `cwd` and on `origin.verifiedPeerPid` from received messages (plan §3). Record the method in `docs/cross-session-message-format.md` §6. Done when `python viz/watcher.py map` prints pid, session id, and transcript path for both fake sessions.
+- [x] V1: transcript tailer. Tail each transcript by byte offset, parse complete lines only, skip unknown types, keep `isMeta` entries whose `turnOrigin` is `peer` or `system`. Done when appending lines to a fixture file yields parsed events, a partial line is buffered, and an unknown type is skipped without error.
+- [x] V2: message state machine. Sessions keyed by PID, messages keyed by `msg_id`, socket to PID map, stages PENDING, IN_INBOX, READ, FAILED, idle notices (plan §5). Done when the captured manager and builder fixtures yield two messages READ and one idle notice with timestamps matching the logs.
+- [x] V3: `GET /state` (full snapshot) and `GET /events` (SSE) on the port 4780 server. Done when `curl /state` returns both sessions and `/events` streams a change within 1 s of a line being appended.
+- [x] V4: capsule extensions: status pill, inbox badge, last message line, watching line (plan §6). Done when a live round trip matches frames 1 to 4 of the UI flow. Live check 2026-10-08: page follows the transcript data where the mock frames differ (frame 1 caption, watching line from send time, joined captions). Reference frames: `docs/ui-frames.png`.
+- [x] V5: connectors with stages and the idle-notice connector. Done when a live round trip matches frames 2 to 9. Same live-check note as V4.
+- [x] V6: append-only `viz/events.jsonl` for later replay, and sanitized fixtures under `tests/fixtures/`. Done when the log is written during V3's test and the fixtures are committed.
+- [x] D4: retire `ui`. Remove `ui` and `ui --stop` from `discover.py`, delete `discovery/index.html`, drop `discovery/ui.log` and `discovery/ui.pid` from `.gitignore`. `identify --role ""` (blank after strip) exits 2 with a message and writes nothing. Done when `discover.py ui` fails with argparse "invalid choice", `identify --role ""` exits 2, and the existing tests pass with the ui tests removed.
+- [x] V7: compact web window. A second page, `viz/web.html`, served by the watcher at `/web`, for a small browser window (about 380 px wide). Reads `/state` then `/events` like `index.html`. Layout top to bottom: (1) web: one node per session in a ring, the frame-style card (dot, label, status pill, inbox pill, watching or quoted last line); compact nodes (dot, name, inbox count, working ring) when more than eight sessions; two sessions render side by side as the pod. (2) caption: the transcript entry behind the latest change and its pair. (3) strip: one chip per session, ring while working, orange count while mail waits; click highlights that session's arrows. (4) toasts: one per message in flight, newest first, three then a count, full first line; left edge grey Pending, green In inbox and Read, red Failed; a Read toast dims and leaves after 8 s; idle notices are muted toasts. Arrows: only PENDING (grey), IN_INBOX (green), FAILED (red, stays until resolved), and a 3 s fading flash on READ; idle notices are never arrows, they pulse the eye glyph on the watching node. One arrow per (from, to) pair with a +N count; curved toward the ring centre, clipped at card edges, label (summary and stage) at the curve midpoint, labels only on the newest arrow in compact mode and on hover otherwise. Sessions with no message in the last 10 minutes leave the ring and stay in the strip. Reference: `handoff/viz/v7-animation.html` (behaviour and geometry) and `handoff/viz/v7-styles.html` (look). Done when replaying the fixtures at `/web` shows the pod with the stage sequence and the idle pulse, and a six-session live view on 4780/web matches the mock's five-session window.
+
+Dependencies: D3 before V0 (the watcher reads the same directory), V0 before V1, V1 before V2, V2 before V3, D2 before V4, V3 before V4, V4 before V5. Port handover (watcher serving on 4780) before D4. V6 before V7.

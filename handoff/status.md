@@ -102,3 +102,9 @@ All edits below are applied. CLAUDE.md, SPEC.md, .claude/roles/, docs/ remain un
 - 2026-10-20T13:22Z committed D4 as fab23c1 (also carried the staged docs/ui-frames.png rename). Marked D4 done in SPEC.md. Updated .claude/roles/discovery-builder.md line 27 (ui retired). Told viz-builder to drop the discovery/ static fallback as part of V7.
 - 2026-10-20T13:35Z V7 ready from viz-builder: viz/web.html at /web, discovery/ static fallback dropped. Manager restarted the 4780 watcher on the new code (manager-started). Validator pointed at it.
 - 2026-10-20T13:50Z V7 review PASS; 259 tests pass. Cosmetic notes in handoff/viz/review.md. User's live look at http://127.0.0.1:4780/web remains.
+- 2026-10-20T13:55Z committed V7 as e6766f3. Marked V7 done in SPEC.md; plan §6 now describes the web window. Final commit of CLAUDE.md, SPEC.md, .claude/roles/, docs/ per the user's "commit everything" instruction.
+
+## Run complete (2026-10-20)
+- Commits since the morning: fab23c1 D4, e6766f3 V7, plus the spec/docs/roles commit that follows. 259 tests pass with `python3 -m pytest tests`.
+- Live: `python3 viz/watcher.py serve --root <project>` on port 4780 (manager-started, pid 94758). Full page at http://127.0.0.1:4780/, compact window at http://127.0.0.1:4780/web.
+- For the user: live look at /web; cosmetic notes in handoff/viz/review.md; the leftover dashboard plugin hook is still installed per the fake transcripts.
