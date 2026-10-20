@@ -216,6 +216,14 @@ Observed latencies: send → receiver enqueue ≈ 0.5s; enqueue → dequeue ≈ 
 
 **Action:** find edge by `msgId == origin.msg_id` → status `READ`, `readAt = timestamp`, play arrival animation at receiver. If no edge exists yet (sender file not yet read), create it from `origin` and merge later by `msg_id`.
 
+### 3.2a Delivery while the receiver is busy — `queued_command` attachment
+
+A message that arrives mid-turn is read by the receiver between tool calls and lands in its transcript as `{ "type": "attachment", "attachment": { "type": "queued_command", "origin": { "kind": "peer", "msg_id": …, "verifiedPeerPid": … } } }`, with no `user` peer entry afterwards. Treat that attachment as the read: `msg_id` moves to READ at the attachment's timestamp; the later `queue-operation` `remove` (`absorbed_mid_turn`) is the inbox decrement (V12).
+
+### 3.2b Dropped messages — delivery notice
+
+When a send is accepted but never delivered (seen once on 2026-10-08, a relay-loop cut), the sender's transcript later gets a `[Cross-session delivery notice] … NOT delivered` entry naming the `msg_id`; the message moves to FAILED (V12).
+
 ### 3.3 Held / refused messages — UNCONFIRMED
 
 Not observed in this test. The sender's result text says a **`[Cross-session delivery notice]`** follows in the sender's transcript when the receiver holds or refuses a message. Watch for that string (likely in a `queue-operation` `enqueue` and/or a `user` entry with `turnOrigin: "system"`) and set edge status `HELD` / `REFUSED`. Test this by messaging between sessions in different permission groups.
@@ -253,7 +261,8 @@ Not observed in this test. The sender's result text says a **`[Cross-session del
   "message": { "role": "user", "content": "[Cross-session idle notice] \"fake-session-builder\", … is idle now — it finished a turn at 21:31. Its harness reports: «…». …" } }
 ```
 
-- **No `origin` object and no `msg_id`** — link to the watched session only by the quoted name in the text.
+- **No `origin` object and no `msg_id`** — link to the watched session only by the quoted string in the text. Since Claude Code 2.1.29x the quoted string is the watched session's socket address (`"uds:/tmp/cc-socks/<pid>.sock"`), not its display name; older captures quote the name. Resolve either to a PID and clear the watch on the enqueue or the `user` entry, whichever comes first (V12).
+- A pure subscription (`notify_when_idle: true` with no `message`) returns a tool_result with `success: true` and no `msg_id`; it is a watch, never a message (V12).
 - Detect: `user` entry with `turnOrigin == "system"` and content starting `"[Cross-session idle notice]"`.
 - Parse: watched name = first quoted string; finish time = after `"finished a turn at "`; status = text inside `« »`.
 - The finish time is local clock time (`21:31`), not ISO — prefer the entry `timestamp`.

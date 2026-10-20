@@ -56,6 +56,8 @@ TASK_STATES = {" ": "todo", "x": "done", "~": "in_progress"}
 TASK_OWNERS = {"D": "discovery-builder", "V": "viz-builder"}
 TASK_AREAS = {"D": "Discovery", "V": "Visualization"}
 IDLE_NOTICE_PREFIX = "[Cross-session idle notice]"
+DELIVERY_NOTICE_PREFIX = "[Cross-session delivery notice]"
+MSG_ID_IN_NOTICE = re.compile(r"msg_id: ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})")
 SENDER_OWNED_MESSAGE_FIELDS = ("pending_key", "tool_use_id", "from_pid", "to", "summary", "body", "notify_when_idle", "sent_at")
 
 
@@ -243,6 +245,8 @@ def entry_source(entry):
             return "user · origin.kind = peer"
         if entry.get("turnOrigin") == "system" and content_text(entry.get("message", {})).startswith(IDLE_NOTICE_PREFIX):
             return "user · cross-session idle notice"
+        if entry.get("turnOrigin") == "system" and content_text(entry.get("message", {})).startswith(DELIVERY_NOTICE_PREFIX):
+            return "user · cross-session delivery notice"
         results = tool_result_blocks(entry)
         if results:
             succeeded = all(send_result_from(entry, block).get("success") for block in results)
@@ -262,6 +266,7 @@ class StateModel:
         self.message_key_by_tool_use = {}
         self.pid_by_name = {}
         self.unmatched_enqueues = {}
+        self.pure_watch_by_tool_use = {}
         self.latest_source_by_pid = {}
         self.source_sequence = 0
 
@@ -327,6 +332,7 @@ class StateModel:
             "user": self.apply_user,
             "system": self.apply_system,
             "queue-operation": self.apply_queue_operation,
+            "attachment": self.apply_attachment,
             "agent-name": self.apply_agent_name,
         }.get(entry.get("type"))
         if handler is None:
@@ -438,6 +444,9 @@ class StateModel:
         summary = raw_input.get("summary") or wire.get("summary")
         body = raw_input.get("message") or wire.get("message")
         notify = bool(raw_input.get("notify_when_idle") or wire.get("notify_when_idle"))
+        if notify and not body:
+            self.pure_watch_by_tool_use[block.get("id")] = self.add_watch(pid, target, self.resolve_target(target), touched)
+            return
         key = f"pending:{block.get('id')}"
         message = self.new_message(
             key,
@@ -458,11 +467,31 @@ class StateModel:
         if summary or body:
             session["last_text"] = summary or body
         if notify:
-            watched = message["to_pid"] if message["to_pid"] is not None else bare_name(target)
-            if watched not in session["watching"]:
-                session["watching"].append(watched)
+            self.add_watch(pid, target, message["to_pid"], touched)
         touched["sessions"].add(pid)
         touched["messages"].add(key)
+
+    def add_watch(self, pid, target, target_pid, touched):
+        session = self.session(pid)
+        watched = target_pid if target_pid is not None else bare_name(target)
+        if watched not in session["watching"]:
+            session["watching"].append(watched)
+        touched["sessions"].add(pid)
+        return (pid, watched)
+
+    def watched_pid_of(self, watched):
+        return watched if isinstance(watched, int) else self.resolve_target(watched)
+
+    def clear_watch(self, pid, watched, touched):
+        if watched is None or watched == "":
+            return
+        session = self.session(pid)
+        watched_pid = self.watched_pid_of(watched)
+        same_target = lambda entry: entry == watched or entry == bare_name(watched) or (watched_pid is not None and self.watched_pid_of(entry) == watched_pid)
+        kept = [entry for entry in session["watching"] if not same_target(entry)]
+        if len(kept) != len(session["watching"]):
+            session["watching"] = kept
+            touched["sessions"].add(pid)
 
     def apply_user(self, pid, entry, touched):
         origin = entry.get("origin") or {}
@@ -473,6 +502,9 @@ class StateModel:
         if entry.get("turnOrigin") == "system" and text.startswith(IDLE_NOTICE_PREFIX):
             self.apply_idle_notice(pid, entry, text, touched)
             return
+        if entry.get("turnOrigin") == "system" and text.startswith(DELIVERY_NOTICE_PREFIX):
+            self.apply_delivery_notice(text, touched)
+            return
         results = tool_result_blocks(entry)
         if results:
             for block in results:
@@ -482,6 +514,12 @@ class StateModel:
             self.set_status(pid, "WORKING", touched)
 
     def apply_send_result(self, pid, entry, block, touched):
+        pure_watch = self.pure_watch_by_tool_use.pop(block.get("tool_use_id"), None)
+        if pure_watch is not None:
+            if not send_result_from(entry, block).get("success"):
+                watcher_pid, watched = pure_watch
+                self.clear_watch(watcher_pid, watched, touched)
+            return
         key = self.message_key_by_tool_use.pop(block.get("tool_use_id"), None)
         if key is None or key not in self.messages:
             return
@@ -528,6 +566,10 @@ class StateModel:
             touched["sessions"].add(pid)
             if content.startswith(PEER_MESSAGE_PREFIX):
                 self.apply_peer_enqueue(pid, entry, content, touched)
+            elif content.startswith(IDLE_NOTICE_PREFIX):
+                self.clear_watch(pid, first_quoted(content), touched)
+            elif content.startswith(DELIVERY_NOTICE_PREFIX):
+                self.apply_delivery_notice(content, touched)
         elif operation in ("dequeue", "remove"):
             session["inbox"] = max(0, session["inbox"] - 1)
             touched["sessions"].add(pid)
@@ -568,7 +610,8 @@ class StateModel:
         if message["body"] is None:
             message["body"] = origin.get("body")
         message["stage"] = "READ"
-        message["read_at"] = entry.get("timestamp")
+        if message["read_at"] is None:
+            message["read_at"] = entry.get("timestamp")
         self.claim_unmatched_enqueue(message)
         session = self.session(pid)
         session["last_text"] = origin.get("body") or session["last_text"]
@@ -593,10 +636,38 @@ class StateModel:
             self.message_key_by_tool_use[message["tool_use_id"]] = msg_id
         return message
 
+    def apply_attachment(self, pid, entry, touched):
+        attachment = entry.get("attachment") or {}
+        if attachment.get("type") != "queued_command":
+            return
+        origin = attachment.get("origin") or {}
+        prompt = attachment.get("prompt")
+        text = prompt if isinstance(prompt, str) else content_text({"content": prompt})
+        delivery = {"timestamp": attachment.get("timestamp") or entry.get("timestamp"), "uuid": attachment.get("source_uuid") or entry.get("uuid")}
+        if origin.get("kind") == "peer":
+            self.apply_peer_delivery(pid, delivery, origin, touched)
+        elif text.startswith(IDLE_NOTICE_PREFIX):
+            self.apply_idle_notice(pid, delivery, text, touched)
+        elif text.startswith(DELIVERY_NOTICE_PREFIX):
+            self.apply_delivery_notice(text, touched)
+
+    def apply_delivery_notice(self, text, touched):
+        for msg_id in MSG_ID_IN_NOTICE.findall(text):
+            message = self.messages.get(msg_id)
+            if message is None or message["stage"] in ("READ", "FAILED"):
+                continue
+            message["stage"] = "FAILED"
+            message["reason"] = first_line(text, 200)
+            touched["messages"].add(msg_id)
+
     def apply_idle_notice(self, pid, entry, text, touched):
         watched_name = first_quoted(text)
-        watched_pid = self.pid_by_name.get(watched_name)
+        watched_pid = self.resolve_target(watched_name)
+        watched_label = (self.sessions.get(watched_pid) or {}).get("name") or watched_name
         key = f"idle:{entry.get('uuid')}"
+        if key in self.messages:
+            self.clear_watch(pid, watched_name, touched)
+            return
         self.new_message(
             key,
             msg_id=key,
@@ -604,14 +675,14 @@ class StateModel:
             from_pid=watched_pid,
             to=watched_name,
             to_pid=pid,
-            summary=f"{watched_name} is idle",
+            summary=f"{watched_label} is idle",
             body=text,
             stage="READ",
             sent_at=entry.get("timestamp"),
             read_at=entry.get("timestamp"),
         )
+        self.clear_watch(pid, watched_name, touched)
         session = self.session(pid)
-        session["watching"] = [w for w in session["watching"] if w not in (watched_pid, watched_name)]
         session["status"] = "WORKING"
         touched["sessions"].add(pid)
         touched["messages"].add(key)

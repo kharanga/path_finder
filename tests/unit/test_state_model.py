@@ -8,6 +8,11 @@ MANAGER = 32813
 BUILDER = 33993
 MANAGER_FIXTURE = FIXTURES_DIR / "viz" / "round_trip_manager_32813_33993.jsonl"
 BUILDER_FIXTURE = FIXTURES_DIR / "viz" / "round_trip_builder_32813_33993.jsonl"
+STALE_MANAGER_FIXTURE = FIXTURES_DIR / "viz" / "stale_waiting_manager_41000.jsonl"
+STALE_BUILDER_FIXTURE = FIXTURES_DIR / "viz" / "stale_waiting_builder_41001.jsonl"
+ASSIGNED_MSG = "6f1d3c2a-5b4e-4a7d-9c8b-0e1f2a3b4c5d"
+DROPPED_MSG = "9a8b7c6d-1e2f-4a3b-8c4d-5e6f7a8b9c0d"
+STALE_MANAGER, STALE_BUILDER = 41000, 41001
 FIRST_MSG = "693b9bd4-a916-40de-9ff1-aee2ee5dd741"
 REPLY_MSG_PREFIX = "f5ac2c3a-"
 
@@ -66,6 +71,38 @@ def idle_notice_entry(watched_name, at="2026-10-08T04:31:21.055Z", uuid="idle-1"
     return {"type": "user", "isMeta": True, "turnOrigin": "system", "uuid": uuid, "timestamp": at, "message": {"role": "user", "content": text}}
 
 
+NEW_IDLE_WORDING = '[Cross-session idle notice] "uds:/tmp/cc-socks/{pid}.sock", which you asked to be notified about, is idle now — it finished a turn at 13:00. This is an automated notice.'
+
+
+def socket_idle_notice_text(pid):
+    return NEW_IDLE_WORDING.format(pid=pid)
+
+
+def socket_idle_notice_entry(pid, at="2026-10-20T13:00:06.200Z", uuid="idle-s1"):
+    return {"type": "user", "isMeta": True, "turnOrigin": "system", "uuid": uuid, "timestamp": at, "message": {"role": "user", "content": socket_idle_notice_text(pid)}}
+
+
+def enqueue_text_entry(text, at="2026-10-20T13:00:06.000Z"):
+    return {"type": "queue-operation", "operation": "enqueue", "timestamp": at, "content": text}
+
+
+def delivery_notice_text(*msg_ids, recipient=2):
+    named = "; ".join(f"recipient: uds:/tmp/cc-socks/{recipient}.sock; msg_id: {msg_id}" for msg_id in msg_ids)
+    return f"[Cross-session delivery notice] Do not resend now: one of your messages to another session was dropped at that session's inbox ({named}) and NOT delivered.\nFold it into a later message."
+
+
+def delivery_notice_entry(*msg_ids, at="2026-10-20T13:00:09.000Z", uuid="dn-1"):
+    return {"type": "user", "isMeta": True, "turnOrigin": "system", "uuid": uuid, "timestamp": at, "message": {"role": "user", "content": delivery_notice_text(*msg_ids)}}
+
+
+def attachment_entry(from_pid, msg_id, at="2026-10-20T13:00:03.650Z", attachment_at="2026-10-20T13:00:03.600Z", uuid="att-1", kind="peer", attachment_type="queued_command", body="hello"):
+    origin = {"kind": kind, "from": f"uds:/tmp/cc-socks/{from_pid}.sock", "verifiedPeerPid": from_pid, "msg_id": msg_id, "name": "sender", "body": body}
+    attachment = {"type": attachment_type, "origin": origin, "prompt": f'<cross-session-message from="uds:/tmp/cc-socks/{from_pid}.sock" from-name="sender" from-mode="prompting">\n{body}\n</cross-session-message>', "source_uuid": f"src-{uuid}"}
+    if attachment_at is not None:
+        attachment["timestamp"] = attachment_at
+    return {"type": "attachment", "timestamp": at, "uuid": uuid, "attachment": attachment}
+
+
 def turn_end(at="2026-10-08T04:31:13.415Z"):
     return {"type": "system", "subtype": "turn_duration", "timestamp": at}
 
@@ -79,13 +116,16 @@ def by_key_prefix(model, prefix):
 def test_fixture_line_counts(watcher):
     assert len(entries_of(MANAGER_FIXTURE)) == 29
     assert len(entries_of(BUILDER_FIXTURE)) == 16
+    assert len(entries_of(STALE_MANAGER_FIXTURE)) == 10
+    assert len(entries_of(STALE_BUILDER_FIXTURE)) == 14
 
 
 def test_fixtures_are_sanitized():
-    for path in (MANAGER_FIXTURE, BUILDER_FIXTURE):
+    for path in (MANAGER_FIXTURE, BUILDER_FIXTURE, STALE_MANAGER_FIXTURE, STALE_BUILDER_FIXTURE):
         text = path.read_text()
         assert "/Users/" not in text
         assert "@sjsu" not in text
+        assert "khang" not in text.lower()
 
 
 @pytest.mark.parametrize("manager_first", [True, False])
@@ -454,6 +494,7 @@ def human_prompt(at="2026-10-08T04:31:09.000Z"):
     ({"type": "assistant", "message": {"content": "not a list"}}, "assistant"),
     (delivery_entry(1, "m-1"), "user · origin.kind = peer"),
     (idle_notice_entry("sender"), "user · cross-session idle notice"),
+    (delivery_notice_entry("9a8b7c6d-1e2f-4a3b-8c4d-5e6f7a8b9c0d"), "user · cross-session delivery notice"),
     (result_entry("t1"), "toolUseResult.success"),
     (result_entry("t1", success=False, msg_id=None), "toolUseResult.error"),
     (human_prompt(), "user"),
@@ -750,7 +791,189 @@ def test_round_trip_waiting_on_in_time_order(watcher):
     manager = [(at, w) for at, pid, w in waiting if pid == MANAGER]
     builder = [(at, w) for at, pid, w in waiting if pid == BUILDER]
     assert manager[0] == ("2026-10-08T04:31:10.318Z", [BUILDER])
-    assert all(w == [BUILDER] for at, w in manager if at < "2026-10-08T04:31:21.055Z")
-    assert all(w == [] for at, w in manager if at >= "2026-10-08T04:31:21.055Z")
+    assert all(w == [BUILDER] for at, w in manager if at < "2026-10-08T04:31:21.038Z")
+    assert all(w == [] for at, w in manager if at >= "2026-10-08T04:31:21.038Z")
+    assert ("2026-10-08T04:31:21.038Z", []) in manager
     assert [(at, w) for at, w in builder if w] == [("2026-10-08T04:31:16.750Z", [MANAGER])]
     assert ("2026-10-08T04:31:17.638Z", []) in builder
+
+
+def test_queued_peer_attachment_is_the_read_at_its_own_timestamp_without_a_second_inbox_drop(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 2, "name": "builder"})
+    model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock", at="2026-10-20T13:00:03.000Z"))
+    model.apply(1, result_entry("t1", msg_id=ASSIGNED_MSG, at="2026-10-20T13:00:03.300Z"))
+    model.apply(2, enqueue_entry(1, at="2026-10-20T13:00:03.600Z"))
+    assert (model.messages[ASSIGNED_MSG]["stage"], model.sessions[2]["inbox"], model.sessions[1]["waiting_on"]) == ("IN_INBOX", 1, [2])
+    changes = model.apply(2, attachment_entry(1, ASSIGNED_MSG))
+    message = model.messages[ASSIGNED_MSG]
+    assert (message["stage"], message["read_at"], message["to_pid"]) == ("READ", "2026-10-20T13:00:03.600Z", 2)
+    assert (model.sessions[2]["inbox"], model.sessions[2]["status"], model.sessions[1]["waiting_on"]) == (1, "WORKING", [])
+    assert {c["source"] for c in changes} == {"attachment"} and {c["event"] for c in changes} == {"session", "message"}
+    model.apply(2, queue_entry("remove", at="2026-10-20T13:00:04.000Z"))
+    assert model.sessions[2]["inbox"] == 0
+    model.apply(2, delivery_entry(1, ASSIGNED_MSG, at="2026-10-20T13:00:05.000Z"))
+    assert (model.messages[ASSIGNED_MSG]["read_at"], model.sessions[2]["inbox"]) == ("2026-10-20T13:00:03.600Z", 0)
+
+
+def test_attachment_without_its_own_timestamp_uses_the_entry_and_other_attachments_are_ignored(watcher):
+    model = watcher.StateModel()
+    model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock"))
+    model.apply(1, result_entry("t1", msg_id=ASSIGNED_MSG))
+    assert model.apply(2, attachment_entry(1, ASSIGNED_MSG, attachment_type="file")) == []
+    assert model.apply(2, attachment_entry(1, ASSIGNED_MSG, kind="human")) == []
+    assert model.messages[ASSIGNED_MSG]["stage"] == "IN_INBOX"
+    model.apply(2, attachment_entry(1, ASSIGNED_MSG, attachment_at=None))
+    assert (model.messages[ASSIGNED_MSG]["stage"], model.messages[ASSIGNED_MSG]["read_at"]) == ("READ", "2026-10-20T13:00:03.650Z")
+
+
+def test_idle_notice_enqueue_clears_the_watch_by_socket_address_and_the_user_entry_records_it_once(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 2, "name": "builder"})
+    model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock", notify=True))
+    model.apply(1, result_entry("t1", msg_id=ASSIGNED_MSG))
+    assert model.sessions[1]["watching"] == [2] and model.sessions[1]["waiting_on"] == [2]
+    changes = model.apply(1, enqueue_text_entry(socket_idle_notice_text(2)))
+    assert model.sessions[1]["watching"] == [] and model.sessions[1]["waiting_on"] == [2]
+    assert [c["event"] for c in changes] == ["session"] and [m["kind"] for m in model.messages.values()] == ["message"]
+    model.apply(1, queue_entry("dequeue", at="2026-10-20T13:00:06.100Z"))
+    changes = model.apply(1, socket_idle_notice_entry(2))
+    notice = model.messages["idle:idle-s1"]
+    assert (notice["kind"], notice["stage"], notice["from_pid"], notice["to_pid"], notice["summary"], notice["read_at"]) == ("idle_notice", "READ", 2, 1, "builder is idle", "2026-10-20T13:00:06.200Z")
+    assert model.sessions[1]["watching"] == [] and model.sessions[1]["status"] == "WORKING"
+    assert {c["event"] for c in changes} == {"session", "message"} and len(model.messages) == 2
+    assert model.apply(1, socket_idle_notice_entry(2)) == []
+
+
+def test_idle_notice_user_entry_alone_clears_the_watch_in_either_wording(watcher):
+    for entry in (socket_idle_notice_entry(2), idle_notice_entry("builder")):
+        model = watcher.StateModel()
+        model.register_session({"pid": 2, "name": "builder"})
+        model.apply(1, send_entry("t1", "builder", notify=True))
+        assert model.sessions[1]["watching"] == [2]
+        model.apply(1, entry)
+        assert model.sessions[1]["watching"] == [] and model.sessions[1]["waiting_on"] == [2]
+
+
+def test_pure_subscription_is_a_watch_only_and_a_failed_result_drops_it(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 2, "name": "builder"})
+    changes = model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock", body=None, notify=True))
+    assert model.messages == {} and model.sessions[1]["watching"] == [2] and model.sessions[1]["waiting_on"] == [2]
+    assert [(c["event"], c["pid"], c["status"]) for c in changes] == [("session", 1, "WORKING")]
+    assert model.apply(1, result_entry("t1", msg_id=None, message="Subscribed — you will get one notice here")) == []
+    assert model.messages == {} and model.sessions[1]["watching"] == [2]
+    model.apply(1, socket_idle_notice_entry(2))
+    assert model.sessions[1]["watching"] == [] and model.sessions[1]["waiting_on"] == []
+    refused = watcher.StateModel()
+    refused.register_session({"pid": 2, "name": "builder"})
+    refused.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock", body=None, notify=True))
+    changes = refused.apply(1, result_entry("t1", success=False, msg_id=None, message="refused"))
+    assert refused.messages == {} and refused.sessions[1]["watching"] == [] and refused.sessions[1]["waiting_on"] == []
+    assert [(c["event"], c["pid"]) for c in changes] == [("session", 1)]
+
+
+def test_delivery_notice_fails_only_the_named_message_that_is_still_open(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 2, "name": "builder"})
+    model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock", at="2026-10-20T13:00:03.000Z"))
+    model.apply(1, result_entry("t1", msg_id=ASSIGNED_MSG, at="2026-10-20T13:00:03.300Z"))
+    model.apply(2, delivery_entry(1, ASSIGNED_MSG, at="2026-10-20T13:00:03.600Z"))
+    model.apply(1, send_entry("t2", "uds:/tmp/cc-socks/2.sock", at="2026-10-20T13:00:08.000Z"))
+    model.apply(1, result_entry("t2", msg_id=DROPPED_MSG, at="2026-10-20T13:00:08.300Z"))
+    assert model.sessions[1]["waiting_on"] == [2]
+    changes = model.apply(1, enqueue_text_entry(delivery_notice_text(DROPPED_MSG, ASSIGNED_MSG, "00000000-0000-4000-8000-000000000000"), at="2026-10-20T13:00:08.900Z"))
+    dropped = model.messages[DROPPED_MSG]
+    assert (dropped["stage"], dropped["reason"]) == ("FAILED", delivery_notice_text(DROPPED_MSG, ASSIGNED_MSG, "00000000-0000-4000-8000-000000000000").splitlines()[0][:199] + "…")
+    assert dropped["reason"].startswith("[Cross-session delivery notice] Do not resend now") and len(dropped["reason"]) == 200
+    assert model.messages[ASSIGNED_MSG]["stage"] == "READ" and len(model.messages) == 2
+    assert model.sessions[1]["waiting_on"] == []
+    assert [(c["event"], c.get("key", c.get("pid"))) for c in changes] == [("session", 1), ("message", DROPPED_MSG)]
+    assert model.apply(1, delivery_notice_entry(DROPPED_MSG)) == []
+    assert model.messages[DROPPED_MSG]["stage"] == "FAILED"
+
+
+def test_delivery_notice_for_an_unknown_message_changes_nothing(watcher):
+    model = watcher.StateModel()
+    changes = model.apply(1, enqueue_text_entry(delivery_notice_text(DROPPED_MSG)))
+    assert [(c["event"], c["pid"], c["inbox"]) for c in changes] == [("session", 1, 1)]
+    assert model.messages == {} and model.sessions[1]["inbox"] == 1
+
+
+def stale_waiting_in_time_order(watcher, until=None):
+    model = watcher.StateModel()
+    model.register_session({"pid": STALE_MANAGER, "name": "fake-manager"})
+    model.register_session({"pid": STALE_BUILDER, "name": "fake-builder"})
+    tailer = watcher.TranscriptTailer(STALE_MANAGER_FIXTURE)
+    timed = []
+    for timestamp, _index, pid, line in watcher.entries_in_time_order([(STALE_MANAGER, str(STALE_MANAGER_FIXTURE)), (STALE_BUILDER, str(STALE_BUILDER_FIXTURE))]):
+        if until and timestamp and timestamp > until:
+            break
+        entry = tailer.parse_line(line)
+        if entry is None:
+            continue
+        timed += [(timestamp, change) for change in model.apply(pid, entry)]
+    return model, timed
+
+
+def test_stale_waiting_fixture_ends_clean(watcher):
+    model, timed = stale_waiting_in_time_order(watcher)
+    snapshot = model.snapshot()
+    assert [(s["pid"], s["status"], s["watching"], s["waiting_on"], s["inbox"]) for s in snapshot["sessions"]] == [(STALE_MANAGER, "IDLE", [], [], 0), (STALE_BUILDER, "IDLE", [], [], 0)]
+    by_key = {m["key"]: m for m in snapshot["messages"]}
+    assert set(by_key) == {ASSIGNED_MSG, "idle:u-41000-06.200", DROPPED_MSG}
+    assert (by_key[ASSIGNED_MSG]["stage"], by_key[ASSIGNED_MSG]["read_at"], by_key[ASSIGNED_MSG]["from_pid"], by_key[ASSIGNED_MSG]["to_pid"]) == ("READ", "2026-10-20T13:00:03.600Z", STALE_MANAGER, STALE_BUILDER)
+    notice = by_key["idle:u-41000-06.200"]
+    assert (notice["kind"], notice["stage"], notice["from_pid"], notice["to_pid"], notice["summary"], notice["read_at"]) == ("idle_notice", "READ", STALE_BUILDER, STALE_MANAGER, "fake-builder is idle", "2026-10-20T13:00:06.200Z")
+    assert by_key[DROPPED_MSG]["stage"] == "FAILED" and by_key[DROPPED_MSG]["reason"].startswith("[Cross-session delivery notice] Do not resend now")
+    assert not any(m["stage"] in ("PENDING", "IN_INBOX") for m in snapshot["messages"])
+
+
+def test_stale_waiting_fixture_moment_by_moment(watcher):
+    def state_at(until):
+        model, _timed = stale_waiting_in_time_order(watcher, until)
+        snapshot = model.snapshot()
+        return [(s["pid"], s["status"], s["watching"], s["waiting_on"], s["inbox"]) for s in snapshot["sessions"]], {m["key"]: (m["stage"], m["read_at"]) for m in snapshot["messages"]}
+    assert state_at("2026-10-20T13:00:01.500Z") == ([(STALE_MANAGER, "WORKING", [STALE_BUILDER], [STALE_BUILDER], 0), (STALE_BUILDER, "IDLE", [], [], 0)], {})
+    assert state_at("2026-10-20T13:00:03.700Z") == ([(STALE_MANAGER, "WORKING", [STALE_BUILDER], [STALE_BUILDER], 0), (STALE_BUILDER, "WORKING", [], [], 1)], {ASSIGNED_MSG: ("READ", "2026-10-20T13:00:03.600Z")})
+    assert state_at("2026-10-20T13:00:04.500Z")[0][1] == (STALE_BUILDER, "WORKING", [], [], 0)
+    assert state_at("2026-10-20T13:00:06.050Z")[0][0] == (STALE_MANAGER, "WORKING", [], [], 1)
+    assert state_at("2026-10-20T13:00:08.500Z")[0] == [(STALE_MANAGER, "IDLE", [], [], 0), (STALE_BUILDER, "WORKING", [], [STALE_MANAGER], 0)]
+    assert state_at("2026-10-20T13:00:08.500Z")[1][DROPPED_MSG] == ("IN_INBOX", None)
+    assert state_at("2026-10-20T13:00:08.950Z")[0][1] == (STALE_BUILDER, "WORKING", [], [], 0)
+    assert state_at("2026-10-20T13:00:08.950Z")[1][DROPPED_MSG] == ("FAILED", None)
+
+
+def test_stale_waiting_change_stream_names_the_sources(watcher):
+    _model, timed = stale_waiting_in_time_order(watcher)
+    read = [(at, c["source"], c["source_pid"]) for at, c in timed if c["event"] == "message" and c["key"] == ASSIGNED_MSG and c["stage"] == "READ"]
+    assert read == [("2026-10-20T13:00:03.600Z", "attachment", STALE_BUILDER)]
+    cleared = [(at, c["source"]) for at, c in timed if c["event"] == "session" and c["pid"] == STALE_MANAGER and c["watching"] == []]
+    assert cleared[0] == ("2026-10-20T13:00:06.000Z", "queue-operation · enqueue")
+    failed = [(at, c["source"], c["reason"][:40]) for at, c in timed if c["event"] == "message" and c["key"] == DROPPED_MSG and c["stage"] == "FAILED"]
+    assert failed == [("2026-10-20T13:00:08.900Z", "queue-operation · enqueue", "[Cross-session delivery notice] Do not r")]
+    assert [c["inbox"] for at, c in timed if c["event"] == "session" and c["pid"] == STALE_BUILDER and at <= "2026-10-20T13:00:04.000Z"] == [0, 1, 1, 0]
+    assert all(c["kind"] != "message" or c["stage"] != "FAILED" for at, c in timed if c["event"] == "message" and at < "2026-10-20T13:00:08.900Z")
+    assert len(timed) == 26
+
+
+def test_socket_idle_notice_clears_a_watch_that_was_stored_by_name(watcher):
+    model = watcher.StateModel()
+    model.apply(1, send_entry("t1", "later-named", body=None, notify=True))
+    model.register_session({"pid": 2, "name": "later-named"})
+    model.apply(2, turn_end())
+    assert model.sessions[1]["watching"] == ["later-named"] and model.sessions[1]["waiting_on"] == [2]
+    model.apply(1, enqueue_text_entry(socket_idle_notice_text(2)))
+    model.apply(1, socket_idle_notice_entry(2))
+    assert model.sessions[1]["watching"] == [] and model.sessions[1]["waiting_on"] == []
+
+
+def test_socket_idle_notice_clears_a_name_watch_but_an_unanswered_send_to_that_name_still_waits(watcher):
+    model = watcher.StateModel()
+    model.apply(1, send_entry("t1", "later-named", notify=True))
+    model.register_session({"pid": 2, "name": "later-named"})
+    model.apply(1, enqueue_text_entry(socket_idle_notice_text(2)))
+    assert model.sessions[1]["watching"] == [] and model.sessions[1]["waiting_on"] == [2]
+    model.apply(1, result_entry("t1", msg_id=ASSIGNED_MSG))
+    model.apply(2, delivery_entry(1, ASSIGNED_MSG))
+    assert model.sessions[1]["waiting_on"] == []

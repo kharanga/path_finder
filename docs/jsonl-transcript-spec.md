@@ -160,7 +160,7 @@ Present on conversational entries: `user`, `assistant`, `system`, `attachment`, 
 - **Send result:** match `tool_result.tool_use_id` to a pending SendMessage `tool_use.id`.
   - `is_error: true` or content starting with `Not sent` → mark edge FAILED (red, dashed), show reason.
   - Otherwise → mark edge SENT.
-- **Incoming peer message:** ⚠️ VERIFY. Most likely a `user` entry (or `queued_command` attachment, see 4.10) whose `origin.kind` is NOT `"human"`. Only `"human"` has been observed so far. Confirm by sending a test message and inspecting the receiver's file.
+- **Incoming peer message:** confirmed 2026-10-20. A `user` entry when the receiver is idle, or a `queued_command` attachment (see 4.10) when it is busy, whose `origin.kind` is `"peer"`; both carry `origin.msg_id`. Only `"human"` has been observed so far. Confirm by sending a test message and inspecting the receiver's file.
 - **Display:** incoming message → edge arrival animation at receiver; show full text in a side panel on click.
 
 ### 4.9 `system` — status events
@@ -195,7 +195,7 @@ Present on conversational entries: `user`, `assistant`, `system`, `attachment`, 
     "source_uuid": "…",                   // snake_case here
     "isMeta": true } }
 ```
-- **Keep:** `hook_*` (errors → warning icon) and `queued_command` (queue counter; non-human `origin` may be a peer message ⚠️ VERIFY).
+- **Keep:** `hook_*` (errors → warning icon) and `queued_command` (queue counter; with `attachment.origin.kind == "peer"` it is a peer message delivered mid-turn and counts as the read, confirmed 2026-10-20, V12).
 - **Skip** all other attachment types (~35 total: file, directory, skill_listing, plan_mode, todo_reminder, diagnostics, nested_memory, etc.).
 
 ### 4.11 `progress` — live activity (seen in the 2026-10-08 fixtures; skipped by the watcher in v1)
