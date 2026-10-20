@@ -54,6 +54,7 @@ SPEC_PATH = VIZ_DIR.parent / "SPEC.md"
 TASK_LINE = re.compile(r"^- \[(?P<mark>[ x~])\] (?P<id>[A-Za-z]+\d+): (?P<text>.+)$")
 TASK_STATES = {" ": "todo", "x": "done", "~": "in_progress"}
 TASK_OWNERS = {"D": "discovery-builder", "V": "viz-builder"}
+TASK_AREAS = {"D": "Discovery", "V": "Visualization"}
 IDLE_NOTICE_PREFIX = "[Cross-session idle notice]"
 SENDER_OWNED_MESSAGE_FIELDS = ("pending_key", "tool_use_id", "from_pid", "to", "summary", "body", "notify_when_idle", "sent_at")
 
@@ -641,6 +642,11 @@ def task_title(text):
     return (stripped[:match.start()] if match else stripped).strip()
 
 
+def task_area(task_id):
+    series = task_id[0].upper()
+    return TASK_AREAS.get(series, series)
+
+
 def parse_spec_tasks(text):
     tasks = []
     in_tasks = False
@@ -660,6 +666,7 @@ def parse_spec_tasks(text):
             "title": task_title(match.group("text")),
             "text": match.group("text").strip(),
             "owner": TASK_OWNERS.get(task_id[0].upper()),
+            "area": task_area(task_id),
         })
     return tasks
 

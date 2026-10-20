@@ -27,6 +27,13 @@
   .panel.collapsed .ptab .chev { margin-left: 0; margin-top: auto; }
   .panel.collapsed .plist { display: none; }
   .plist { overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+  .folder { display: flex; flex-direction: column; gap: 4px; }
+  .fhead { display: flex; align-items: center; gap: 6px; padding: 5px 6px; font-size: 11px; color: var(--win-muted); cursor: pointer; user-select: none; white-space: nowrap; border-bottom: 1px solid #222; }
+  .fhead b { color: var(--win-fg); font-weight: 600; }
+  .fhead .fcounts { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .fhead .chev { margin-left: auto; }
+  .folder.closed .fbody { display: none; }
+  .fbody { display: flex; flex-direction: column; gap: 4px; }
   .task { border: 1px solid #262626; border-radius: 8px; background: var(--card); padding: 6px 8px; cursor: pointer; font-size: 12px; display: grid; grid-template-columns: auto 1fr auto; gap: 2px 8px; align-items: baseline; }
   .task.in_progress { border-color: #35506f; }
   .task .tid { font-family: var(--mono); font-size: 11px; color: var(--win-muted); }
@@ -156,6 +163,8 @@
   const panelList = document.getElementById("plist");
   const TASK_STATE_TEXT = { done: "Done", in_progress: "In progress", todo: "To do" };
   const PANEL_STORAGE_KEY = "viz-web-panel-collapsed";
+  const FOLDER_STORAGE_PREFIX = "viz-web-folder-closed:";
+  const TASK_AREAS = { D: "Discovery", V: "Visualization" };
 
   const state = { sessions: new Map(), messages: new Map(), sources: new Map(), sourceSequence: 0, caption: { entry: "", pair: "" }, tasks: [], taskCounts: { done: 0, in_progress: 0, todo: 0 } };
   const openTaskIds = new Set();
@@ -802,6 +811,41 @@
     return `${c.done || 0} done · ${c.in_progress || 0} in progress · ${c.todo || 0} to do`;
   }
 
+  function areaOf(task) {
+    if (task.area) return task.area;
+    const series = String(task.id || "").slice(0, 1).toUpperCase();
+    return TASK_AREAS[series] || series;
+  }
+
+  function folderCountsText(tasks) {
+    const parts = [];
+    for (const [stateName, word] of [["done", "done"], ["in_progress", "in progress"], ["todo", "to do"]]) {
+      const n = tasks.filter((t) => t.state === stateName).length;
+      if (n) parts.push(`${n} ${word}`);
+    }
+    return parts.join(" · ");
+  }
+
+  function foldersOf(tasks) {
+    const folders = new Map();
+    for (const task of tasks) {
+      const area = areaOf(task);
+      if (!folders.has(area)) folders.set(area, []);
+      folders.get(area).push(task);
+    }
+    return folders;
+  }
+
+  function folderClosed(area) {
+    try { return localStorage.getItem(FOLDER_STORAGE_PREFIX + area) === "1"; } catch (error) { return false; }
+  }
+
+  function toggleFolder(area) {
+    const closed = !folderClosed(area);
+    try { localStorage.setItem(FOLDER_STORAGE_PREFIX + area, closed ? "1" : "0"); } catch (error) { }
+    render();
+  }
+
   function togglePanel() {
     panelCollapsed = !panelCollapsed;
     try { localStorage.setItem(PANEL_STORAGE_KEY, panelCollapsed ? "1" : "0"); } catch (error) { }
@@ -822,23 +866,38 @@
       panelList.append(el("div", "quiet-rows", "No tasks in SPEC.md"));
       return;
     }
-    for (const task of state.tasks) {
-      const item = el("div", `task ${task.state}` + (openTaskIds.has(task.id) ? " open" : ""));
-      item.dataset.id = task.id;
-      item.dataset.state = task.state;
-      item.append(el("span", "tid", task.id), el("span", "ttitle", task.title), el("span", "tstate", TASK_STATE_TEXT[task.state] || task.state));
-      if (task.state === "in_progress" && task.owner) {
-        const owner = el("span", "towner");
-        const pid = ownerPidOf(task.owner);
-        if (pid !== null) owner.append(dotEl(pid, false));
-        owner.append(document.createTextNode(pid !== null ? labelFor(pid) : task.owner));
-        item.append(owner);
-      }
-      item.append(el("div", "tfull", task.text));
-      item.title = openTaskIds.has(task.id) ? "click to collapse" : "click for the full text";
-      item.addEventListener("click", () => toggleTask(task.id));
-      panelList.append(item);
+    for (const [area, tasks] of foldersOf(state.tasks)) {
+      const closed = folderClosed(area);
+      const folder = el("div", "folder" + (closed ? " closed" : ""));
+      folder.dataset.area = area;
+      folder.dataset.closed = closed ? "1" : "0";
+      const head = el("div", "fhead");
+      head.append(el("b", "", area), el("span", "fcounts", `· ${folderCountsText(tasks)}`), el("span", "chev", closed ? "▸" : "▾"));
+      head.title = closed ? `show the ${area} tasks` : `hide the ${area} tasks`;
+      head.addEventListener("click", () => toggleFolder(area));
+      const body = el("div", "fbody");
+      folder.append(head, body);
+      panelList.append(folder);
+      for (const task of tasks) body.append(taskEl(task));
     }
+  }
+
+  function taskEl(task) {
+    const item = el("div", `task ${task.state}` + (openTaskIds.has(task.id) ? " open" : ""));
+    item.dataset.id = task.id;
+    item.dataset.state = task.state;
+    item.append(el("span", "tid", task.id), el("span", "ttitle", task.title), el("span", "tstate", TASK_STATE_TEXT[task.state] || task.state));
+    if (task.state === "in_progress" && task.owner) {
+      const owner = el("span", "towner");
+      const pid = ownerPidOf(task.owner);
+      if (pid !== null) owner.append(dotEl(pid, false));
+      owner.append(document.createTextNode(pid !== null ? labelFor(pid) : task.owner));
+      item.append(owner);
+    }
+    item.append(el("div", "tfull", task.text));
+    item.title = openTaskIds.has(task.id) ? "click to collapse" : "click for the full text";
+    item.addEventListener("click", () => toggleTask(task.id));
+    return item;
   }
 
   function renderTitle(ring, inFlight) {
