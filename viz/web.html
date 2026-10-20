@@ -96,7 +96,6 @@
   .strip { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px; border-top: 1px solid #202020; background: #151515; }
   .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; border-radius: 99px; border: 1px solid #262626; font-size: 12px; background: var(--card); transition: border-color .3s; cursor: pointer; }
   .chip.on { border-color: #2e4a6e; } .chip.hot { border-color: #4a3618; } .chip.picked { border-color: #7cb4ff; }
-  .chip.out { opacity: .7; }
   .chip .n { font-size: 11px; color: var(--orange-fg); background: var(--orange-bg); padding: 0 5px; border-radius: 5px; font-weight: 600; }
   .rows { padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 5px; min-height: 60px; flex: 1; overflow: auto; }
   .arow { display: grid; grid-template-columns: auto minmax(60px, auto) auto 1fr; gap: 8px; align-items: center; min-width: 0; padding: 6px 10px; border-radius: 8px; background: var(--card); border: 1px solid #262626; font-size: 12px; transition: border-color .3s; cursor: pointer; }
@@ -145,7 +144,8 @@
   const NODE_CHAR_PX = 5.6;
   const NODE_LINE_PX = 15;
   const RING_GROW_STEP = 8;
-  const RING_MAX_RY = 700;
+  const RING_MAX_RY_FACTOR = 2.5;
+  const RELAX_ROUNDS = 60;
   const LABEL_POSITIONS = [0.5, 0.38, 0.62, 0.28, 0.72, 0.2, 0.8];
   const LABEL_SIDE_OFFSETS = [0, 20, -20];
   const LABEL_CHAR_PX = 6.3;
@@ -408,16 +408,8 @@
     return pids;
   }
 
-  function ringSessions(now) {
-    const active = new Set();
-    for (const m of state.messages.values()) {
-      const ends = endpointsOf(m);
-      if (!ends) continue;
-      if (withinHorizon(m, now) || (m.kind === "message" && m.stage === "FAILED" && !failedIsResolved(m))) { active.add(ends[0]); active.add(ends[1]); }
-    }
-    for (const s of state.sessions.values()) for (const w of s.watching || []) { active.add(s.pid); const pid = Number.isInteger(Number(w)) ? Number(w) : pidByName(String(w)); if (pid !== null) active.add(pid); }
-    const all = [...state.sessions.values()].sort((a, b) => a.pid - b.pid);
-    return active.size ? all.filter((s) => active.has(s.pid)) : all;
+  function ringSessions() {
+    return [...state.sessions.values()].sort((a, b) => a.pid - b.pid);
   }
 
   let layout = { W: 376, H: 380, CW: 116, CH: 62, compact: false, pod: false, pos: new Map(), size: new Map(), cx: 188, cy: 198, maxH: 62, podLift: POD_LIFT };
@@ -460,10 +452,25 @@
     return pos;
   }
 
-  function anyNodesOverlap(ring, pos) {
+  function overlappingPairs(ring, pos) {
     const rects = ring.map((s) => { const [w, h] = sizeOf(s.pid); return rectAround(pos.get(s.pid), w + NODE_GAP, h + NODE_GAP); });
-    for (let i = 0; i < rects.length; i += 1) for (let j = i + 1; j < rects.length; j += 1) if (rectsOverlap(rects[i], rects[j])) return true;
-    return false;
+    const pairs = [];
+    for (let i = 0; i < rects.length; i += 1) for (let j = i + 1; j < rects.length; j += 1) if (rectsOverlap(rects[i], rects[j])) pairs.push([i, j, rects[i], rects[j]]);
+    return pairs;
+  }
+
+  function relaxVertically(ring, pos) {
+    for (let round = 0; round < RELAX_ROUNDS; round += 1) {
+      const pairs = overlappingPairs(ring, pos);
+      if (!pairs.length) return;
+      for (const [i, j, a, b] of pairs) {
+        const push = (Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1)) / 2 + 1;
+        const upper = pos.get(ring[i].pid)[1] <= pos.get(ring[j].pid)[1] ? ring[i].pid : ring[j].pid;
+        const lower = upper === ring[i].pid ? ring[j].pid : ring[i].pid;
+        pos.get(upper)[1] -= push;
+        pos.get(lower)[1] += push;
+      }
+    }
   }
 
   function positionNodes(ring) {
@@ -480,7 +487,14 @@
       const rx = compact ? Math.min(150, W / 2 - CW / 2 + 10) : Math.min(140, W / 2 - CW / 2 - 2);
       let ry = rx;
       let around = ringPositions(ring, rx, ry);
-      while (anyNodesOverlap(ring, around) && ry < RING_MAX_RY) { ry += RING_GROW_STEP; around = ringPositions(ring, rx, ry); }
+      let overlaps = overlappingPairs(ring, around).length;
+      while (overlaps && ry < rx * RING_MAX_RY_FACTOR) {
+        const grown = ringPositions(ring, rx, ry + RING_GROW_STEP);
+        const grownOverlaps = overlappingPairs(ring, grown).length;
+        if (grownOverlaps >= overlaps) break;
+        ry += RING_GROW_STEP; around = grown; overlaps = grownOverlaps;
+      }
+      relaxVertically(ring, around);
       const tops = ring.map((s) => around.get(s.pid)[1] - sizeOf(s.pid)[1] / 2), bottoms = ring.map((s) => around.get(s.pid)[1] + sizeOf(s.pid)[1] / 2);
       const minY = Math.min(...tops), needed = Math.max(...bottoms) - minY;
       layout.H = Math.max(380, needed + 38);
@@ -789,13 +803,12 @@
   }
 
   function renderStrip(ring) {
-    const inRing = new Set(ring.map((s) => s.pid));
     strip.replaceChildren();
-    for (const session of [...state.sessions.values()].sort((a, b) => a.pid - b.pid)) {
+    for (const session of ring) {
       const working = session.status === "WORKING";
-      const chip = el("span", "chip" + (working ? " on" : "") + (session.inbox > 0 ? " hot" : "") + (pickedPid === session.pid ? " picked" : "") + (inRing.has(session.pid) ? "" : " out"));
+      const chip = el("span", "chip" + (working ? " on" : "") + (session.inbox > 0 ? " hot" : "") + (pickedPid === session.pid ? " picked" : ""));
       chip.dataset.pid = session.pid;
-      chip.title = inRing.has(session.pid) ? `${session.name || "unnamed"} · pid ${session.pid}` : `${session.name || "unnamed"} · pid ${session.pid} · no message in the last 10 min`;
+      chip.title = `${session.name || "unnamed"} · pid ${session.pid}`;
       chip.append(dotEl(session.pid, working), document.createTextNode(labelOf(session)));
       if (session.inbox > 0) chip.append(el("span", "n", String(session.inbox)));
       chip.addEventListener("click", () => pick(session.pid));
@@ -957,7 +970,7 @@
 
   function render() {
     const now = feedNowMs();
-    const ring = ringSessions(now);
+    const ring = ringSessions();
     const visible = visibleArrows(now);
     const inFlight = visible.filter((m) => m.stage !== "READ");
     layoutNodes(ring);
