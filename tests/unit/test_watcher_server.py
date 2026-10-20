@@ -58,7 +58,7 @@ def test_fixture_watcher_first_poll_registers_sessions_and_replays_history(watch
     assert [e["event"] for e in events[:2]] == ["session", "session"]
     assert {e["pid"] for e in events[:2]} == {32813, 33993}
     assert events[0]["transcript"] == str(manager)
-    assert len(events) == 2 + 26
+    assert len(events) == 2 + 30
     snapshot = w.snapshot()
     assert set(snapshot) == {"generated_at", "sessions", "messages", "sources"}
     assert [(e["source"], e["source_pid"]) for e in events[:2]] == [("registry", 32813), ("registry", 33993)]
@@ -207,14 +207,14 @@ def test_log_matches_the_stream_for_the_fixture_round_trip(watcher, tmp_path):
     streamed = drain(subscriber)
     logged = [json.loads(l) for l in log_path.read_text().splitlines()]
     assert logged == streamed
-    assert len(logged) == 2 + 26
+    assert len(logged) == 2 + 30
     w.poll_once()
-    assert len(log_path.read_text().splitlines()) == 28
+    assert len(log_path.read_text().splitlines()) == 32
     w.close()
     w2 = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))], log_path=str(log_path))
     w2.poll_once()
     w2.close()
-    assert len(log_path.read_text().splitlines()) == 56
+    assert len(log_path.read_text().splitlines()) == 64
 
 
 def test_serve_parser_log_defaults(watcher):

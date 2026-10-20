@@ -204,6 +204,26 @@ def send_result_from(entry, block):
     return {"success": not block.get("is_error", False), "message": text if isinstance(text, str) else ""}
 
 
+ACTIVITY_MAX = 140
+TOOL_TARGET_FIELDS = ("file_path", "path", "url", "skill", "query", "pattern", "to", "command", "prompt")
+
+
+def first_line(text, limit=ACTIVITY_MAX):
+    line = next((part.strip() for part in str(text or "").splitlines() if part.strip()), "")
+    return line if len(line) <= limit else line[:limit - 1] + "…"
+
+
+def describe_tool_use(block, entry):
+    name = block.get("name") or "tool"
+    raw = dict((entry.get("wireToolInputs") or {}).get(block.get("id")) or {})
+    raw.update({k: v for k, v in (block.get("input") or {}).items() if v not in (None, "")})
+    headline = raw.get("description") or raw.get("summary")
+    if headline:
+        return f"{name}: {first_line(headline)}"
+    target = next((raw[field] for field in TOOL_TARGET_FIELDS if raw.get(field)), None)
+    return f"{name} {first_line(target)}" if target else name
+
+
 def entry_source(entry):
     kind = entry.get("type")
     if kind == "assistant":
@@ -248,6 +268,10 @@ class StateModel:
             "last_text": None,
             "watching": [],
             "last_seen_at": None,
+            "activity": None,
+            "activity_at": None,
+            "idle_since": None,
+            "last_assistant_text": None,
         }
         for field in ("session_id", "name", "role", "label", "cwd", "transcript"):
             if row.get(field) is not None:
@@ -358,9 +382,24 @@ class StateModel:
         content = entry.get("message", {}).get("content")
         if not isinstance(content, list):
             return
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") == "SendMessage":
+        blocks = [block for block in content if isinstance(block, dict)]
+        texts = [first_line(block.get("text")) for block in blocks if block.get("type") == "text" and first_line(block.get("text"))]
+        tool_uses = [block for block in blocks if block.get("type") == "tool_use"]
+        session = self.session(pid)
+        if texts:
+            session["last_assistant_text"] = texts[-1]
+        activity = describe_tool_use(tool_uses[-1], entry) if tool_uses else (texts[-1] if texts else None)
+        self.set_activity(pid, activity, entry.get("timestamp"), touched)
+        for block in tool_uses:
+            if block.get("name") == "SendMessage":
                 self.apply_send(pid, entry, block, touched)
+
+    def set_activity(self, pid, activity, timestamp, touched):
+        session = self.session(pid)
+        if activity and activity != session["activity"]:
+            session["activity"] = activity
+            session["activity_at"] = timestamp
+            touched["sessions"].add(pid)
 
     def apply_send(self, pid, entry, block, touched):
         raw_input = block.get("input") or {}
@@ -550,6 +589,11 @@ class StateModel:
     def apply_system(self, pid, entry, touched):
         if entry.get("subtype") == "turn_duration":
             self.set_status(pid, "IDLE", touched)
+            session = self.session(pid)
+            if session["idle_since"] != entry.get("timestamp"):
+                session["idle_since"] = entry.get("timestamp")
+                touched["sessions"].add(pid)
+            self.set_activity(pid, session["last_assistant_text"], entry.get("timestamp"), touched)
 
 
 def now_iso():

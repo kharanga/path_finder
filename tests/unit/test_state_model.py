@@ -133,13 +133,13 @@ def test_round_trip_snapshot_is_order_independent(watcher):
 
 def test_round_trip_change_stream(watcher):
     _, changes = round_trip_model(watcher, True)
-    assert len(changes) == 23
+    assert len(changes) == 27
     first = changes[0]
     assert (first["event"], first["pid"], first["status"], first["watching"], first["at"]) == ("session", MANAGER, "WORKING", [BUILDER], "2026-10-08T04:31:10.318Z")
     cleared = [c for c in changes if c["event"] == "session" and c["pid"] == MANAGER and c["at"] == "2026-10-08T04:31:21.055Z"]
     assert cleared and cleared[0]["watching"] == []
     manager_inbox = [c["inbox"] for c in changes if c["event"] == "session" and c["pid"] == MANAGER]
-    assert manager_inbox == [0, 0, 1, 0, 0, 0, 1, 0, 0, 0]
+    assert manager_inbox == [0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0]
     pending = [c for c in changes if c["event"] == "message" and c["stage"] == "PENDING"]
     assert len(pending) == 2
     assert all(c["key"] == c["pending_key"] for c in pending)
@@ -333,13 +333,17 @@ def test_system_prompt_without_idle_prefix_is_not_a_notice(watcher):
     assert model.messages == {}
 
 
-def test_turn_duration_sets_idle_only_on_change(watcher):
+def test_turn_duration_sets_idle_and_idle_since_only_on_change(watcher):
     model = watcher.StateModel()
+    first = model.apply(1, turn_end())
+    assert [(c["status"], c["idle_since"], c["activity"]) for c in first] == [("IDLE", "2026-10-08T04:31:13.415Z", None)]
     assert model.apply(1, turn_end()) == []
     model.apply(1, {"type": "assistant", "timestamp": "t", "message": {"content": []}})
     assert model.sessions[1]["status"] == "WORKING"
     changes = model.apply(1, turn_end())
-    assert changes[0]["status"] == "IDLE"
+    assert [(c["status"], c["idle_since"]) for c in changes] == [("IDLE", "2026-10-08T04:31:13.415Z")]
+    later = model.apply(1, turn_end(at="2026-10-08T04:31:20.055Z"))
+    assert [(c["status"], c["idle_since"]) for c in later] == [("IDLE", "2026-10-08T04:31:20.055Z")]
 
 
 def test_human_prompt_sets_working(watcher):
@@ -542,3 +546,126 @@ def test_replay_freeze_of_the_reply_is_in_inbox_when_the_receiver_is_fed_first(w
     reply = by_key_prefix(model, "pending:")
     assert (reply["from_pid"], reply["to_pid"], reply["stage"], reply["enqueued_at"]) == (BUILDER, MANAGER, "IN_INBOX", "2026-10-08T04:31:17.590Z")
     assert model.sessions[MANAGER]["inbox"] == 1
+
+
+def tool_entry(name, inputs, at="2026-10-08T04:31:12.000Z", wire=None, text=None, tool_id="tool-1"):
+    content = ([{"type": "text", "text": text}] if text else []) + [{"type": "tool_use", "id": tool_id, "name": name, "input": inputs}]
+    entry = {"type": "assistant", "timestamp": at, "message": {"role": "assistant", "content": content}}
+    if wire is not None:
+        entry["wireToolInputs"] = {tool_id: wire}
+    return entry
+
+
+def text_entry(text, at="2026-10-08T04:31:12.000Z"):
+    return {"type": "assistant", "timestamp": at, "message": {"role": "assistant", "content": [{"type": "text", "text": text}]}}
+
+
+@pytest.mark.parametrize("name, inputs, wire, expected", [
+    ("Bash", {"command": "ls", "description": "List files"}, None, "Bash: List files"),
+    ("SendMessage", {"to": "x", "summary": "V8 assigned", "message": "body"}, None, "SendMessage: V8 assigned"),
+    ("Agent", {"description": "Review the diff", "prompt": "..."}, None, "Agent: Review the diff"),
+    ("Read", {"file_path": "viz/web.html"}, None, "Read viz/web.html"),
+    ("Edit", {"file_path": "scores.py", "old_string": "a", "new_string": "b"}, None, "Edit scores.py"),
+    ("Grep", {"pattern": "activity", "path": "viz"}, None, "Grep viz"),
+    ("Bash", {"command": "python3 -m pytest tests -q"}, None, "Bash python3 -m pytest tests -q"),
+    ("WebFetch", {"url": "https://example.com/page"}, None, "WebFetch https://example.com/page"),
+    ("Skill", {"skill": "deploy"}, None, "Skill deploy"),
+    ("ToolSearch", {"query": "select:SendMessage"}, None, "ToolSearch select:SendMessage"),
+    ("Agent", {"prompt": "first line of the prompt\nsecond"}, None, "Agent first line of the prompt"),
+    ("SendMessage", {}, {"to": "y", "summary": "from the wire"}, "SendMessage: from the wire"),
+    ("Bash", {"description": "Input wins"}, {"description": "Wire loses"}, "Bash: Input wins"),
+    ("Bash", {"description": ""}, {"command": "echo"}, "Bash echo"),
+    ("Mystery", {"other": 1}, None, "Mystery"),
+    (None, {}, None, "tool"),
+])
+def test_describe_tool_use(watcher, name, inputs, wire, expected):
+    block = {"type": "tool_use", "id": "tool-1", "input": inputs}
+    if name is not None:
+        block["name"] = name
+    entry = {"wireToolInputs": {"tool-1": wire}} if wire is not None else {}
+    assert watcher.describe_tool_use(block, entry) == expected
+
+
+def test_first_line_skips_blank_lines_strips_and_truncates(watcher):
+    assert watcher.first_line("\n   \n  second line here  \nthird") == "second line here"
+    assert watcher.first_line(None) == "" and watcher.first_line("") == ""
+    long = "x" * 200
+    assert watcher.first_line(long) == "x" * 139 + "…"
+    assert watcher.first_line("abc", limit=2) == "a…"
+
+
+def test_tool_use_sets_activity_and_emits_one_session_change(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 1, "name": "one"})
+    changes = model.apply(1, tool_entry("Read", {"file_path": "viz/web.html"}))
+    assert [(c["event"], c["activity"], c["activity_at"], c["status"]) for c in changes] == [("session", "Read viz/web.html", "2026-10-08T04:31:12.000Z", "WORKING")]
+    assert model.apply(1, tool_entry("Read", {"file_path": "viz/web.html"}, at="2026-10-08T04:31:13.000Z")) == []
+    assert model.sessions[1]["activity_at"] == "2026-10-08T04:31:12.000Z"
+    changes = model.apply(1, tool_entry("Edit", {"file_path": "viz/web.html"}, at="2026-10-08T04:31:14.000Z", text="Fixing the label"))
+    assert [(c["activity"], c["last_assistant_text"]) for c in changes] == [("Edit viz/web.html", "Fixing the label")]
+
+
+def test_last_tool_use_in_an_entry_wins_and_send_still_creates_the_message(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 1, "name": "one"})
+    model.register_session({"pid": 2, "name": "two"})
+    content = [
+        {"type": "tool_use", "id": "s-1", "name": "SendMessage", "input": {"to": "uds:/tmp/cc-socks/2.sock", "summary": "hello", "message": "body"}},
+        {"type": "tool_use", "id": "r-1", "name": "Read", "input": {"file_path": "SPEC.md"}},
+    ]
+    changes = model.apply(1, {"type": "assistant", "timestamp": "2026-10-08T04:31:12.000Z", "message": {"role": "assistant", "content": content}})
+    assert model.sessions[1]["activity"] == "Read SPEC.md"
+    assert [c["stage"] for c in changes if c["event"] == "message"] == ["PENDING"]
+
+
+def test_text_only_entry_sets_activity_and_last_assistant_text(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 1, "name": "one"})
+    changes = model.apply(1, text_entry("First line of the answer.\nMore detail."))
+    assert [(c["activity"], c["last_assistant_text"]) for c in changes] == [("First line of the answer.", "First line of the answer.")]
+    assert model.apply(1, text_entry("   \n\n")) == [] or model.sessions[1]["activity"] == "First line of the answer."
+    assert model.apply(1, {"type": "assistant", "timestamp": "t", "message": {"content": "not a list"}}) == []
+
+
+def test_turn_end_sets_activity_to_the_last_assistant_text(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 1, "name": "one"})
+    model.apply(1, text_entry("Done with the review."))
+    model.apply(1, tool_entry("Bash", {"command": "ls", "description": "List files"}, at="2026-10-08T04:31:12.500Z"))
+    assert model.sessions[1]["activity"] == "Bash: List files"
+    changes = model.apply(1, turn_end(at="2026-10-08T04:31:13.000Z"))
+    assert [(c["status"], c["activity"], c["activity_at"], c["idle_since"]) for c in changes] == [("IDLE", "Done with the review.", "2026-10-08T04:31:13.000Z", "2026-10-08T04:31:13.000Z")]
+    assert len(changes) == 1
+
+
+def test_turn_end_without_assistant_text_keeps_the_tool_activity(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 1, "name": "one"})
+    model.apply(1, tool_entry("Bash", {"command": "ls", "description": "List files"}))
+    model.apply(1, turn_end(at="2026-10-08T04:31:13.000Z"))
+    assert (model.sessions[1]["activity"], model.sessions[1]["last_assistant_text"]) == ("Bash: List files", None)
+
+
+def test_register_session_defaults_the_activity_fields(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 1, "name": "one"})
+    session = model.sessions[1]
+    assert (session["activity"], session["activity_at"], session["idle_since"], session["last_assistant_text"]) == (None, None, None, None)
+    assert set(("activity", "activity_at", "idle_since", "last_assistant_text")) <= set(model.snapshot()["sessions"][0])
+
+
+def test_fixture_round_trip_activity_sequence(watcher):
+    model, changes = round_trip_model(watcher, True)
+    manager = [(c["at"][17:23], c["status"], (c["activity"] or "")[:28]) for c in changes if c["event"] == "session" and c["pid"] == MANAGER and c["source"] in ("assistant", "system · turn_duration", "assistant → tool_use SendMessage")]
+    assert manager == [
+        ("10.318", "WORKING", "SendMessage: second hello to"),
+        ("13.303", "WORKING", "The hello is in `fake-sessio"),
+        ("13.415", "IDLE", "The hello is in `fake-sessio"),
+        ("19.970", "WORKING", "The reply came back from `fa"),
+        ("20.055", "IDLE", "The reply came back from `fa"),
+        ("23.149", "WORKING", "The builder is idle again, s"),
+        ("23.218", "IDLE", "The builder is idle again, s"),
+    ]
+    assert model.sessions[MANAGER]["idle_since"] == "2026-10-08T04:31:23.218Z"
+    assert model.sessions[BUILDER]["idle_since"] == "2026-10-08T04:31:19.753Z"
+    assert model.sessions[BUILDER]["activity"] == "Replied to fake-session-manager's second hello with another hi back. That's another pulse from this session to that one on the dashboard."

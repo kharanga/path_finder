@@ -39,7 +39,7 @@ function makeElement(tag) {
 }
 
 const fixed = {};
-for (const id of ["graph", "svg", "arrows", "title", "link", "cap-entry", "cap-pair", "strip", "toasts"]) fixed[id] = makeElement("div");
+for (const id of ["graph", "svg", "arrows", "title", "link", "cap-entry", "cap-pair", "strip", "rows"]) fixed[id] = makeElement("div");
 const document = { getElementById: (id) => fixed[id], createElement: makeElement, createElementNS: (_ns, name) => makeElement(name), createTextNode: (text) => ({ text: String(text), parent: null, remove() {} }) };
 const windowListeners = {};
 const window = { addEventListener(type, handler) { windowListeners[type] = handler; } };
@@ -80,16 +80,20 @@ function nodeView(node) {
   const hd = findByClass(node, "hd"), row2 = findByClass(node, "row2"), last = findByClass(node, "last");
   const eye = last ? findByClass(last, "eye") : null;
   const headEye = hd ? findByClass(hd, "eye") : null;
+  const headMail = hd ? findByClass(hd, "mail") : null;
+  const rowMail = row2 ? findByClass(row2, "mail") : null;
   return { pid: Number(node.dataset.pid), className: node.className, left: node.style.left, top: node.style.top, width: node.style.width, height: node.style.height, title: node.title,
     name: hd ? textOf(findByClass(hd, "name")) : "", dotClass: hd ? findByClass(hd, "dot").className : "", dot: hd ? findByClass(hd, "dot").style.background : "",
-    count: hd && findByClass(hd, "n") ? textOf(findByClass(hd, "n")) : null, headEye: headEye ? headEye.className : null,
-    pills: row2 ? row2.children.map((p) => [p.className, textOf(p)]) : [], last: last ? textOf(last) : "", lastTitle: last ? last.title : "", eye: eye ? eye.className : null };
+    headMail: headMail ? textOf(headMail) : null, headEye: headEye ? headEye.className : null,
+    pills: row2 ? row2.children.map((p) => [p.className, textOf(p)]) : [], mail: rowMail ? textOf(rowMail) : null, mailTitle: rowMail ? rowMail.title : null,
+    last: last ? textOf(last) : "", lastTitle: last ? last.title : "", eye: eye ? eye.className : null };
 }
 
 function labelView(label) {
   const summary = findByClass(label, "esum");
   const stage = label.children.find((c) => c !== summary);
-  return { key: label.dataset.key, text: textOf(label), summary: summary ? textOf(summary) : "", stage: stage ? [stage.className, textOf(stage)] : null, opacity: label.style.opacity, left: label.style.left, top: label.style.top, title: label.title };
+  return { key: label.dataset.key, clear: label.dataset.clear, text: textOf(label), summary: summary ? textOf(summary) : "", stage: stage ? [stage.className, textOf(stage)] : null,
+    opacity: label.style.opacity, left: parseFloat(label.style.left), top: parseFloat(label.style.top), zIndex: label.style.zIndex, title: label.title };
 }
 
 function pathView(path) {
@@ -101,11 +105,11 @@ function chipView(chip) {
   return { pid: Number(chip.dataset.pid), className: chip.className, dotClass: findByClass(chip, "dot").className, text: textOf(chip), count: count ? textOf(count) : null, title: chip.title, clickable: Boolean(chip.listeners.click) };
 }
 
-function toastView(toast) {
-  if (toast.className === "more" || toast.className === "quiet-toasts") return { className: toast.className, text: textOf(toast) };
-  const from = findByClass(toast, "from"), stage = findByClass(toast, "st"), sum = findByClass(toast, "sum");
-  return { className: toast.className, key: toast.dataset.key || null, msg: toast.dataset.msg || null, from: from ? textOf(from) : "", fromDots: from ? from.children.filter((c) => c.className && c.className.startsWith("dot")).map((c) => c.style.background) : [],
-    stage: stage ? [stage.className, textOf(stage), stage.title] : null, sum: sum ? textOf(sum) : null, sumTitle: sum ? sum.title : null, hoverable: Boolean(toast.listeners.mouseenter) };
+function rowView(row) {
+  if (row.className === "quiet-rows") return { className: row.className, text: textOf(row) };
+  const name = findByClass(row, "name"), pill = findByClass(row, "pill"), act = findByClass(row, "act");
+  return { pid: Number(row.dataset.pid), status: row.dataset.status, className: row.className, dotClass: findByClass(row, "dot").className, name: textOf(name), nameTitle: name.title,
+    pill: [pill.className, textOf(pill)], activity: textOf(act), activityTitle: act.title, clickable: Boolean(row.listeners.click) };
 }
 
 function view() {
@@ -113,7 +117,7 @@ function view() {
   return { title: fixed.title.textContent, link: fixed.link.textContent, linkClass: fixed.link.className, eventsUrl: source.url, intervals: intervals.map((i) => i.delay),
     caption: [fixed["cap-entry"].textContent, fixed["cap-pair"].textContent], pod: fixed.graph.classList.contains("pod"), viewBox: fixed.svg.attrs.viewBox, quiet: quiet ? textOf(quiet) : null,
     nodes: fixed.graph.children.filter((c) => c.className.startsWith("node")).map(nodeView), labels: fixed.graph.children.filter((c) => c.className.startsWith("elab")).map(labelView),
-    paths: fixed.arrows.children.map(pathView), chips: fixed.strip.children.map(chipView), toasts: fixed.toasts.children.map(toastView) };
+    paths: fixed.arrows.children.map(pathView), chips: fixed.strip.children.map(chipView), rows: fixed.rows.children.map(rowView) };
 }
 
 const out = [];
@@ -124,9 +128,9 @@ for (const step of input.steps || []) {
   if (step.advanceMs) wallMs += step.advanceMs;
   if (step.clickChip !== undefined) fixed.strip.children.find((c) => Number(c.dataset.pid) === Number(step.clickChip)).listeners.click();
   if (step.clickNode !== undefined) fixed.graph.children.find((c) => c.className.startsWith("node") && Number(c.dataset.pid) === Number(step.clickNode)).listeners.click();
-  if (step.hoverToast !== undefined) fixed.toasts.children[step.hoverToast].listeners.mouseenter();
+  if (step.clickRow !== undefined) fixed.rows.children.find((r) => Number(r.dataset.pid) === Number(step.clickRow)).listeners.click();
   if (step.hoverPath !== undefined) fixed.arrows.children.find((p) => p.attrs["data-key"] === step.hoverPath).listeners.mouseenter();
-  if (step.leaveToast !== undefined) fixed.toasts.children[step.leaveToast].listeners.mouseleave();
+  if (step.leavePath !== undefined) fixed.arrows.children.find((p) => p.attrs["data-key"] === step.leavePath).listeners.mouseleave();
   if (step.resize) windowListeners.resize();
   runTimers();
   tick();
