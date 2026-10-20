@@ -4,8 +4,6 @@ import json
 import os
 import subprocess
 import sys
-import time
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,9 +12,6 @@ SCRIPT_PATH = Path(__file__).resolve()
 DISCOVERY_DIR = SCRIPT_PATH.parent
 DIRECTORY_PATH = DISCOVERY_DIR / "sessions.json"
 IDENTITY_DIR = DISCOVERY_DIR / "identity"
-UI_PORT = 4780
-UI_LOG = DISCOVERY_DIR / "ui.log"
-UI_PID = DISCOVERY_DIR / "ui.pid"
 
 
 def now_iso():
@@ -181,11 +176,15 @@ def rebuild_directory():
 
 
 def command_identify(args):
+    role = args.role.strip()
+    if not role:
+        print("role is blank: pass the role your human entered, for example --role manager", file=sys.stderr)
+        return 2
     me = own_session()
     if me is None:
         print("not running inside a Claude Code session", file=sys.stderr)
         return 1
-    identity = write_identity(me, args.role)
+    identity = write_identity(me, role)
     rebuild_directory()
     print(json.dumps(identity))
     return 0
@@ -230,51 +229,6 @@ def command_done(args):
     return 0
 
 
-def ui_is_up(port):
-    try:
-        urllib.request.urlopen(f"http://127.0.0.1:{port}/sessions.json", timeout=1)
-        return True
-    except Exception:
-        return False
-
-
-def stop_ui():
-    try:
-        pid = int(UI_PID.read_text().strip())
-        os.kill(pid, 15)
-        UI_PID.unlink()
-        print(f"stopped ui server pid {pid}")
-    except (OSError, ValueError):
-        print("no ui server pid file", file=sys.stderr)
-        return 1
-    return 0
-
-
-def start_ui(port):
-    with open(UI_LOG, "a") as log:
-        server = subprocess.Popen(
-            [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1", "--directory", str(DISCOVERY_DIR)],
-            stdout=log, stderr=log, start_new_session=True,
-        )
-    UI_PID.write_text(f"{server.pid}\n")
-    for _ in range(20):
-        if ui_is_up(port):
-            break
-        time.sleep(0.1)
-
-
-def command_ui(args):
-    if args.stop:
-        return stop_ui()
-    rebuild_directory()
-    if not ui_is_up(args.port):
-        start_ui(args.port)
-    url = f"http://127.0.0.1:{args.port}/"
-    subprocess.run(["open", url], check=False)
-    print(url)
-    return 0
-
-
 def build_parser():
     parser = argparse.ArgumentParser(description="Discovery helper: which sessions are live and what role each one has")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -292,11 +246,6 @@ def build_parser():
     done_parser = sub.add_parser("done", help="exit 0 when every live session under the root has an identity")
     done_parser.add_argument("--root", help="only require identities from sessions under this path")
     done_parser.set_defaults(func=command_done)
-
-    ui_parser = sub.add_parser("ui", help="serve the capsule page")
-    ui_parser.add_argument("--port", type=int, default=UI_PORT)
-    ui_parser.add_argument("--stop", action="store_true")
-    ui_parser.set_defaults(func=command_ui)
 
     return parser
 
