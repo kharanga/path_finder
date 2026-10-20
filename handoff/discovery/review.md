@@ -1,31 +1,24 @@
-# Review: D3 2026-10-08
+# Review: D4 2026-10-20
 
 PASS
 
-## Checked against SPEC.md D3
+## Verified against SPEC D4
 
-- `list --root /Users/khangnguyen/Documents/path_finder/fake_session` printed fake-session-manager (pid 32813) and fake-session-builder (pid 33993), both `"identified": true` with roles. No message sent: both fake transcripts kept their 00:23 mtime across the run.
-- `done --root .../fake_session` exits 0 with every session identified.
-- `record` and `protocol` exit 2 with argparse "invalid choice". `--as-pid` and `--out` are gone.
-- `sessions.json` is rebuilt on every `list` and `done` from the registry plus `identity/`, under `sessions.json.lock`, written atomically via `.tmp` + `os.replace`. Dead PIDs are dropped and their identity files deleted.
-- Session exit removes it on the next `list`: verified with a real child process (`sleep`) terminated between two `list` runs in a temp sandbox, not by closing a fake session.
-- `identify` sets label equal to role; `self` exits 2 before `identify`, 1 outside a session.
-- `with_identity` reads both `identified_at` and the D1 `set_at` field, so the two fake sessions' 2026-10-07 identity files still resolve.
-- `index.html`: capsule dashed when `role` is null, header counts identified sessions, no `heard_by` or `participants` left.
-- Role file `.claude/roles/discovery-builder.md` matches the code: directory shape, commands, `identified_at`.
+- `python3 discovery/discover.py ui` exits 2 with argparse `invalid choice: 'ui' (choose from identify, self, list, done)`.
+- `identify --role ""` and `identify --role "   "` exit 2 with `role is blank: pass the role your human entered, for example --role manager` on stderr and nothing on stdout; `discovery/identity/` is untouched (my own identity file unchanged, `self` still exits 0). The check happens before `own_session`, so it also holds outside a Claude session.
+- `discovery/index.html` deleted, `discovery/` holds only `discover.py`, `identity/`, `sessions.json`, `sessions.json.lock`. `.gitignore` no longer lists `discovery/ui.log` or `discovery/ui.pid`. No `ui`, `UI_`, `time`, or `urllib` left in `discover.py`.
+- Port 4780 is served by `viz/watcher.py serve` (not started by me, untouched), so the handover dependency holds.
 
 ## Tests
 
-`python3 -m pytest tests` runs 48 tests, all passing, in about 2 s. Layout:
+- `tests/conftest.py`: the two `UI_LOG` and `UI_PID` monkeypatch lines removed; no ui test existed, so nothing else dropped.
+- `tests/unit/test_discover.py`: `ui` added to the rejected-commands list; new `test_command_identify_blank_role_exits_2_and_writes_nothing` (three blank variants, asserts `own_session` is never consulted and no identity or directory file appears), `test_command_identify_stores_the_role_stripped`, `test_module_has_no_ui_leftovers`.
+- `tests/integration/test_discovery_cli.py`: `test_ui_is_rejected_by_argparse`, `test_identify_with_blank_role_exits_2_and_writes_nothing` (two variants, directory listing identical before and after).
+- `python3 -m pytest tests` → 246 passed.
 
-- `tests/conftest.py`: loads `discovery/discover.py` by path and points `SESSIONS_DIR`, `DISCOVERY_DIR`, `DIRECTORY_PATH`, `IDENTITY_DIR` at a temp tree. Nothing under `~/.claude` or `discovery/` is read or written.
-- `tests/unit/test_discover.py`: one function at a time; registry parsing (missing, corrupt, non-integer pid), root filtering, liveness, identity merge, pruning, every command's exit code and output, removed commands and flags.
-- `tests/integration/test_discovery_cli.py`: the CLI as a subprocess with `HOME` set to a temp dir and a copy of the script, real child processes as live and exited sessions.
-- `tests/fixtures/discovery/`: sanitized registry entry and a D1 `set_at` identity file (home paths replaced).
+## Notes
 
-## Notes, not failures
-
-1. `identify --role ""` writes an empty-string role, which `is_identified` counts as identified and `done` accepts. Suggest rejecting a blank role in a later D task.
-2. The two fake sessions' identity files predate D2 and carry a label that differs from the role (`fake manager` vs `fake session manager`). The code reads them as-is; they will be replaced when those sessions re-identify.
-3. For the manager: `.gitignore` should list `__pycache__/`, `.hypothesis/`, and `.pytest_cache/`. The tests set `sys.dont_write_bytecode` and I removed the directories my run created, but a plain `pytest` run with the installed hypothesis plugin recreates `.hypothesis/`.
-4. For the manager: CLAUDE.md line 11 still says `record` and `done` maintain `sessions.json` and that `protocol` and `record` "are removed in D3". The builder's ready.md already requests this update.
+- `.claude/roles/discovery-builder.md` line 27 still lists `ui` and `ui --stop` as in D2. Manager item.
+- `docs/plan-visualization.md` line 8 still introduces the work as extending the `discover.py ui` page; lines 51 and 127 already record the retirement. User item, cosmetic.
+- `viz/watcher.py` keeps `discovery/` as a static fallback root (`STATIC_DIRS`), so `sessions.json` and `identity/*.json` are still reachable over HTTP on 4780. The D2 page used `sessions.json` that way; with the page gone it may be unneeded. For the viz-builder to decide, not a D4 failure.
+- `git status` shows `handoff/viz/ui-frames.png` renamed to `docs/ui-frames.png`, and untracked `viz/web.html`, `handoff/viz/v7-animation.html`, `handoff/viz/v7-styles.html`: V7 work in flight, not reviewed here.

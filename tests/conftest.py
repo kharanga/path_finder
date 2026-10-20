@@ -47,8 +47,6 @@ def discover(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "DISCOVERY_DIR", discovery_dir)
     monkeypatch.setattr(module, "DIRECTORY_PATH", discovery_dir / "sessions.json")
     monkeypatch.setattr(module, "IDENTITY_DIR", discovery_dir / "identity")
-    monkeypatch.setattr(module, "UI_LOG", discovery_dir / "ui.log")
-    monkeypatch.setattr(module, "UI_PID", discovery_dir / "ui.pid")
     return module
 
 

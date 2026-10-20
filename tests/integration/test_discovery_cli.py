@@ -116,3 +116,22 @@ def test_self_exits_1_when_registry_has_no_entry_for_caller(sandbox):
     assert result.returncode == 1
     assert "not running inside a Claude Code session" in result.stderr
     assert result.stdout == ""
+
+
+def test_ui_is_rejected_by_argparse(sandbox):
+    result = run_cli(sandbox, "ui")
+    assert result.returncode == 2
+    assert "invalid choice: 'ui'" in result.stderr
+    assert "(choose from identify, self, list, done)" in result.stderr
+    assert not (sandbox["discovery_dir"] / "ui.pid").exists() and not (sandbox["discovery_dir"] / "ui.log").exists()
+
+
+@pytest.mark.parametrize("role", ["", "  "])
+def test_identify_with_blank_role_exits_2_and_writes_nothing(sandbox, role):
+    register(sandbox, os.getpid(), "me", ROOT)
+    before = sorted(path.name for path in sandbox["discovery_dir"].iterdir())
+    result = run_cli(sandbox, "identify", "--role", role)
+    assert result.returncode == 2
+    assert result.stdout == ""
+    assert "role is blank" in result.stderr
+    assert sorted(path.name for path in sandbox["discovery_dir"].iterdir()) == before

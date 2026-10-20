@@ -297,7 +297,7 @@ def test_session_exit_removes_it_on_next_list(discover, monkeypatch, write_regis
     assert discover.identity_path(100).exists()
 
 
-@pytest.mark.parametrize("removed", ["record", "protocol"])
+@pytest.mark.parametrize("removed", ["record", "protocol", "ui"])
 def test_removed_mesh_commands_are_rejected(discover, removed, capsys):
     with pytest.raises(SystemExit) as exit_info:
         discover.build_parser().parse_args([removed])
@@ -310,3 +310,31 @@ def test_removed_flags_and_missing_role_are_rejected(discover, flag):
     with pytest.raises(SystemExit) as exit_info:
         discover.build_parser().parse_args(flag)
     assert exit_info.value.code == 2
+
+
+@pytest.mark.parametrize("role", ["", "   ", "\t\n"])
+def test_command_identify_blank_role_exits_2_and_writes_nothing(discover, monkeypatch, role, capsys):
+    monkeypatch.setattr(discover, "own_session", lambda: pytest.fail("own_session consulted for a blank role"))
+    args = discover.build_parser().parse_args(["identify", "--role", role])
+    assert discover.command_identify(args) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "role is blank" in captured.err
+    assert not discover.IDENTITY_DIR.exists()
+    assert not discover.DIRECTORY_PATH.exists()
+
+
+def test_command_identify_stores_the_role_stripped(discover, monkeypatch, write_registry_entry, live_pid, capsys):
+    write_registry_entry(live_pid, "me", ROOT, session_id="sid-1")
+    monkeypatch.setattr(discover, "find_claude_ancestor_pid", lambda: live_pid)
+    args = discover.build_parser().parse_args(["identify", "--role", "  viz-builder \n"])
+    assert discover.command_identify(args) == 0
+    printed = json.loads(capsys.readouterr().out)
+    assert (printed["role"], printed["label"]) == ("viz-builder", "viz-builder")
+    stored = json.loads(discover.identity_path(live_pid).read_text())
+    assert (stored["role"], stored["label"]) == ("viz-builder", "viz-builder")
+
+
+def test_module_has_no_ui_leftovers(discover):
+    assert not any(name.startswith("UI_") or "ui" in name.lower().split("_") for name in dir(discover))
+    assert not hasattr(discover, "time") and not hasattr(discover, "urllib")

@@ -1,5 +1,43 @@
 # Status log
 
+## User edits (decided 2026-10-08, plan approved; APPLIED by the manager on 2026-10-20 at the user's instruction)
+
+All edits below are applied. CLAUDE.md, SPEC.md, .claude/roles/, docs/ remain uncommitted for the user to commit.
+
+### SPEC.md: add V7 (assigned 2026-10-20 on the user's direct instruction, ahead of this entry)
+`- [ ] V7: compact web window. A second page, viz/web.html, served by the watcher at /web, for a small browser window (about 380 px wide). Reads /state then /events like index.html. Layout top to bottom: (1) web: one node per session in a ring, the frame-style card (dot, label, status pill, inbox pill, watching or quoted last line); compact nodes (dot, name, inbox count, working ring) when more than eight sessions; two sessions render side by side as the pod. (2) caption: the transcript entry behind the latest change and its pair. (3) strip: one chip per session, ring while working, orange count while mail waits; click highlights that session's arrows. (4) toasts: one per message in flight, newest first, three then a count, full first line; left edge grey Pending, green In inbox and Read, red Failed; a Read toast dims and leaves after 8 s; idle notices are muted toasts. Arrows: only PENDING (grey), IN_INBOX (green), FAILED (red, stays until resolved), and a 3 s fading flash on READ; idle notices are never arrows, they pulse the eye glyph on the watching node. One arrow per (from, to) pair with a +N count; curved toward the ring centre, clipped at card edges, label (summary and stage) at the curve midpoint, labels only on the newest arrow in compact mode and on hover otherwise. Sessions with no message in the last 10 minutes leave the ring and stay in the strip. Reference: handoff/viz/v7-animation.html (behaviour and geometry) and handoff/viz/v7-styles.html (look). Done when replaying the fixtures at /web shows the pod with the stage sequence and the idle pulse, and a six-session live view on 4780/web matches the mock's five-session window.`
+
+### CLAUDE.md, "What exists"
+- discovery bullet: replace the sentence "`record` and `done` maintain a shared `discovery/sessions.json` under a file lock. `protocol` and `record` belong to the retired mesh round and are removed in D3." with: "`list` and `done` rebuild `discovery/sessions.json` from the registry plus `identity/` under a file lock; a dead PID is dropped with its identity file. `protocol` and `record` are removed. `ui` is retired in D4; the page is served by `python3 viz/watcher.py serve` on port 4780."
+- viz bullet: replace "Empty until V0 starts." with "`watcher.py` has `map`, `tail`, `state`, `replay`, and `serve`; `serve` writes `viz/events.jsonl`. Reference frames in `docs/ui-frames.png`."
+- Team rules, hooks bullet: unchanged, but note the dashboard plugin is still installed (82 hook errors in the fake transcripts).
+
+### SPEC.md
+- Mark `[x]` D3, V0, V1, V2, V3, V4, V5, V6. Mark D2 `[x]` with "superseded by the viz page at V4".
+- V4 and V5: add "Live check 2026-10-08: page follows the transcript data where the mock frames differ (frame 1 caption, watching line from send time, joined captions). Reference frames: `docs/ui-frames.png`."
+- Add under Tasks:
+  `- [ ] D4: retire ui. Remove ui and ui --stop from discover.py, delete discovery/index.html, drop discovery/ui.log and discovery/ui.pid from .gitignore. identify --role "" (blank after strip) exits 2 with a message and writes nothing. Done when discover.py ui fails with argparse "invalid choice", identify --role "" exits 2, and the existing tests pass with the ui tests removed.`
+- Dependencies: add "port handover (watcher on 4780) before D4".
+- Decisions: replace "Reuse the D2 http server on port 4780" with "The watcher owns port 4780 and serves the page; `discover.py ui` is retired (D4)."
+
+### docs/cross-session-message-format.md
+- §3.1: add the third `queue-operation` value: `remove`, with `reason: "absorbed_mid_turn"`, `commandUuid`, `deliveryId`, and the wrapped content; it replaces `dequeue` when a busy receiver consumes the message between tool calls. Inbox = enqueues − dequeues − removes (26 = 14 + 12 and 28 = 18 + 10 in the fixtures).
+- §6: replace the sessionId-keyed nodes and the SessionStart hook advice with: "PID to session id: `~/.claude/sessions/<pid>.json` carries `sessionId`; the transcript is `~/.claude/projects/*/<sessionId>.jsonl`, located by globbing on the id. Fallback when the field is missing: the encoded `cwd` folder, single transcript modified since `startedAt`; otherwise ambiguous. `origin.verifiedPeerPid` is not needed for the map. (Superseded: keying by sessionId, SessionStart hook.)"
+- §7: note "receiver enqueue promotes PENDING to IN_INBOX when the sender's tool_result has not been read yet".
+
+### docs/jsonl-transcript-spec.md
+- §1 (line 12): folder name encoding replaces every non-alphanumeric character with `-`, not only `/` (`path_finder` becomes `path-finder`). Do not reverse it; glob on the session id.
+- §2 item 7: add "Exception: keep `isMeta` entries whose `turnOrigin` is `peer` or `system` (message-format doc §0)."
+- §2: add the `progress` entry type to the skip list.
+
+### docs/plan-visualization.md
+- §4: `/state` carries `sources` (latest entry per PID); every `/events` change carries `source` and `source_pid`; the page caption reads them. `discover.py ui` retired; `viz/watcher.py serve` is the server.
+- §5: inbox decrements on `dequeue` and `remove` only, not on the peer `user` entry (double count). Stage transitions: add "receiver `queue-operation` enqueue → IN_INBOX when still PENDING".
+- §6: add "Look: `docs/ui-frames.png`. Dark cards with coloured dot and label, status pill, orange inbox pill, eye watching line, quoted last line; connector in the gap as summary, bold arrow, stage; monospace caption under each row naming the latest entry. No legend, no SVG wires; thin arcs for non-neighbour pairs."
+- §9: add "5. `discover.py ui` retired; the watcher owns 4780 (D4)."
+
+## Log
+
 - 2026-10-08T07:30Z manager (pid 73830) identified. validator (pid 74335) and viz-builder (pid 74170) reported ready; not replied, nothing assignable until D3 passes.
 - 2026-10-08T07:31Z assigned D3 to discovery-builder (pid 74018).
 - 2026-10-08T07:34Z user run instructions received: D3, then V0..V6 in order, one task per PASS, one commit per PASS; validator may propose the pytest layout to the manager; V4/V5 overnight acceptance is fixture replay through the watcher yielding /state and /events with every frame 1-9 field (status, inbox count, last line, watching, connector stage, idle notice); live visual check deferred to the user. Stop only on Blocked or after V6.
@@ -53,3 +91,11 @@
 - 2026-10-08T10:20Z V4+V5 rework ready from viz-builder: page matches handoff/viz/ui-frames.png at six replay freezes; /events changes carry source and source_pid, /state carries sources; apply_send claims a held enqueue. Manager restarted the 4781 live watcher on the new code (pid 9731, manager-started). Validator pointed at it; the old page-render harness is the validator's to replace.
 - 2026-10-08T10:35Z V4+V5 rework review FAIL, round 1 of 3: the row caption in a frozen replay picks the older file's latest entry (seq is file order on the first poll), so frame 6's caption is wrong. Look matches ui-frames.png frames 1 to 6 otherwise; 234 tests pass with the replaced harness. Builder and validator looping. User notes in review.md: four caption and one watching-line differences between the image and what the fixture can produce at those times, plus a cosmetic panel timestamp order.
 - 2026-10-08T10:50Z V4+V5 rework review PASS on round 2 (polls ordered by timestamp across files); 237 tests pass. Manager restarted the 4781 live watcher on the final code. Open for the user: rule on the four image-vs-fixture differences in review.md Notes; port 4780 handover.
+- 2026-10-08T11:30Z plan approved: page follows the data; user stops the 4780 server, manager restarts the watcher there; D4 retires ui and rejects a blank role; doc edits listed above for the user; user commits their own files; live round trip with the fake sessions after D4. User edits block written at the top of this file.
+- 2026-10-08T11:45Z port handover done: the old server (pid 62889) was already gone when the manager ran ui --stop at the user's request ("No ui server pid file"); nothing listened on 4780. Manager stopped its 4781 watcher and started `viz/watcher.py serve --root <project>` on 4780 (manager-started). Page open at http://127.0.0.1:4780/. D4 waits for the user to add it to SPEC.md.
+- 2026-10-20T12:30Z user chose the web layout with strip and toasts and asked the manager to build it. Mocks saved as handoff/viz/v7-animation.html and handoff/viz/v7-styles.html. V7 assigned to viz-builder on the user's direct instruction; SPEC.md entry text added to the User edits block above for the user to paste. D4 still waits for its SPEC.md entry.
+- 2026-10-20T12:40Z user told the manager to add D4 and V7 to SPEC.md; done (tasks after V6, dependencies line extended). Other User edits in the block above remain the user's.
+- 2026-10-20T12:50Z user told the manager to apply the remaining doc edits; applied to CLAUDE.md, SPEC.md (marks, decision), docs/cross-session-message-format.md (§3.1 remove, §6 V0 method, §7 enqueue promotion), docs/jsonl-transcript-spec.md (§1 encoding, §2 isMeta, §4.11 progress note), docs/plan-visualization.md (§4 sources, §5 inbox and promotion, §6 look, §9 decisions 5 and 6). handoff/viz/ui-frames.png moved to docs/ui-frames.png.
+- 2026-10-20T13:05Z D4 ready from discovery-builder: ui retired, blank role rejected, discovery/index.html deleted, ui.log and ui.pid lines dropped from .gitignore. Validator pointed at it; conftest lines 50-51 (UI_LOG, UI_PID) are the validator's to remove. D3 is already marked done in SPEC.md; D4 gets marked on PASS.
+- 2026-10-20T13:10Z user left with instructions: when D4 and V7 are both implemented, test and commit everything. Plan: commit D4 on PASS, commit V7 on PASS, restart the 4780 watcher on the final code, then a final commit of the spec, docs, roles, and CLAUDE.md edits (marking D4 and V7 done in SPEC.md first), run the full suite, and go idle.
+- 2026-10-20T13:20Z D4 review PASS; 246 tests pass. Validator notes: .claude/roles/discovery-builder.md line 27 still lists ui and ui --stop; viz/watcher.py still serves discovery/ as a static fallback (sessions.json and identity files reachable on 4780), to drop in V7.

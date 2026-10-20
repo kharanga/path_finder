@@ -1,63 +1,35 @@
-# Ready: D3 2026-10-08
+# Ready: D4 2026-10-20
 
 ## Done
-`discovery/discover.py` is now self-registration only. No command sends or expects a message.
+`ui` is retired from `discovery/discover.py`. The commands are now `identify`, `self`, `list`, `done`.
 
-- `identify --role "<role>"`: writes `discovery/identity/<pid>.json` (label equals role, `identified_at` timestamp) and rebuilds the directory. Run it first, when the session starts.
-- `self`: prints name, pid, cwd, socket, session_id, role, label. Exits 2 until `identify` has run.
-- `list --root R`: reads `~/.claude/sessions/*.json` plus `identity/`, drops PIDs that are not alive, deletes identity files of dead PIDs, rebuilds `discovery/sessions.json` under `sessions.json.lock`, then prints one JSON line per live session under R. Each line carries `"identified": true|false`; the caller's own line carries `"self": true`. Unidentified sessions have `role`, `label`, and `identified_at` set to null; no role is ever invented.
-- `done --root R`: rebuilds the directory the same way, exits 0 when every live session under R has an identity, else exits 1 and names the unidentified sessions on stderr.
-- `ui` / `ui --stop`: unchanged from D2, except `ui` rebuilds the directory before serving.
-- `protocol` and `record` are removed. `--as-pid`, `--out`, `participants`, `heard_by`, and `replied_at` are gone with them.
+- `ui` and `ui --stop` removed, with `ui_is_up`, `start_ui`, `stop_ui`, `command_ui`, the `UI_PORT`, `UI_LOG`, `UI_PID` constants, and the `time` and `urllib.request` imports.
+- `discovery/index.html` deleted (shows as `D` in git status). `discovery/ui.log` removed; `discovery/ui.pid` did not exist. Copies of both files sit in this session's scratchpad until the commit, in case the manager wants them back.
+- `.gitignore`: dropped `discovery/ui.log` and `discovery/ui.pid`. This file is outside `discovery/`; the edit is listed in the D4 task text in `SPEC.md`, so I made it rather than requesting it.
+- `identify --role "<blank>"`: the role is stripped; when nothing is left, `identify` prints `role is blank: pass the role your human entered, for example --role manager` on stderr, exits 2, and writes nothing. A non-blank role is stored stripped.
 
-Directory: `/Users/khangnguyen/Documents/path_finder/discovery/sessions.json`. It holds every live session on the machine, not only those under a root, so one file serves every caller regardless of `--root`. `--root` filters only what `list` prints and what `done` requires. Shape:
+Verified on 2026-10-20 against the live machine:
 
-```json
-{
-  "updated_at": "2026-10-08T07:34:41Z",
-  "sessions": [
-    {
-      "pid": 32813,
-      "name": "fake-session-manager",
-      "cwd": "/Users/khangnguyen/Documents/path_finder/fake_session",
-      "socket": "uds:/tmp/cc-socks/32813.sock",
-      "session_id": "ab5e0a7a-abdf-48ae-b34a-85aebcb80f95",
-      "role": "fake session manager",
-      "label": "fake manager",
-      "identified_at": "2026-10-07T06:09:37Z"
-    }
-  ]
-}
-```
-
-`session_id` is filled from the registry's `sessionId` field, which every live registry entry on this machine has. The viz-builder's V0 can read it directly instead of matching on cwd.
-
-`discovery/index.html`: a capsule is dashed when its session is unidentified instead of when its mesh was incomplete. The header counts identified sessions instead of participants.
-
-Verified on 2026-10-08 07:34Z with the live machine: `list --root /Users/khangnguyen/Documents/path_finder` printed six sessions (two fake sessions plus manager, discovery-builder, viz-builder, validator), all with roles, zero messages sent. Four stale identity files from 2026-10-07 sessions (PIDs 29248, 40707, 40800, 52134) were dropped on the first `list`. A scratchpad test with a fake registry confirmed: a dead PID with an identity file is dropped and its identity file deleted; a live unidentified session prints with `"identified": false` and makes `done` exit 1; after `identify` `done` exits 0; after the live process exits the next `list` prints nothing.
+- `discover.py ui` exits 2 with argparse `invalid choice: 'ui' (choose from identify, self, list, done)`.
+- `identify --role ""` and `identify --role "   "` both exit 2; `discovery/identity/74018.json` is byte-for-byte unchanged afterwards.
+- `self` exits 0 and `list --root /Users/khangnguyen/Documents/path_finder` prints six sessions, as before.
+- Port 4780 is held by `viz/watcher.py serve` (pid 25176, not started by this session, untouched), so the port handover dependency is met.
 
 ## How to test
-From any session under the root:
 
 ```
-python3 /Users/khangnguyen/Documents/path_finder/discovery/discover.py list --root /Users/khangnguyen/Documents/path_finder/fake_session
+python3 /Users/khangnguyen/Documents/path_finder/discovery/discover.py ui
+python3 /Users/khangnguyen/Documents/path_finder/discovery/discover.py identify --role ""
+python3 /Users/khangnguyen/Documents/path_finder/discovery/discover.py identify --role "  "
 ```
 
-Expect two lines, fake-session-manager (pid 32813) and fake-session-builder (pid 33993), both with `"identified": true` and a role, with no message sent and no new turn in either fake session's transcript.
+Expect exit 2 from each, the first with the argparse invalid-choice error, the other two with the blank-role message and no change to `discovery/identity/`. Then `ls discovery` shows only `discover.py`, `identity/`, `sessions.json`, `sessions.json.lock`, and `git status` shows `discovery/index.html` deleted and `.gitignore` modified.
 
-```
-python3 /Users/khangnguyen/Documents/path_finder/discovery/discover.py done --root /Users/khangnguyen/Documents/path_finder/fake_session
-```
-
-Expect exit 0.
-
-To test removal, let one fake session exit (only its own human should close it), then rerun `list`: the exited PID is gone and `discovery/identity/<pid>.json` is deleted. To test the unidentified path without closing anything, start a fresh session under the root and run `list` before it has run `identify`: it prints with `"identified": false` and `done` exits 1 naming it.
-
-Removed commands fail fast: `discover.py record` and `discover.py protocol` exit 2 with an argparse "invalid choice" error.
+Tests: `python3 -m pytest tests -q` currently reports 195 passed, 42 errors. Every error is the same fixture failure: `tests/conftest.py` lines 50 and 51 monkeypatch `UI_LOG` and `UI_PID`, which no longer exist on the module. With those two lines removed the full suite passes (237 passed, verified in a scratchpad copy of `tests/`, `discovery/`, and `viz/`). No test in `tests/unit/test_discover.py` or `tests/integration/test_discovery_cli.py` exercises `ui`, so nothing else needs removing.
 
 ## Requests
-- `CLAUDE.md` "What exists" still says `protocol` and `record` "are removed in D3"; they are removed now. Manager to update the sentence and mark D3 done in `SPEC.md`.
-- The role file `.claude/roles/discovery-builder.md` describes `identified_at`; the previous identity files used `set_at`. `with_identity` reads either, so old files still work until they are dropped.
+- Validator (owner of `tests/`): delete the two `UI_LOG` and `UI_PID` monkeypatch lines from the `discover` fixture in `tests/conftest.py`. Optionally add `ui` to the `test_removed_mesh_commands_are_rejected` parametrize list and a test that `identify --role "  "` exits 2 and writes no identity file.
+- Manager: mark D4 done in `SPEC.md`; D3 is still unchecked there too. The CLAUDE.md "What exists" sentence already describes `ui` as retired.
 
 ## Blocked
 None.
