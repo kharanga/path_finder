@@ -278,6 +278,7 @@ class StateModel:
             "activity_at": None,
             "idle_since": None,
             "last_assistant_text": None,
+            "waiting_on": [],
         }
         for field in ("session_id", "name", "role", "label", "cwd", "transcript"):
             if row.get(field) is not None:
@@ -331,6 +332,7 @@ class StateModel:
         if handler is None:
             return []
         handler(pid, entry, touched)
+        self.refresh_waiting(touched)
         timestamp = entry.get("timestamp")
         for session_pid in self.sessions:
             if session_pid in touched["sessions"] and timestamp:
@@ -341,6 +343,28 @@ class StateModel:
         if changes:
             self.note_source(pid, timestamp, source)
         return copy.deepcopy(changes)
+
+    def waiting_targets(self, pid):
+        session = self.sessions[pid]
+        targets = []
+
+        def add(target):
+            if target is not None and target not in targets:
+                targets.append(target)
+
+        for watched in session["watching"]:
+            add(watched if isinstance(watched, int) else self.pid_by_name.get(watched))
+        unanswered = [m for m in self.messages.values() if m["kind"] == "message" and m["from_pid"] == pid and m["stage"] in ("PENDING", "IN_INBOX")]
+        for message in sorted(unanswered, key=lambda m: (m["sent_at"] or "", m["key"])):
+            add(message["to_pid"] if message["to_pid"] is not None else self.resolve_target(message["to"]))
+        return targets
+
+    def refresh_waiting(self, touched):
+        for pid, session in self.sessions.items():
+            waiting = self.waiting_targets(pid)
+            if waiting != session["waiting_on"]:
+                session["waiting_on"] = waiting
+                touched["sessions"].add(pid)
 
     def set_status(self, pid, status, touched):
         session = self.session(pid)

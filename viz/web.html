@@ -73,7 +73,8 @@
   .node .hd { display: flex; align-items: center; gap: 6px; font-size: 13px; min-width: 0; }
   .node .hd .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .node .row2 { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-height: 18px; }
-  .node .last { color: var(--win-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 15px; }
+  .node .last { color: var(--win-muted); font-size: 11px; line-height: 15px; white-space: normal; overflow-wrap: anywhere; min-height: 15px; }
+  .node.work .last { color: var(--win-fg); }
   .node.compact { flex-direction: row; align-items: center; gap: 5px; padding: 0 7px; border-radius: 99px; font-size: 11px; white-space: nowrap; }
   .node.compact .hd .name { font-weight: 500; }
   .node.compact .row2, .node.compact .last { display: none; }
@@ -138,7 +139,13 @@
   const STAGE_LABEL = { PENDING: ["Pending", "pend"], IN_INBOX: ["✓ In inbox", "ok"], READ: ["✓✓ Read", "ok"], FAILED: ["✗ Failed", "fail"] };
   const STAGE_STROKE = { PENDING: ["#8a8a8a", "mp"], IN_INBOX: ["#4ad17a", "mg"], READ: ["#4ad17a", "mg"], FAILED: ["#ff6b6b", "mr"] };
   const RING_PULLS = [0.35, 0.15, 0.55, -0.15, 0.75, 0, 0.95, -0.3, 1.15];
-  const POD_LIFTS = [POD_LIFT, POD_LIFT + 24, POD_LIFT - 20];
+  const POD_LIFT_OFFSETS = [0, 24, -20];
+  const BASE_CH = 62;
+  const NODE_GAP = 4;
+  const NODE_CHAR_PX = 5.6;
+  const NODE_LINE_PX = 15;
+  const RING_GROW_STEP = 8;
+  const RING_MAX_RY = 700;
   const LABEL_POSITIONS = [0.5, 0.38, 0.62, 0.28, 0.72, 0.2, 0.8];
   const LABEL_SIDE_OFFSETS = [0, 20, -20];
   const LABEL_CHAR_PX = 6.3;
@@ -360,27 +367,10 @@
     return latest;
   }
 
-  function latestReadBy(pid) {
-    let latest = null;
-    for (const m of messagesOnly()) {
-      if (Number(m.to_pid) !== pid || !m.read_at) continue;
-      if (!latest || m.read_at > latest.read_at) latest = m;
-    }
-    return latest;
-  }
-
   function statusText(session) {
     if (session.status !== "WORKING") return "Idle";
     const send = latestSendOf(session.pid);
     return send && send.stage === "PENDING" ? "Sending" : "Working";
-  }
-
-  function lastLineOf(session) {
-    const send = latestSendOf(session.pid);
-    const read = latestReadBy(session.pid);
-    const sendIsLatest = send && (!read || send.sent_at > read.read_at);
-    if (sendIsLatest) return send.stage === "PENDING" ? truncate(send.summary || send.body, 60) : "";
-    return read ? `“${truncate(read.body || read.summary, 60)}”` : "";
   }
 
   function failedIsResolved(failed) {
@@ -430,30 +420,89 @@
     return active.size ? all.filter((s) => active.has(s.pid)) : all;
   }
 
-  let layout = { W: 376, H: 380, CW: 108, CH: 62, compact: false, pod: false, pos: new Map(), cx: 188, cy: 198 };
+  let layout = { W: 376, H: 380, CW: 116, CH: 62, compact: false, pod: false, pos: new Map(), size: new Map(), cx: 188, cy: 198, maxH: 62, podLift: POD_LIFT };
 
   function layoutNodes(ring) {
     const W = graph.clientWidth || 376;
     const compact = ring.length > COMPACT_ABOVE;
     const pod = ring.length <= 2;
-    const H = pod ? 150 : 380;
-    const CW = compact ? 100 : 116, CH = compact ? 24 : 62;
-    const r = compact ? Math.min(150, W / 2 - CW / 2 + 10) : Math.min(140, W / 2 - CW / 2 - 2);
-    const cx = W / 2, cy = pod ? H / 2 + 15 : H / 2 + 8;
-    const pos = new Map();
-    ring.forEach((s, i) => {
-      if (ring.length === 2) pos.set(s.pid, [i === 0 ? CW / 2 + 20 : W - CW / 2 - 20, cy]);
-      else if (ring.length === 1) pos.set(s.pid, [cx, cy]);
-      else { const a = -Math.PI / 2 + i * 2 * Math.PI / ring.length; pos.set(s.pid, [cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
-    });
-    layout = { W, H, CW, CH, compact, pod, pos, cx, cy };
+    const CW = compact ? 100 : Math.max(116, Math.min(160, Math.floor(W / 3) - 10)), CH = compact ? 24 : BASE_CH;
+    layout = { W, H: pod ? 150 : 380, CW, CH, compact, pod, pos: new Map(), size: new Map(), cx: W / 2, cy: 0, maxH: CH, podLift: POD_LIFT };
     graph.classList.toggle("pod", pod);
   }
 
-  function exitPoint(from, toward, gap) {
-    const { CW, CH } = layout;
+  function estimateNodeHeight(lineText) {
+    if (layout.compact) return layout.CH;
+    const charsPerLine = Math.max(8, Math.floor((layout.CW - 16) / NODE_CHAR_PX));
+    const lines = lineText ? Math.ceil(lineText.length / charsPerLine) : 1;
+    return layout.CH + (lines - 1) * NODE_LINE_PX;
+  }
+
+  function measureNodes(ring) {
+    for (const session of ring) {
+      const node = nodeEls.get(session.pid);
+      const measured = layout.compact ? layout.CH : (node && node.offsetHeight) || 0;
+      layout.size.set(session.pid, [layout.CW, measured || estimateNodeHeight(node ? node.dataset.line : "")]);
+    }
+    layout.maxH = Math.max(layout.CH, ...[...layout.size.values()].map((size) => size[1]));
+  }
+
+  function sizeOf(pid) {
+    return layout.size.get(pid) || [layout.CW, layout.CH];
+  }
+
+  function ringPositions(ring, rx, ry) {
+    const pos = new Map();
+    ring.forEach((s, i) => {
+      const a = -Math.PI / 2 + i * 2 * Math.PI / ring.length;
+      pos.set(s.pid, [layout.cx + rx * Math.cos(a), ry * Math.sin(a)]);
+    });
+    return pos;
+  }
+
+  function anyNodesOverlap(ring, pos) {
+    const rects = ring.map((s) => { const [w, h] = sizeOf(s.pid); return rectAround(pos.get(s.pid), w + NODE_GAP, h + NODE_GAP); });
+    for (let i = 0; i < rects.length; i += 1) for (let j = i + 1; j < rects.length; j += 1) if (rectsOverlap(rects[i], rects[j])) return true;
+    return false;
+  }
+
+  function positionNodes(ring) {
+    const { W, CW, compact, pod } = layout;
+    const pos = new Map();
+    if (pod) {
+      const lift = POD_LIFT + (layout.maxH - BASE_CH) / 2;
+      const cy = Math.max(150 / 2 + 15, lift + 10);
+      ring.forEach((s, i) => pos.set(s.pid, ring.length === 1 ? [layout.cx, cy] : [i === 0 ? CW / 2 + 20 : W - CW / 2 - 20, cy]));
+      layout.H = Math.max(150, cy + layout.maxH / 2 + 12);
+      layout.cy = cy;
+      layout.podLift = lift;
+    } else {
+      const rx = compact ? Math.min(150, W / 2 - CW / 2 + 10) : Math.min(140, W / 2 - CW / 2 - 2);
+      let ry = rx;
+      let around = ringPositions(ring, rx, ry);
+      while (anyNodesOverlap(ring, around) && ry < RING_MAX_RY) { ry += RING_GROW_STEP; around = ringPositions(ring, rx, ry); }
+      const tops = ring.map((s) => around.get(s.pid)[1] - sizeOf(s.pid)[1] / 2), bottoms = ring.map((s) => around.get(s.pid)[1] + sizeOf(s.pid)[1] / 2);
+      const minY = Math.min(...tops), needed = Math.max(...bottoms) - minY;
+      layout.H = Math.max(380, needed + 38);
+      const shift = (layout.H - needed) / 2 + 8 - minY;
+      for (const [pid, [x, y]] of around) pos.set(pid, [x, y + shift]);
+      layout.cy = shift;
+    }
+    layout.pos = pos;
+    graph.style.height = `${layout.H}px`;
+    for (const session of ring) {
+      const node = nodeEls.get(session.pid);
+      const [x, y] = pos.get(session.pid);
+      const [w, h] = sizeOf(session.pid);
+      node.style.left = `${x - w / 2}px`;
+      node.style.top = `${y - h / 2}px`;
+    }
+  }
+
+  function exitPoint(from, toward, gap, size) {
+    const [w, h] = size;
     const dx = toward[0] - from[0], dy = toward[1] - from[1], length = Math.hypot(dx, dy) || 1, ux = dx / length, uy = dy / length;
-    const t = Math.min(ux ? CW / 2 / Math.abs(ux) : 1e9, uy ? CH / 2 / Math.abs(uy) : 1e9) + gap;
+    const t = Math.min(ux ? w / 2 / Math.abs(ux) : 1e9, uy ? h / 2 / Math.abs(uy) : 1e9) + gap;
     return [from[0] + ux * t, from[1] + uy * t];
   }
 
@@ -491,13 +540,10 @@
     row2.append(el("span", `pill ${status === "Idle" ? "idle" : "work"}`, status));
     if (session.inbox > 0) row2.append(mailEl(session.inbox));
     const last = el("div", "last");
-    const watched = (session.watching || []).map(labelFor).filter(Boolean);
-    if (watched.length) {
-      last.append(eyeEl(pulse), document.createTextNode(`Watching ${watched.join(", ")}`));
-    } else if (pulse) {
+    if (pulse) {
       last.append(eyeEl(true), document.createTextNode("idle notice"));
     } else {
-      const text = lastLineOf(session);
+      const text = activityOf(session);
       last.textContent = text;
       if (text) last.title = text;
     }
@@ -519,14 +565,12 @@
         graph.append(node);
         nodeEls.set(session.pid, node);
       }
-      node.className = "node" + (layout.compact ? " compact" : "") + (session.role ? "" : " incomplete") + (pickedPid === session.pid ? " picked" : "");
-      const [x, y] = layout.pos.get(session.pid);
-      node.style.left = `${x - layout.CW / 2}px`;
-      node.style.top = `${y - layout.CH / 2}px`;
+      node.className = "node" + (layout.compact ? " compact" : "") + (session.role ? "" : " incomplete") + (pickedPid === session.pid ? " picked" : "") + (session.status === "WORKING" ? " work" : "");
       node.style.width = `${layout.CW}px`;
       node.style.minHeight = `${layout.CH}px`;
       node.style.height = layout.compact ? `${layout.CH}px` : "auto";
       node.title = `${session.name || "unnamed"} · pid ${session.pid}`;
+      node.dataset.line = activityOf(session);
       const content = buildNodeContent(session, pulsing.has(session.pid));
       if (tasked.has(session.pid)) content[0].append(taskBadge(tasked.get(session.pid)));
       node.replaceChildren(...content);
@@ -604,10 +648,8 @@
   function nodeRects(ring) {
     const rects = new Map();
     for (const session of ring) {
-      const node = nodeEls.get(session.pid);
-      const height = (node && node.offsetHeight) || layout.CH;
-      const center = layout.pos.get(session.pid);
-      rects.set(session.pid, { x1: center[0] - layout.CW / 2 - 2, y1: center[1] - layout.CH / 2 - 2, x2: center[0] + layout.CW / 2 + 2, y2: center[1] - layout.CH / 2 + height + 2 });
+      const [w, h] = sizeOf(session.pid);
+      rects.set(session.pid, rectAround(layout.pos.get(session.pid), w + 4, h + 4));
     }
     return rects;
   }
@@ -623,7 +665,7 @@
     const mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
     if (pod) {
       const sign = hasReverse && key > reverseKey ? -1 : 1;
-      return POD_LIFTS.map((lift) => [mx, my - sign * lift]);
+      return POD_LIFT_OFFSETS.map((offset) => [mx, my - sign * (layout.podLift + offset)]);
     }
     const preferred = key < reverseKey ? 0.15 : 0.55;
     const pulls = [preferred, ...RING_PULLS.filter((p) => p !== preferred)];
@@ -631,11 +673,11 @@
   }
 
   function placeArrow(entry, placed, rects, otherPids) {
-    const { A, B, key, reverseKey, size, hasReverse } = entry;
+    const { A, B, key, reverseKey, size, hasReverse, ends } = entry;
     const bounds = { x1: 0, y1: 0, x2: layout.W, y2: layout.H };
     let best = null;
     controlCandidates(A, B, key, reverseKey, hasReverse).forEach((C, controlIndex) => {
-      const S = exitPoint(A, C, 3), E = exitPoint(B, C, 6);
+      const S = exitPoint(A, C, 3, sizeOf(ends[0])), E = exitPoint(B, C, 6, sizeOf(ends[1]));
       const points = sampleCurve(S, C, E);
       let curveScore = controlIndex * 0.5;
       for (const pid of otherPids) if (curveHitsRect(points, rects.get(pid))) curveScore += NODE_HIT_PENALTY;
@@ -766,11 +808,16 @@
     render();
   }
 
-  function activityOf(session, now) {
-    if (session.activity) return session.activity;
-    if (session.status === "WORKING") return "working";
-    const since = parseMs(session.idle_since || session.last_seen_at);
-    return since ? `idle ${Math.max(0, Math.floor((now - since) / 60000))} min` : "idle";
+  function waitingText(session) {
+    const targets = (session.waiting_on || []).map(labelFor).filter(Boolean);
+    return targets.length ? `waiting on ${targets.join(", ")}` : "";
+  }
+
+  function activityOf(session) {
+    const waiting = waitingText(session);
+    if (waiting) return waiting;
+    if (session.status !== "WORKING") return "";
+    return session.activity || "working";
   }
 
   function activityRows() {
@@ -781,7 +828,7 @@
     });
   }
 
-  function renderRows(now) {
+  function renderRows() {
     rows.replaceChildren();
     const tasked = taskedPids();
     const sessions = activityRows();
@@ -797,8 +844,8 @@
       row.dataset.status = status;
       const name = el("span", "name", labelOf(session));
       name.title = `${session.name || "unnamed"} · pid ${session.pid}`;
-      const activity = el("span", "act", activityOf(session, now));
-      activity.title = session.activity ? `${session.activity}${session.activity_at ? "\n" + session.activity_at : ""}` : activity.textContent;
+      const activity = el("span", "act", activityOf(session));
+      activity.title = activity.textContent && session.status === "WORKING" && session.activity && !waitingText(session) ? `${session.activity}${session.activity_at ? "\n" + session.activity_at : ""}` : activity.textContent;
       row.append(dotEl(session.pid, working), name, el("span", `pill ${status === "Idle" ? "idle" : "work"}`, status), activity);
       if (tasked.has(session.pid)) name.append(document.createTextNode(" "), taskBadge(tasked.get(session.pid)));
       row.addEventListener("click", () => pick(session.pid));
@@ -914,16 +961,18 @@
     const visible = visibleArrows(now);
     const inFlight = visible.filter((m) => m.stage !== "READ");
     layoutNodes(ring);
-    svg.setAttribute("viewBox", `0 0 ${layout.W} ${layout.H}`);
     const quiet = graph.querySelector(".quiet");
     if (!ring.length && !quiet) graph.append(el("div", "quiet", "No sessions discovered yet"));
     if (ring.length && quiet) quiet.remove();
     renderNodes(ring, now, inFlight);
+    measureNodes(ring);
+    positionNodes(ring);
+    svg.setAttribute("viewBox", `0 0 ${layout.W} ${layout.H}`);
     renderArrows(visible.filter((m) => { const ends = endpointsOf(m); return layout.pos.has(ends[0]) && layout.pos.has(ends[1]); }), ring, now);
     capEntry.textContent = state.caption.entry;
     capPair.textContent = state.caption.pair;
     renderStrip(ring);
-    renderRows(now);
+    renderRows();
     renderPanel();
     renderTitle(ring, inFlight);
   }
