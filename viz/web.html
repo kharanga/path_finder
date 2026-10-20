@@ -66,7 +66,10 @@
   .graph path { transition: opacity .4s, stroke-width .3s; pointer-events: stroke; cursor: pointer; }
   .graph path.dim { opacity: .25 !important; }
   .graph .quiet { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--win-muted); font-size: 12px; }
-  .node { position: absolute; z-index: 1; background: var(--card); border: 1px solid var(--card-edge); border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; transition: border-color .3s, box-shadow .3s, left .4s, top .4s; }
+  .node { position: absolute; z-index: 1; background: var(--card); border: 1px solid var(--card-edge); border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; transition: border-color .3s, box-shadow .3s, left .4s, top .4s; touch-action: none; cursor: grab; user-select: none; }
+  .node.dragging { transition: none; z-index: 5; cursor: grabbing; box-shadow: 0 6px 18px rgba(0, 0, 0, .5); }
+  .node.pinned { border-style: solid; }
+  .graph.dragging .elab { transition: none; }
   .node.hot { border-color: #35506f; }
   .node.picked { border-color: #4a6a94; box-shadow: 0 0 0 1px #4a6a94; }
   .node.incomplete { border-style: dashed; }
@@ -93,6 +96,9 @@
   .ok { color: var(--green); } .pend { color: var(--pend); } .fail { color: var(--red); }
   .cap { margin-top: 8px; display: flex; justify-content: space-between; gap: 10px; font-family: var(--mono); font-size: 11px; color: var(--win-muted); min-height: 16px; }
   .cap span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cap button { flex: none; font: inherit; color: var(--win-muted); background: none; border: 1px solid #2a2a2a; border-radius: 5px; padding: 0 6px; cursor: pointer; line-height: 15px; }
+  .cap button:hover { color: var(--win-fg); border-color: #444; }
+  .cap button[hidden] { display: none; }
   .strip { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px; border-top: 1px solid #202020; background: #151515; }
   .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; border-radius: 99px; border: 1px solid #262626; font-size: 12px; background: var(--card); transition: border-color .3s; cursor: pointer; }
   .chip.on { border-color: #2e4a6e; } .chip.hot { border-color: #4a3618; } .chip.picked { border-color: #7cb4ff; }
@@ -118,7 +124,7 @@
       <marker id="mp" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#8a8a8a"></path></marker>
       <marker id="mr" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#ff6b6b"></path></marker>
     </defs><g id="arrows"></g></svg></div>
-    <div class="cap"><span id="cap-entry"></span><span id="cap-pair"></span></div>
+    <div class="cap"><span id="cap-entry"></span><span id="cap-pair"></span><button id="reset-layout" type="button" title="clear every pinned node and return to the ring" hidden>Reset layout</button></div>
   </div>
   <div class="strip" id="strip"></div>
   <div class="rows" id="rows"></div>
@@ -171,13 +177,21 @@
   const panel = document.getElementById("panel");
   const panelTab = document.getElementById("ptab");
   const panelList = document.getElementById("plist");
+  const resetLayoutButton = document.getElementById("reset-layout");
   const TASK_STATE_TEXT = { done: "Done", in_progress: "In progress", todo: "To do" };
   const PANEL_STORAGE_KEY = "viz-web-panel-collapsed";
   const FOLDER_STORAGE_PREFIX = "viz-web-folder-closed:";
+  const PIN_STORAGE_PREFIX = "viz-web-pin:";
+  const DRAG_START_PX = 4;
+  const CLICK_AFTER_DRAG_MS = 400;
   const TASK_AREAS = { D: "Discovery", V: "Visualization" };
 
   const state = { sessions: new Map(), messages: new Map(), sources: new Map(), sourceSequence: 0, caption: { entry: "", pair: "" }, tasks: [], taskCounts: { done: 0, in_progress: 0, todo: 0 } };
   const openTaskIds = new Set();
+  const pins = new Map();
+  const pinLookups = new Set();
+  let drag = null;
+  let lastDragEnd = null;
   let hoveredTaskId = null;
   let panelCollapsed = false;
   try { panelCollapsed = localStorage.getItem(PANEL_STORAGE_KEY) === "1"; } catch (error) { panelCollapsed = false; }
@@ -478,27 +492,70 @@
     return pairs;
   }
 
-  function relaxVertically(ring, pos) {
+  function relaxVertically(ring, pos, fixedPids) {
     for (let round = 0; round < RELAX_ROUNDS; round += 1) {
       const pairs = overlappingPairs(ring, pos);
       if (!pairs.length) return;
       for (const [i, j, a, b] of pairs) {
-        const push = (Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1)) / 2 + 1;
+        const overlap = Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1) + 2;
         const upper = pos.get(ring[i].pid)[1] <= pos.get(ring[j].pid)[1] ? ring[i].pid : ring[j].pid;
         const lower = upper === ring[i].pid ? ring[j].pid : ring[i].pid;
-        pos.get(upper)[1] -= push;
-        pos.get(lower)[1] += push;
+        const upperFixed = fixedPids.has(upper), lowerFixed = fixedPids.has(lower);
+        if (upperFixed && lowerFixed) continue;
+        if (!upperFixed) pos.get(upper)[1] -= lowerFixed ? overlap : overlap / 2;
+        if (!lowerFixed) pos.get(lower)[1] += upperFixed ? overlap : overlap / 2;
       }
     }
+  }
+
+  function pinKeyOf(session) {
+    return session.label || session.role || String(session.pid);
+  }
+
+  function pinnedPositionOf(session) {
+    if (pins.has(session.pid)) return pins.get(session.pid);
+    if (pinLookups.has(session.pid)) return null;
+    pinLookups.add(session.pid);
+    try {
+      const saved = JSON.parse(localStorage.getItem(PIN_STORAGE_PREFIX + pinKeyOf(session)) || "null");
+      if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) { pins.set(session.pid, [saved.x, saved.y]); return pins.get(session.pid); }
+    } catch (error) { }
+    return null;
+  }
+
+  function savePin(session, position) {
+    pins.set(session.pid, position);
+    try { localStorage.setItem(PIN_STORAGE_PREFIX + pinKeyOf(session), JSON.stringify({ x: Math.round(position[0]), y: Math.round(position[1]) })); } catch (error) { }
+  }
+
+  function clearPins() {
+    pins.clear();
+    pinLookups.clear();
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i += 1) { const key = localStorage.key(i); if (key && key.startsWith(PIN_STORAGE_PREFIX)) keys.push(key); }
+      for (const key of keys) localStorage.removeItem(key);
+    } catch (error) { }
+    for (const session of state.sessions.values()) pinLookups.add(session.pid);
+    render();
+  }
+
+  function clampToGraph(position, size) {
+    const [w, h] = size;
+    const lowest = Math.max(layout.H, (window.innerHeight || layout.H) - graph.getBoundingClientRect().top) - h / 2;
+    return [Math.min(Math.max(position[0], w / 2), Math.max(w / 2, layout.W - w / 2)), Math.min(Math.max(position[1], h / 2), Math.max(h / 2, lowest))];
   }
 
   function positionNodes(ring, lowerLane) {
     const { W, CW, compact, pod } = layout;
     const pos = new Map();
+    const pinned = new Map();
+    for (const session of ring) { const at = pinnedPositionOf(session); if (at) pinned.set(session.pid, clampToGraph(at, sizeOf(session.pid))); }
     if (pod) {
       const lift = POD_LIFT + (layout.maxH - BASE_CH) / 2;
       const cy = Math.max(150 / 2 + 15, lift + 10);
       ring.forEach((s, i) => pos.set(s.pid, ring.length === 1 ? [layout.cx, cy] : [i === 0 ? CW / 2 + 20 : W - CW / 2 - 20, cy]));
+      for (const [pid, at] of pinned) pos.set(pid, at);
       layout.H = Math.max(150, cy + layout.maxH / 2 + 12, lowerLane ? cy + lift + LABEL_HEIGHT / 2 + 6 : 0);
       layout.cy = cy;
       layout.podLift = lift;
@@ -513,15 +570,19 @@
         if (grownOverlaps >= overlaps) break;
         ry += RING_GROW_STEP; around = grown; overlaps = grownOverlaps;
       }
-      relaxVertically(ring, around);
+      relaxVertically(ring, around, new Set());
       const tops = ring.map((s) => around.get(s.pid)[1] - sizeOf(s.pid)[1] / 2), bottoms = ring.map((s) => around.get(s.pid)[1] + sizeOf(s.pid)[1] / 2);
       const minY = Math.min(...tops), needed = Math.max(...bottoms) - minY;
       layout.H = Math.max(380, needed + 38);
       const shift = (layout.H - needed) / 2 + 8 - minY;
       for (const [pid, [x, y]] of around) pos.set(pid, [x, y + shift]);
+      for (const [pid, at] of pinned) pos.set(pid, at);
+      relaxVertically(ring, pos, new Set(pinned.keys()));
       layout.cy = shift;
     }
+    for (const session of ring) layout.H = Math.max(layout.H, pos.get(session.pid)[1] + sizeOf(session.pid)[1] / 2 + 12);
     layout.pos = pos;
+    layout.pinned = pinned;
     graph.style.height = `${layout.H}px`;
     for (const session of ring) {
       const node = nodeEls.get(session.pid);
@@ -594,11 +655,15 @@
         node = el("div", "node");
         node.dataset.pid = session.pid;
         node.id = `session-${session.pid}`;
-        node.addEventListener("click", () => pick(session.pid));
+        node.addEventListener("click", () => { if (lastDragEnd && lastDragEnd.pid === session.pid && Date.now() - lastDragEnd.at < CLICK_AFTER_DRAG_MS) return; pick(session.pid); });
+        node.addEventListener("pointerdown", (event) => startDrag(session, node, event));
+        node.addEventListener("pointermove", (event) => moveDrag(session, node, event));
+        node.addEventListener("pointerup", (event) => endDrag(session, node, event));
+        node.addEventListener("pointercancel", (event) => endDrag(session, node, event));
         graph.append(node);
         nodeEls.set(session.pid, node);
       }
-      node.className = "node" + (layout.compact ? " compact" : "") + (session.role ? "" : " incomplete") + (pickedPid === session.pid ? " picked" : "") + (session.status === "WORKING" ? " work" : "");
+      node.className = "node" + (layout.compact ? " compact" : "") + (session.role ? "" : " incomplete") + (pickedPid === session.pid ? " picked" : "") + (session.status === "WORKING" ? " work" : "") + (pins.has(session.pid) ? " pinned" : "") + (drag && drag.pid === session.pid && drag.moved ? " dragging" : "");
       node.style.width = `${layout.CW}px`;
       node.style.minHeight = `${layout.CH}px`;
       node.style.height = layout.compact ? `${layout.CH}px` : "auto";
@@ -612,6 +677,41 @@
       node.classList.toggle("tasked", tasked.has(session.pid));
     }
     for (const [pid, node] of nodeEls) if (!keep.has(pid)) { node.remove(); nodeEls.delete(pid); }
+  }
+
+  function pointerInGraph(event) {
+    const rect = graph.getBoundingClientRect();
+    return [event.clientX - rect.left, event.clientY - rect.top];
+  }
+
+  function startDrag(session, node, event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    const [x, y] = pointerInGraph(event);
+    const center = layout.pos.get(session.pid) || [x, y];
+    drag = { pid: session.pid, pointerId: event.pointerId, startX: x, startY: y, offsetX: center[0] - x, offsetY: center[1] - y, moved: false };
+    if (node.setPointerCapture) node.setPointerCapture(event.pointerId);
+  }
+
+  function moveDrag(session, node, event) {
+    if (!drag || drag.pid !== session.pid) return;
+    const [x, y] = pointerInGraph(event);
+    if (!drag.moved && Math.hypot(x - drag.startX, y - drag.startY) < DRAG_START_PX) return;
+    drag.moved = true;
+    pins.set(session.pid, clampToGraph([x + drag.offsetX, y + drag.offsetY], sizeOf(session.pid)));
+    graph.classList.add("dragging");
+    scheduleRender();
+  }
+
+  function endDrag(session, node, event) {
+    if (!drag || drag.pid !== session.pid) return;
+    const moved = drag.moved;
+    drag = null;
+    graph.classList.remove("dragging");
+    if (node.releasePointerCapture) { try { node.releasePointerCapture(event.pointerId); } catch (error) { } }
+    if (!moved) return;
+    lastDragEnd = { pid: session.pid, at: Date.now() };
+    savePin(session, pins.get(session.pid));
+    render();
   }
 
   function hasReversedPair(messages) {
@@ -1016,6 +1116,7 @@
     renderArrows(visible.filter((m) => { const ends = endpointsOf(m); return layout.pos.has(ends[0]) && layout.pos.has(ends[1]); }), ring, now);
     capEntry.textContent = state.caption.entry;
     capPair.textContent = state.caption.pair;
+    if (resetLayoutButton) resetLayoutButton.hidden = !(layout.pinned && layout.pinned.size);
     renderStrip(ring);
     renderRows();
     renderPanel();
@@ -1065,6 +1166,7 @@
   }
 
   panelTab.addEventListener("click", togglePanel);
+  if (resetLayoutButton) resetLayoutButton.addEventListener("click", clearPins);
   window.addEventListener("resize", scheduleRender);
   setInterval(render, RENDER_EVERY_MS);
   loadState();
