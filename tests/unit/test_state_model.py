@@ -602,9 +602,9 @@ def text_entry(text, at="2026-10-08T04:31:12.000Z"):
 
 
 @pytest.mark.parametrize("name, inputs, wire, expected", [
-    ("Bash", {"command": "ls", "description": "List files"}, None, "Bash: List files"),
-    ("SendMessage", {"to": "x", "summary": "V8 assigned", "message": "body"}, None, "SendMessage: V8 assigned"),
-    ("Agent", {"description": "Review the diff", "prompt": "..."}, None, "Agent: Review the diff"),
+    ("Bash", {"command": "ls", "description": "List files"}, None, "List files"),
+    ("SendMessage", {"to": "x", "summary": "V8 assigned", "message": "body"}, None, "V8 assigned"),
+    ("Agent", {"description": "Review the diff", "prompt": "..."}, None, "Review the diff"),
     ("Read", {"file_path": "viz/web.html"}, None, "Read viz/web.html"),
     ("Edit", {"file_path": "scores.py", "old_string": "a", "new_string": "b"}, None, "Edit scores.py"),
     ("Grep", {"pattern": "activity", "path": "viz"}, None, "Grep viz"),
@@ -613,8 +613,9 @@ def text_entry(text, at="2026-10-08T04:31:12.000Z"):
     ("Skill", {"skill": "deploy"}, None, "Skill deploy"),
     ("ToolSearch", {"query": "select:SendMessage"}, None, "ToolSearch select:SendMessage"),
     ("Agent", {"prompt": "first line of the prompt\nsecond"}, None, "Agent first line of the prompt"),
-    ("SendMessage", {}, {"to": "y", "summary": "from the wire"}, "SendMessage: from the wire"),
-    ("Bash", {"description": "Input wins"}, {"description": "Wire loses"}, "Bash: Input wins"),
+    ("SendMessage", {}, {"to": "y", "summary": "from the wire"}, "from the wire"),
+    ("Bash", {"description": "Input wins"}, {"description": "Wire loses"}, "Input wins"),
+    ("Bash", {"command": "ls", "description": "Restart the watcher on port 4780\nsecond line"}, None, "Restart the watcher on port 4780"),
     ("Bash", {"description": ""}, {"command": "echo"}, "Bash echo"),
     ("Mystery", {"other": 1}, None, "Mystery"),
     (None, {}, None, "tool"),
@@ -673,7 +674,7 @@ def test_turn_end_sets_activity_to_the_last_assistant_text(watcher):
     model.register_session({"pid": 1, "name": "one"})
     model.apply(1, text_entry("Done with the review."))
     model.apply(1, tool_entry("Bash", {"command": "ls", "description": "List files"}, at="2026-10-08T04:31:12.500Z"))
-    assert model.sessions[1]["activity"] == "Bash: List files"
+    assert model.sessions[1]["activity"] == "List files"
     changes = model.apply(1, turn_end(at="2026-10-08T04:31:13.000Z"))
     assert [(c["status"], c["activity"], c["activity_at"], c["idle_since"]) for c in changes] == [("IDLE", "Done with the review.", "2026-10-08T04:31:13.000Z", "2026-10-08T04:31:13.000Z")]
     assert len(changes) == 1
@@ -684,7 +685,7 @@ def test_turn_end_without_assistant_text_keeps_the_tool_activity(watcher):
     model.register_session({"pid": 1, "name": "one"})
     model.apply(1, tool_entry("Bash", {"command": "ls", "description": "List files"}))
     model.apply(1, turn_end(at="2026-10-08T04:31:13.000Z"))
-    assert (model.sessions[1]["activity"], model.sessions[1]["last_assistant_text"]) == ("Bash: List files", None)
+    assert (model.sessions[1]["activity"], model.sessions[1]["last_assistant_text"]) == ("List files", None)
 
 
 def test_register_session_defaults_the_activity_fields(watcher):
@@ -699,7 +700,7 @@ def test_fixture_round_trip_activity_sequence(watcher):
     model, changes = round_trip_model(watcher, True)
     manager = [(c["at"][17:23], c["status"], (c["activity"] or "")[:28]) for c in changes if c["event"] == "session" and c["pid"] == MANAGER and c["source"] in ("assistant", "system · turn_duration", "assistant → tool_use SendMessage")]
     assert manager == [
-        ("10.318", "WORKING", "SendMessage: second hello to"),
+        ("10.318", "WORKING", "second hello to fake-session"),
         ("13.303", "WORKING", "The hello is in `fake-sessio"),
         ("13.415", "IDLE", "The hello is in `fake-sessio"),
         ("19.970", "WORKING", "The reply came back from `fa"),

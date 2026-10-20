@@ -109,3 +109,9 @@ def six_sessions_round():
     six.send("manager", "discovery-builder", 1.2, "D5 assigned", land=1.8, read=2.2)
     six.turn_end("discovery-builder", 2.6)
     return six
+
+
+def seven_sessions_round():
+    seven = six_sessions_round()
+    seven.lines[PIDS["listings-e6"]] = [{"type": "agent-name", "agentName": "scribe"}]
+    return seven

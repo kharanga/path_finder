@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from conftest import FIXTURES_DIR, REPO_ROOT
-from fixtures.viz.ten_sessions import LONG_DESCRIPTION, PIDS, six_sessions_round, ten_sessions_round
+from fixtures.viz.ten_sessions import LONG_DESCRIPTION, PIDS, seven_sessions_round, six_sessions_round, ten_sessions_round
 
 PAGE = REPO_ROOT / "viz" / "web.html"
 HARNESS = Path(__file__).resolve().parent.parent / "page" / "render_web.mjs"
@@ -257,10 +257,10 @@ def test_reply_shows_the_envelope_on_the_manager_and_the_rows_follow(round_views
     assert only_path(read)["stage"] == "READ"
     manager = nodes_of(read)["fake manager"]
     assert pills(manager) == ["Working"] and manager["mail"] is None and manager["last"] == "waiting on fake builder"
-    assert nodes_of(read)["fake builder"]["last"] == f"SendMessage: {REPLY_SUMMARY}"
+    assert nodes_of(read)["fake builder"]["last"] == REPLY_SUMMARY
     assert rows_of(read)[0] == ("fake manager", "Working", "waiting on fake builder")
-    assert rows_of(read)[1] == ("fake builder", "Working", f"SendMessage: {REPLY_SUMMARY}")
-    assert read["rows"][1]["activityTitle"] == f"SendMessage: {REPLY_SUMMARY}\n{at('16.750')}"
+    assert rows_of(read)[1] == ("fake builder", "Working", REPLY_SUMMARY)
+    assert read["rows"][1]["activityTitle"] == f"{REPLY_SUMMARY}\n{at('16.750')}"
 
 
 def test_idle_notice_pulses_the_eye_without_an_arrow(round_views):
@@ -374,28 +374,36 @@ def test_failed_arrow_stays_past_the_horizon_until_resolved(tmp_path):
     resend_frame = {"event": "message", "at": "2026-10-20T12:00:05.000Z", "source": "queue-operation · enqueue", "source_pid": 2, **resend}
     views = render(tmp_path, synthetic(sessions, [old_failure]), [{"name": "failed"}, {"name": "resolved", "frames": [resend_frame]}], wall_start=TEN_START)
     failed = views["failed"]
-    assert [node["pid"] for node in failed["nodes"]] == [1, 2]
+    assert [node["pid"] for node in failed["nodes"]] == [1, 2, 3]
     assert (only_path(failed)["stage"], only_path(failed)["stroke"], only_path(failed)["marker"]) == ("FAILED", FAILED_STROKE, "url(#mr)")
     assert only_label(failed)["stage"] == ["fail", "✗ Failed"] and only_label(failed)["title"].startswith("FAILED: Not sent: refused")
-    assert chips_of(failed)[3]["className"] == "chip out"
+    assert chips_of(failed)[3]["className"] == "chip"
     resolved = views["resolved"]
     assert only_path(resolved)["stage"] == "IN_INBOX" and only_label(resolved)["summary"] == "resend"
 
 
-def test_ring_drops_sessions_without_recent_traffic_and_falls_back_to_everyone(tmp_path):
-    sessions = [session(1, "a"), session(2, "b"), session(3, "c")]
-    recent = [message("m1", 1, 2, "READ", "a to b", "2026-10-20T11:59:00.000Z", read_at="2026-10-20T11:59:30.000Z")]
-    views = render(tmp_path, synthetic(sessions, recent), [{"name": "now"}, {"name": "later", "advanceMs": 11 * 60 * 1000}], wall_start=TEN_START)
-    assert [node["pid"] for node in views["now"]["nodes"]] == [1, 2] and views["now"]["pod"] is True
-    assert chips_of(views["now"])[3]["className"] == "chip out"
-    assert [node["pid"] for node in views["later"]["nodes"]] == [1, 2, 3] and views["later"]["pod"] is False
-    assert len(views["later"]["rows"]) == 3
+def test_every_session_is_a_node_idle_or_not_and_stays_after_ten_minutes(tmp_path):
+    sessions = [session(1, "a"), session(2, "b", inbox=1), session(3, "c", idle_since="2026-10-20T10:00:00.000Z"), session(4, "d", status="WORKING")]
+    recent = [message("m1", 1, 2, "IN_INBOX", "a to b", "2026-10-20T11:59:00.000Z", enqueued_at="2026-10-20T11:59:30.000Z")]
+    views = render(tmp_path, synthetic(sessions, recent), [{"name": "now"}, {"name": "later", "advanceMs": 11 * 60 * 1000}, {"name": "joined", "frames": [{"event": "session", "at": "2026-10-20T12:12:00.000Z", "source": "registry", "source_pid": 5, **session(5, "e")}]}], wall_start=TEN_START)
+    now = views["now"]
+    assert [node["pid"] for node in now["nodes"]] == [1, 2, 3, 4] and now["pod"] is False
+    assert [(chip["pid"], chip["className"], chip["title"]) for chip in now["chips"]] == [(1, "chip", "a · pid 1"), (2, "chip hot", "b · pid 2"), (3, "chip", "c · pid 3"), (4, "chip on", "d · pid 4")]
+    assert len(now["paths"]) == 1 and now["title"] == "path_finder · 4 sessions · 1 working · 1 in flight"
+    assert [(node["name"], pills(node), node["last"]) for node in now["nodes"]] == [("a", ["Idle"], ""), ("b", ["Idle"], ""), ("c", ["Idle"], ""), ("d", ["Working"], "working")]
+    later = views["later"]
+    assert [node["pid"] for node in later["nodes"]] == [1, 2, 3, 4] and [chip["pid"] for chip in later["chips"]] == [1, 2, 3, 4]
+    assert later["paths"] == [] and later["title"] == "path_finder · 4 sessions · 1 working · 0 in flight" and len(later["rows"]) == 4
+    assert [node["pid"] for node in views["joined"]["nodes"]] == [1, 2, 3, 4, 5]
 
 
-def test_watching_keeps_a_session_in_the_ring_and_unidentified_nodes_are_dashed(tmp_path):
+def test_session_removed_leaves_the_ring_and_unidentified_nodes_are_dashed(tmp_path):
     sessions = [session(1, "a", watching=[3], waiting_on=[3]), session(2, "b"), session(3, "c", role=None)]
-    view = render(tmp_path, synthetic(sessions, sources=[source(2, "registry", 1)]), [{"name": "now"}], wall_start=TEN_START)["now"]
-    assert [node["pid"] for node in view["nodes"]] == [1, 3]
+    removed = {"event": "session_removed", "at": "2026-10-20T12:00:06.000Z", "source": "registry", "source_pid": 2, "pid": 2}
+    views = render(tmp_path, synthetic(sessions, sources=[source(2, "registry", 1)]), [{"name": "now"}, {"name": "removed", "frames": [removed]}], wall_start=TEN_START)
+    view = views["now"]
+    assert [node["pid"] for node in view["nodes"]] == [1, 2, 3]
+    assert [node["pid"] for node in views["removed"]["nodes"]] == [1, 3] and [chip["pid"] for chip in views["removed"]["chips"]] == [1, 3]
     assert nodes_of(view)["a"]["last"] == "waiting on c" and nodes_of(view)["a"]["eye"] is None
     assert nodes_of(view)["c"]["className"] == "node incomplete"
     assert view["caption"] == ["registry", "b"]
@@ -430,9 +438,9 @@ def test_ten_sessions_rows_envelopes_and_label_visibility(ten_view):
     assert {chip["text"]: chip["count"] for chip in view["chips"] if chip["count"]} == {"manager1": "1", "viz-builder1": "1", "validator1": "1", "discovery-builder1": "1", "listings-bc2": "2"}
     assert rows_of(view) == [
         ("listings-e6", "Working", "waiting on listings-bc"),
-        ("tag-analyzer", "Working", "SendMessage: tags done"),
+        ("tag-analyzer", "Working", "tags done"),
         ("viz-builder", "Working", "waiting on validator, manager"),
-        ("fake manager", "Working", "SendMessage: second hello"),
+        ("fake manager", "Working", "second hello"),
         ("manager", "Working", "waiting on discovery-builder, semantic-scores"),
         ("semantic-scores", "Working", "waiting on listings-bc"),
         ("validator", "Idle", "waiting on viz-builder"),
@@ -449,9 +457,8 @@ def test_ten_sessions_rows_envelopes_and_label_visibility(ten_view):
     assert len(shown) + len(hidden) == 9
     assert all(label["opacity"] == "0" for label in hidden.values())
     assert all(label["opacity"] != "0" for label in shown.values())
-    assert {key: label["text"] for key, label in shown.items()} == {"908>906": "tags done✓✓ Read", "906>907": "rerun scores✓ In inbox", "900>903": "D4 assigned✓ In inbox", "901>900": "V7 ready, handoff written✓ In inbox", "902>901": "V6 review: PASS✓ In inbox"}
-    assert set(hidden) == {"902>900", "901>902", "900>909", "909>907"}
-    assert (nodes_of(view)["manager"]["left"], nodes_of(view)["manager"]["top"]) == ("128px", "32px")
+    assert {key: label["text"] for key, label in shown.items()} == {"908>906": "tags done✓✓ Read", "906>907": "rerun scores✓ In inbox", "900>903": "D4 assigned✓ In inbox", "900>909": "rerun scores✓ In inbox", "902>901": "V6 review: PASS✓ In inbox"}
+    assert set(hidden) == {"902>900", "901>902", "901>900", "909>907"}
     hovered = {label["key"]: label for label in ten_view["hover hidden"]["labels"]}
     assert hovered["901>900"]["opacity"] == "1" and hovered["901>900"]["zIndex"] == "4"
 
@@ -660,25 +667,31 @@ def test_waiting_label_falls_back_to_role_name_or_pid(tmp_path):
     assert rows_of(view)[0] == ("a", "Idle", "waiting on r, c, pid 4, 9")
 
 
-@pytest.fixture(params=[356, 720], ids=["narrow", "wide"])
-def six_view(watcher, tmp_path, request):
-    fixtures = six_sessions_round().write(tmp_path / "six")
+@pytest.fixture(params=[(six_sessions_round, 356), (six_sessions_round, 720), (seven_sessions_round, 356), (seven_sessions_round, 720)], ids=["six-narrow", "six-wide", "seven-narrow", "seven-wide"])
+def ring_view(watcher, tmp_path, request):
+    build, width = request.param
+    fixtures = build().write(tmp_path / "ring")
     w = watcher.Watcher(fixtures=fixtures, spec_path=None)
     w.poll_once()
     input_path = tmp_path / "input.json"
-    input_path.write_text(json.dumps({"snapshot": w.snapshot(), "steps": [{"name": "six"}], "wallStart": TEN_WALL, "graphWidth": request.param, "localStorage": {}}))
+    input_path.write_text(json.dumps({"snapshot": w.snapshot(), "steps": [{"name": "now"}, {"name": "later", "advanceMs": 11 * 60 * 1000}], "wallStart": TEN_WALL, "graphWidth": width, "localStorage": {}}))
     result = subprocess.run(["node", str(HARNESS), str(PAGE), str(input_path)], capture_output=True, text=True, check=True)
-    return request.param, json.loads(result.stdout)[0]["view"]
+    views = {step["name"]: step["view"] for step in json.loads(result.stdout)}
+    return len(fixtures), width, views["now"], views["later"]
 
 
-def test_six_sessions_show_every_word_of_a_long_line_and_the_ring_grows_without_overlap(six_view):
-    width, view = six_view
+def test_ring_shows_every_word_of_a_long_line_and_grows_without_overlap(ring_view):
+    count, width, view, later = ring_view
     nodes = nodes_of(view)
-    assert [node["pid"] for node in view["nodes"]] == [900, 901, 902, 903, 904, 905]
-    assert nodes["viz-builder"]["last"] == f"Bash: {LONG_DESCRIPTION}" and nodes["viz-builder"]["height"] == "auto" and "work" in nodes["viz-builder"]["className"].split()
+    assert [node["pid"] for node in view["nodes"]] == list(range(900, 900 + count)) and len(view["chips"]) == count and len(view["rows"]) == count
+    assert view["title"] == f"{count} sessions · 1 working · 1 in flight"
+    assert [node["pid"] for node in later["nodes"]] == list(range(900, 900 + count)) and later["paths"] == [] and later["title"] == f"{count} sessions · 1 working · 0 in flight"
+    if count == 7:
+        assert (nodes["scribe"]["last"], pills(nodes["scribe"])) == ("", ["Idle"]) and rows_of(view)[-1] == ("scribe", "Idle", "")
+    assert nodes["viz-builder"]["last"] == LONG_DESCRIPTION and nodes["viz-builder"]["height"] == "auto" and "work" in nodes["viz-builder"]["className"].split()
     assert nodes["manager"]["last"] == "waiting on viz-builder" and nodes["validator"]["last"] == "waiting on manager"
     assert [nodes[name]["last"] for name in ("discovery-builder", "fake manager", "fake builder")] == ["", "", ""]
-    assert rows_of(view) == [("viz-builder", "Working", f"Bash: {LONG_DESCRIPTION}"), ("fake manager", "Idle", ""), ("fake builder", "Idle", ""), ("validator", "Idle", "waiting on manager"), ("manager", "Idle", "waiting on viz-builder"), ("discovery-builder", "Idle", "")]
+    assert rows_of(view)[:6] == [("viz-builder", "Working", LONG_DESCRIPTION), ("fake manager", "Idle", ""), ("fake builder", "Idle", ""), ("validator", "Idle", "waiting on manager"), ("manager", "Idle", "waiting on viz-builder"), ("discovery-builder", "Idle", "")]
     graph_height = float(view["graphHeight"][:-2])
     assert view["viewBox"] == f"0 0 {width} {view['graphHeight'][:-2]}" and graph_height > 380
     rects = {node["name"]: node_rect(node) for node in view["nodes"]}
@@ -690,7 +703,7 @@ def test_six_sessions_show_every_word_of_a_long_line_and_the_ring_grows_without_
         for second in names[i + 1:]:
             assert not rects_overlap(rects[first], rects[second]), (first, second)
     shown = [label for label in view["labels"] if label["clear"] == "1"]
-    assert {label["key"] for label in shown} == {"904>905", "902>900"}
+    assert {label["key"] for label in view["labels"]} == {"904>905", "902>900"} and shown
     for label in shown:
         for name, rect in rects.items():
             assert not rects_overlap(label_rect(label), rect), (label["key"], name)

@@ -227,7 +227,7 @@ def describe_tool_use(block, entry):
     raw.update({k: v for k, v in (block.get("input") or {}).items() if v not in (None, "")})
     headline = raw.get("description") or raw.get("summary")
     if headline:
-        return f"{name}: {first_line(headline)}"
+        return first_line(headline)
     target = next((raw[field] for field in TOOL_TARGET_FIELDS if raw.get(field)), None)
     return f"{name} {first_line(target)}" if target else name
 

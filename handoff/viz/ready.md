@@ -1,47 +1,44 @@
-# Ready: V12 round 2 2026-10-20
-
-Round 2 fixes the two `clear_watch` items from review.md: the watch is now matched by resolved PID in both directions (`watched_pid_of`): a failed pure-subscription result passes the stored target itself (an int PID for a socket target) and it is removed; a watch stored by name before the session was known is removed by a notice quoting the socket, because the name resolves to that PID at clearing time. The duplicate `viz/fixtures/` folder is deleted; the fixture pair lives in `tests/fixtures/viz/` (validator's copies).
+# Ready: V13 2026-10-20
 
 ## Done
 
-Stale waiting state. Four causes handled in `viz/watcher.py`; the page is unchanged.
+Every live session is always a node; the activity line never starts with the tool name.
 
-1. Queued peer attachment is the read. `attachment` entries were kept by the tailer but had no handler. `StateModel.apply_attachment` takes a `queued_command` attachment: with `attachment.origin.kind == "peer"` it runs the same path as a `user` peer entry (`apply_peer_delivery`), so `attachment.origin.msg_id` moves to READ at `attachment.timestamp` (falls back to the entry timestamp), the receiver goes WORKING, and nothing touches the inbox; the `queue-operation remove` that follows in the transcript is what decrements it, as before. `read_at` is set only once, so a later entry for the same `msg_id` cannot move it. A queued attachment whose prompt is an idle notice or a delivery notice is handled like the matching `user` entry.
-2. Idle notice clears the watch. `clear_watch(pid, watched)` takes a PID or text (`uds:/tmp/cc-socks/<pid>.sock` or a name), resolves it to a PID (`watched_pid_of`), and drops every `watching` entry that is the same text, the same bare name, or resolves to the same PID. It runs on the `queue-operation enqueue` of the notice and on the `user` entry, whichever comes first (the second is a no-op). The notice record (`kind: idle_notice`, keyed by uuid) is still created once on the `user` entry, with the watched session's name in the summary when known.
-3. Pure subscription is a watch only. `apply_send` with `notify_when_idle` and no `message` adds the watch (`add_watch`) and remembers the tool use in `pure_watch_by_tool_use`; no message is created, so nothing can go PENDING or FAILED. `apply_send_result` for that tool use removes the watch if `success` is false and otherwise does nothing.
-4. Delivery notice fails the message (found on the live registry, not in the spec). A `[Cross-session delivery notice] Do not resend now: … (recipient: …; msg_id: <id>) and NOT delivered …` in the sender's transcript (enqueue, `user` entry, or queued attachment) moves each named `msg_id` that is still PENDING or IN_INBOX to FAILED with the notice's first line as `reason` (`apply_delivery_notice`). Without this one 12-day-old dropped message kept the validator `waiting on manager` forever, and its enqueue claim had been stolen from the validator's re-send. `entry_source` labels the `user` form `user · cross-session delivery notice`.
+`viz/watcher.py`:
 
-`waiting_on` (V11) is unchanged and now empties as those events arrive.
+- `describe_tool_use` returns the tool call's `description` (or `summary`) alone: `Restart the watcher on port 4780`, `V13 assigned`. Only a call with neither falls back to the tool name and target (`Read SPEC.md`) or the bare name. `activity` therefore carries no `Bash:` style prefix, so the row and the node agree.
 
-Fixture: `tests/fixtures/viz/stale_waiting_manager_41000.jsonl` and `tests/fixtures/viz/stale_waiting_builder_41001.jsonl`, synthetic and sanitized (fake names, fake session ids, fake cwd), built with `make_stale.py` from my scratchpad using the field shapes of the real 2026-10-08/10-20 captures: a pure subscription with its `Subscribed —` result and no `msg_id` (13:00:01), a message delivered as a `queued_command` peer attachment with `enqueue` at the same timestamp and `remove` later (13:00:03.6 / 04.0), an idle notice in the new wording quoting the socket address as `enqueue`, `dequeue`, `user` (13:00:06.0–06.2), and a dropped message with its delivery notice (13:00:08.0–09.0).
+`viz/web.html`:
 
-Files: `viz/watcher.py`.
+- `ringSessions()` returns every session the watcher reports, sorted by PID; the V7 ten-minute ring rule and the watching rule are gone. A session is a node from the poll that registers it until the watcher drops it. The strip lists the same set with no dimmed `out` chips (CSS and title removed). Arrows keep their own V7/V8 rules (PENDING, IN_INBOX, unresolved FAILED, READ flash, ten-minute arrow horizon), so `RING_WINDOW_MS` now only bounds arrows.
+- Ring geometry fix needed for the full count: with seven nodes two of them sit at the same height on opposite sides and closer than a card width, which no amount of vertical ring growth separates (the V11 loop ran to its 700 px cap and still overlapped). `positionNodes` now grows the ring only while a step reduces the number of overlapping pairs, capped at 2.5 × rx, then `relaxVertically` pushes any still-overlapping pair apart along y (up to 60 rounds, each push half the overlap plus 1 px). Result: six nodes at 380 px fit in a 454 px graph (was 644), seven in 474 px, no overlaps at 380 or 720 px. Pod and compact layouts are unchanged.
+
+Files: `viz/watcher.py`, `viz/web.html`.
 
 ## How to test
 
-Replay the fixture (spare port; 4780 is the manager's):
+Seven-session fixture (six from V11 plus `scribe`, whose transcript has only its `agent-name` line and never sends or receives anything), spare port:
 
 ```
-F="--fixture 41000=tests/fixtures/viz/stale_waiting_manager_41000.jsonl --fixture 41001=tests/fixtures/viz/stale_waiting_builder_41001.jsonl"
-python3 viz/watcher.py state 41000=tests/fixtures/viz/stale_waiting_manager_41000.jsonl 41001=tests/fixtures/viz/stale_waiting_builder_41001.jsonl | python3 -c "import sys,json; s=json.load(sys.stdin); print([(x['pid'], x['status'], x['watching'], x['waiting_on'], x['inbox']) for x in s['sessions']]); print([(m['key'][:8], m['kind'], m['stage'], m['read_at'], (m['reason'] or '')[:40]) for m in s['messages']])"
-S=$(mktemp -d); python3 viz/watcher.py replay $F --out-dir $S --speed 0
-python3 viz/watcher.py serve --port 4792 --no-log --fixture 41000=$S/41000.jsonl --fixture 41001=$S/41001.jsonl &
-curl -s http://127.0.0.1:4792/state
+python3 <scratchpad>/make_six.py $PWD/seven > seven_args.txt      # or any transcript set with one silent session
+python3 viz/watcher.py serve --port 4792 --no-log --spec /dev/null $(cat seven_args.txt) &
+open http://127.0.0.1:4792/web
 ```
 
-Expected at the end: both sessions IDLE, `watching: []`, `waiting_on: []`, `inbox: 0`; message `6f1d3c2a…` READ with `read_at` `2026-10-20T13:00:03.600Z` (the attachment's timestamp); one `idle_notice` READ at 06.200 with summary `fake-builder is idle`; message `9a8b7c6d…` FAILED with reason starting `[Cross-session delivery notice] Do not resend now`; no other message, so the pure subscription left no PENDING or FAILED record. Frozen with `replay --until`: 13:00:03.700 shows the message READ and the builder inbox 1 (the `remove` at 04.0 takes it to 0); 13:00:06.050 (the notice enqueue, before the `user` entry) shows the manager `watching: []`; 13:00:08.500 shows the builder `waiting_on: [41000]` and 13:00:08.950 (the delivery-notice enqueue) shows it empty.
+Expected: seven nodes in the ring from the first poll, `scribe` among them with the `Idle` pill and a blank line, seven chips in the strip, seven rows; viz-builder's row and node read `Run the whole suite and compare the change counts against the pinned numbers for every fixture` with no `Bash:`; the title reads `7 sessions · 3 working · 2 in flight`. Leave it open for more than ten minutes (or jump the page clock in the harness): every node stays; only arrows older than ten minutes go. Live: `http://127.0.0.1:4780/web` shows every session under the project root as a node (four today: manager, discovery-builder, viz-builder, validator); after the 4780 restart the working line shows the description without a prefix.
 
-Live: after the 4780 restart, `curl -s http://127.0.0.1:4780/state` shows `waiting_on: []` for every session that has no open subscription or unanswered send, no IN_INBOX message older than the receiver's last turn, and the dropped 2026-10-08 validator → manager message as FAILED.
+Checked here: harness (`web_seven.json`): seven nodes and seven chips at the first poll and after an eleven-minute jump (arrows 3 → 0, nodes unchanged), rows and node lines as above, `scribe` blank; `cdp_check.mjs` in headless Chrome: seven nodes at 380 px (graph 474 px) and 720 px (502 px) and six nodes at both widths with no node/node or node/label overlap and no clipped line; `webseven-narrow.png` is the 380 px view; compact ten-session harness unchanged (10 nodes, 9 arrows); pod harness unchanged; the live 4780 page already serves the new file and its DevTools check shows all four sessions as nodes with no overlap (its working line still has the `Bash:` prefix until the restart).
 
-Checked here: the moment-by-moment replay above through `Watcher.poll_once` (serve path) prints exactly those states; `state --events` on the fixture shows the watch cleared on the enqueue and the attachment emitting the READ change with `source: attachment`; the patched watcher run in-process against the live registry (same thing `serve` does, read-only) shows `waiting_on: []` and `watching: []` for all 8 live sessions, 0 unresolved messages, 1 FAILED (the dropped one), where the running 4780 watcher at the same moment showed the manager watching 3 sessions, 12 messages stuck IN_INBOX, and 4 of 4 path_finder sessions waiting on someone.
+Suite: `python3 -m pytest tests` → 331 passed, 15 failed, all expected pins:
 
-Suite: `python3 -m pytest tests` → 344 passed, 1 failed: `tests/unit/test_state_model.py::test_socket_idle_notice_clears_a_watch_that_was_stored_by_name`. Its first half passes (`watching == []` after the socket notice). Its second half expects `waiting_on == []`, but the test's `send_entry` carries the default body `"b"` and never gets a `result_entry`, so that message stays PENDING to `later-named` and counts as waiting under the V11 rule. With `body=None` (a pure subscription, which is what the name-stored watch case is about) or a result plus a read, the watcher gives `[]`.
+- `tests/unit/test_state_model.py` (8): `test_describe_tool_use` cases and the activity-sequence tests expect `Bash: …` / `SendMessage: …`; the text after the prefix is unchanged.
+- `tests/integration/test_web_render.py` (7): `test_ring_drops_sessions_without_recent_traffic_and_falls_back_to_everyone`, `test_watching_keeps_a_session_in_the_ring…`, `test_failed_arrow_stays_past_the_horizon…` expect the old ring membership; the ten-, six- and round-trip tests pin the prefixed line or positions from the old growth loop.
 
 ## Requests
 
-- Manager: restart the 4780 watcher on the new `viz/watcher.py`; the stale `waiting on` lines and stuck IN_INBOX arrows clear on the first poll.
-- Validator: adjust `test_socket_idle_notice_clears_a_watch_that_was_stored_by_name` as above (or tell me if a PENDING send with no result should not count as waiting, which would be a V11 rule change for the manager to decide).
-- Docs (user): `docs/cross-session-message-format.md` §4 add the socket-quoting notice wording, the `queued_command` peer attachment as a read, and the delivery notice as a failure; plan §4 note `watching` clears on the notice enqueue.
+- Manager: restart the 4780 watcher on the new `viz/watcher.py` so `activity` loses the prefix; the page change is live already.
+- Validator: re-pin the 15; replace the ring-membership tests with "every session is a node, idle or not, ten minutes later too"; add a seven-node geometry case (two nodes at the same height) to the overlap test.
+- Docs (user): plan §6 drop the ten-minute ring rule and note the activity line is the description alone.
 
 ## Blocked
 
