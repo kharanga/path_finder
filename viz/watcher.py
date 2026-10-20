@@ -17,7 +17,8 @@ PROJECTS_DIR = Path.home() / ".claude" / "projects"
 VIZ_DIR = Path(__file__).resolve().parent
 DISCOVERY_DIR = VIZ_DIR.parent / "discovery"
 IDENTITY_DIR = DISCOVERY_DIR / "identity"
-STATIC_DIRS = (VIZ_DIR, DISCOVERY_DIR)
+STATIC_DIRS = (VIZ_DIR,)
+PAGE_ROUTES = {"/web": "/web.html"}
 EVENT_LOG_PATH = VIZ_DIR / "events.jsonl"
 UI_PORT = 4780
 POLL_INTERVAL_S = 0.25
@@ -687,6 +688,9 @@ class VizRequestHandler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         route = urllib.parse.urlparse(self.path).path
+        if route in PAGE_ROUTES:
+            route = PAGE_ROUTES[route]
+            self.path = route
         if route == "/state":
             self.send_state()
         elif route == "/events":
