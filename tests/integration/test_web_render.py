@@ -1,4 +1,5 @@
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -7,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from conftest import FIXTURES_DIR, REPO_ROOT
-from fixtures.viz.ten_sessions import PIDS, ten_sessions_round
+from fixtures.viz.ten_sessions import LONG_DESCRIPTION, PIDS, six_sessions_round, ten_sessions_round
 
 PAGE = REPO_ROOT / "viz" / "web.html"
 HARNESS = Path(__file__).resolve().parent.parent / "page" / "render_web.mjs"
@@ -20,9 +21,11 @@ REPLY_SUMMARY = "Second hi back to fake-session-manager"
 FIRST_BODY = "Hi again from fake-session-manager. Please reply with a hi back when you see this."
 REPLY_BODY_START = "Hi again from fake-session-builder"
 MANAGER_TEXT_START = "The hello is in `fake-session-builder`'s inbox."
+MANAGER_REPLY_TEXT_START = "The reply came back from `fake-session-builder`"
 PENDING_STROKE, OK_STROKE, FAILED_STROKE = "#8a8a8a", "#4ad17a", "#ff6b6b"
 LABEL_CHAR_PX, LABEL_HEIGHT, LABEL_MAX_WIDTH = 6.3, 30, 170
 COMPACT_NODE_HEIGHT = 24
+NODE_BASE_HEIGHT, NODE_CHAR_PX, NODE_LINE_PX = 62, 5.6, 15
 TEN_WALL = "2026-10-20T13:00:20.000Z"
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node is needed to run the page script")
@@ -107,9 +110,15 @@ def label_rect(label):
     return (label["left"] - width / 2, label["top"] - LABEL_HEIGHT / 2, label["left"] + width / 2, label["top"] + LABEL_HEIGHT / 2)
 
 
+def estimated_node_height(line, width):
+    chars_per_line = max(8, math.floor((width - 16) / NODE_CHAR_PX))
+    lines = math.ceil(len(line) / chars_per_line) if line else 1
+    return NODE_BASE_HEIGHT + (lines - 1) * NODE_LINE_PX
+
+
 def node_rect(node):
     left, top, width = (float(node[key][:-2]) for key in ("left", "top", "width"))
-    height = float(node["height"][:-2]) if node["height"].endswith("px") else 62
+    height = float(node["height"][:-2]) if node["height"].endswith("px") else estimated_node_height(node["line"] or "", width)
     return (left, top, left + width, top + height)
 
 
@@ -160,16 +169,17 @@ def round_views(watcher, tmp_path):
 def test_start_is_a_quiet_pod_with_idle_rows(round_views):
     view = round_views["start"]
     assert view["title"] == "fake_session · 2 sessions · 0 working · 0 in flight"
-    assert (view["link"], view["eventsUrl"], view["pod"], view["viewBox"]) == ("live", "./events", True, "0 0 356 150")
+    assert (view["link"], view["eventsUrl"], view["pod"], view["viewBox"], view["graphHeight"]) == ("live", "./events", True, "0 0 356 150", "150px")
     assert 250 in view["intervals"]
     assert view["caption"][0] == "registry"
     manager, builder = nodes_of(view)["fake manager"], nodes_of(view)["fake builder"]
     assert (manager["left"], builder["left"], manager["top"]) == ("20px", "220px", "59px")
     for node in (manager, builder):
-        assert node["className"] == "node" and pills(node) == ["Idle"] and node["mail"] is None and node["last"] == "" and node["eye"] is None
+        assert node["className"] == "node" and pills(node) == ["Idle"] and node["mail"] is None and node["last"] == "" and node["line"] == "" and node["eye"] is None
     assert view["paths"] == [] and view["labels"] == []
     assert [(chip["pid"], chip["className"], chip["text"], chip["count"]) for chip in view["chips"]] == [(32813, "chip", "fake manager", None), (33993, "chip", "fake builder", None)]
-    assert rows_of(view) == [("fake manager", "Idle", "idle"), ("fake builder", "Idle", "idle")]
+    assert rows_of(view) == [("fake manager", "Idle", ""), ("fake builder", "Idle", "")]
+    assert all(row["activityTitle"] == "" for row in view["rows"])
     assert all(row["className"] == "arow" and row["pill"] == ["pill idle", "Idle"] and row["clickable"] for row in view["rows"])
 
 
@@ -178,19 +188,20 @@ def test_send_shows_pending_arrow_and_sending_row_first(round_views):
     assert view["title"] == "fake_session · 2 sessions · 1 working · 1 in flight"
     assert view["caption"] == ["assistant → tool_use SendMessage", "fake manager → fake builder"]
     manager, builder = nodes_of(view)["fake manager"], nodes_of(view)["fake builder"]
-    assert manager["className"] == "node hot" and pills(manager) == ["Sending"]
-    assert manager["last"] == "👁Watching fake builder" and manager["eye"] == "eye"
-    assert builder["className"] == "node hot" and pills(builder) == ["Idle"] and builder["mail"] is None
+    assert manager["className"] == "node work hot" and pills(manager) == ["Sending"]
+    assert (manager["last"], manager["lastTitle"], manager["eye"]) == ("waiting on fake builder", "waiting on fake builder", None)
+    assert builder["className"] == "node hot" and pills(builder) == ["Idle"] and builder["mail"] is None and builder["last"] == ""
+    assert (manager["top"], builder["top"]) == ("59px", "66.5px")
     path = only_path(view)
     assert (path["key"], path["stage"], path["stroke"], path["marker"], path["width"], path["opacity"], path["className"]) == ("32813>33993", "PENDING", PENDING_STROKE, "url(#mp)", "2.4", "1", "")
     label = only_label(view)
     assert (label["key"], label["summary"], label["stage"], label["opacity"], label["clear"]) == ("32813>33993", FIRST_SUMMARY, ["pend", "Pending"], "1", "1")
     assert label["title"].startswith("PENDING\n" + FIRST_BODY)
     assert chips_of(view)[32813]["className"] == "chip on" and chips_of(view)[32813]["dotClass"] == "dot work"
-    assert rows_of(view) == [("fake manager", "Sending", f"SendMessage: {FIRST_SUMMARY}"), ("fake builder", "Idle", "idle")]
+    assert rows_of(view) == [("fake manager", "Sending", "waiting on fake builder"), ("fake builder", "Idle", "")]
     manager_row = view["rows"][0]
     assert manager_row["className"] == "arow work" and manager_row["pill"] == ["pill work", "Sending"] and manager_row["dotClass"] == "dot work"
-    assert manager_row["activityTitle"] == f"SendMessage: {FIRST_SUMMARY}\n{at('10.318')}"
+    assert manager_row["activityTitle"] == "waiting on fake builder"
 
 
 def test_enqueue_shows_the_envelope_on_the_receiver(round_views):
@@ -204,39 +215,39 @@ def test_enqueue_shows_the_envelope_on_the_receiver(round_views):
     assert (path["stage"], path["stroke"], path["marker"]) == ("IN_INBOX", OK_STROKE, "url(#mg)")
     assert only_label(view)["stage"] == ["ok", "✓ In inbox"]
     assert (chips_of(view)[33993]["className"], chips_of(view)[33993]["count"]) == ("chip hot", "1")
-    assert rows_of(view) == [("fake manager", "Working", f"SendMessage: {FIRST_SUMMARY}"), ("fake builder", "Idle", "idle 0 min")]
+    assert rows_of(view) == [("fake manager", "Working", "waiting on fake builder"), ("fake builder", "Idle", "")]
 
 
 def test_read_clears_the_envelope_flashes_and_sets_the_builder_row_working(round_views):
     view = round_views["read"]
     assert view["title"] == "fake_session · 2 sessions · 2 working · 0 in flight"
     builder = nodes_of(view)["fake builder"]
-    assert pills(builder) == ["Working"] and builder["mail"] is None and builder["className"] == "node"
-    assert builder["last"].startswith("“" + FIRST_BODY[:40]) and builder["last"].endswith("…”")
+    assert pills(builder) == ["Working"] and builder["mail"] is None and builder["className"] == "node work"
+    assert (builder["last"], builder["lastTitle"]) == ("working", "working")
     path = only_path(view)
     assert (path["stage"], path["stroke"]) == ("READ", OK_STROKE) and 0.9 < float(path["opacity"]) < 1
     assert only_label(view)["stage"] == ["ok", "✓✓ Read"]
     assert chips_of(view)[33993]["className"] == "chip on" and chips_of(view)[33993]["count"] is None
-    assert rows_of(view) == [("fake builder", "Working", "working"), ("fake manager", "Working", f"SendMessage: {FIRST_SUMMARY}")]
+    assert rows_of(view) == [("fake builder", "Working", "working"), ("fake manager", "Working", "waiting on fake builder")]
+    assert view["rows"][0]["activityTitle"] == "working"
     faded = round_views["flash gone"]
     assert faded["paths"] == [] and faded["labels"] == []
     ended = round_views["manager turn end"]
     manager_row = ended["rows"][1]
     assert rows_of(ended)[0] == ("fake builder", "Working", "working")
     assert (manager_row["name"], manager_row["status"], manager_row["className"]) == ("fake manager", "Idle", "arow")
-    assert manager_row["activity"].startswith(MANAGER_TEXT_START) and manager_row["activity"].endswith("…") and len(manager_row["activity"]) == 140
-    assert manager_row["activityTitle"].endswith("\n" + at("13.303"))
-    assert nodes_of(ended)["fake manager"]["last"] == "👁Watching fake builder"
+    assert (manager_row["activity"], manager_row["activityTitle"]) == ("waiting on fake builder", "waiting on fake builder")
+    assert nodes_of(ended)["fake manager"]["last"] == "waiting on fake builder" and nodes_of(ended)["fake manager"]["className"] == "node"
 
 
 def test_reply_shows_the_envelope_on_the_manager_and_the_rows_follow(round_views):
     pending = round_views["reply pending"]
     builder = nodes_of(pending)["fake builder"]
-    assert pills(builder) == ["Sending"] and builder["last"] == REPLY_SUMMARY
+    assert pills(builder) == ["Sending"] and builder["last"] == "waiting on fake manager" and builder["className"] == "node work hot"
     path = only_path(pending)
     assert (path["key"], path["stage"], path["stroke"]) == ("33993>32813", "PENDING", PENDING_STROKE)
-    assert rows_of(pending)[0] == ("fake builder", "Sending", f"SendMessage: {REPLY_SUMMARY}")
-    assert rows_of(pending)[1][:2] == ("fake manager", "Idle")
+    assert rows_of(pending)[0] == ("fake builder", "Sending", "waiting on fake manager")
+    assert rows_of(pending)[1] == ("fake manager", "Idle", "waiting on fake builder")
     inbox = round_views["reply in inbox"]
     assert only_path(inbox)["stage"] == "IN_INBOX"
     manager = nodes_of(inbox)["fake manager"]
@@ -245,9 +256,11 @@ def test_reply_shows_the_envelope_on_the_manager_and_the_rows_follow(round_views
     read = round_views["reply read"]
     assert only_path(read)["stage"] == "READ"
     manager = nodes_of(read)["fake manager"]
-    assert pills(manager) == ["Working"] and manager["mail"] is None
-    assert rows_of(read)[0][:2] == ("fake manager", "Working") and rows_of(read)[0][2].startswith(MANAGER_TEXT_START)
+    assert pills(manager) == ["Working"] and manager["mail"] is None and manager["last"] == "waiting on fake builder"
+    assert nodes_of(read)["fake builder"]["last"] == f"SendMessage: {REPLY_SUMMARY}"
+    assert rows_of(read)[0] == ("fake manager", "Working", "waiting on fake builder")
     assert rows_of(read)[1] == ("fake builder", "Working", f"SendMessage: {REPLY_SUMMARY}")
+    assert read["rows"][1]["activityTitle"] == f"SendMessage: {REPLY_SUMMARY}\n{at('16.750')}"
 
 
 def test_idle_notice_pulses_the_eye_without_an_arrow(round_views):
@@ -256,9 +269,11 @@ def test_idle_notice_pulses_the_eye_without_an_arrow(round_views):
     manager = nodes_of(view)["fake manager"]
     assert manager["last"] == "👁idle notice" and manager["eye"] == "eye pulse"
     assert view["paths"] == [] and view["labels"] == []
+    assert nodes_of(view)["fake builder"]["last"] == "" and rows_of(view)[1] == ("fake builder", "Idle", "")
+    assert rows_of(view)[0][:2] == ("fake manager", "Working") and rows_of(view)[0][2].startswith(MANAGER_REPLY_TEXT_START)
     after = round_views["pulse gone"]
     assert nodes_of(after)["fake manager"]["eye"] is None
-    assert nodes_of(after)["fake manager"]["last"].startswith("“" + REPLY_BODY_START)
+    assert nodes_of(after)["fake manager"]["last"].startswith(MANAGER_REPLY_TEXT_START) and nodes_of(after)["fake manager"]["className"] == "node work"
 
 
 def test_round_ends_with_idle_rows_ordered_by_last_change(round_views):
@@ -266,8 +281,8 @@ def test_round_ends_with_idle_rows_ordered_by_last_change(round_views):
     assert end["title"] == "fake_session · 2 sessions · 0 working · 0 in flight"
     assert end["paths"] == []
     assert [pills(node) for node in end["nodes"]] == [["Idle"], ["Idle"]]
-    assert rows_of(end) == [("fake manager", "Idle", "The builder is idle again, so the charged trace on the dashboard has drained back to this capsule. Nothing further to do."),
-        ("fake builder", "Idle", "Replied to fake-session-manager's second hello with another hi back. That's another pulse from this session to that one on the dashboard.")]
+    assert rows_of(end) == [("fake manager", "Idle", ""), ("fake builder", "Idle", "")]
+    assert [node["last"] for node in end["nodes"]] == ["", ""] and end["graphHeight"] == "150px"
     picked = round_views["row pick"]
     assert picked["rows"][1]["className"] == "arow picked" and nodes_of(picked)["fake builder"]["className"] == "node picked"
     assert chips_of(picked)[33993]["className"] == "chip picked"
@@ -277,11 +292,12 @@ def test_round_ends_with_idle_rows_ordered_by_last_change(round_views):
     assert [row["activity"] for row in later["rows"]] == [row["activity"] for row in end["rows"]]
 
 
-def test_idle_rows_count_minutes_since_the_turn_end(tmp_path):
-    sessions = [session(1, "a", idle_since="2026-10-20T11:50:00.000Z"), session(2, "b", status="WORKING")]
+def test_idle_rows_stay_blank_however_long_the_session_has_been_idle(tmp_path):
+    sessions = [session(1, "a", idle_since="2026-10-20T11:50:00.000Z", activity="Edit old.py"), session(2, "b", status="WORKING")]
     views = render(tmp_path, synthetic(sessions), [{"name": "now"}, {"name": "later", "advanceMs": 5 * 60 * 1000}], wall_start=TEN_START)
-    assert rows_of(views["now"]) == [("b", "Working", "working"), ("a", "Idle", "idle 10 min")]
-    assert rows_of(views["later"]) == [("b", "Working", "working"), ("a", "Idle", "idle 15 min")]
+    assert rows_of(views["now"]) == [("b", "Working", "working"), ("a", "Idle", "")]
+    assert rows_of(views["later"]) == [("b", "Working", "working"), ("a", "Idle", "")]
+    assert {node["name"]: node["last"] for node in views["later"]["nodes"]} == {"a": "", "b": "working"}
 
 
 def test_change_stream_matches_the_frozen_snapshot_at_each_cut(watcher, tmp_path):
@@ -289,7 +305,7 @@ def test_change_stream_matches_the_frozen_snapshot_at_each_cut(watcher, tmp_path
     for until in ("10.500", "11.000", "17.600", "21.060"):
         streamed = render(tmp_path, snapshot_at(watcher, START), [{"name": "s", "frames": frames_between(timed, START, at(until))}], wall_start=at(until))["s"]
         frozen = render(tmp_path, snapshot_at(watcher, at(until)), [{"name": "s"}], wall_start=at(until))["s"]
-        for part in ("nodes", "paths", "labels", "chips", "rows", "title", "pod"):
+        for part in ("nodes", "paths", "labels", "chips", "rows", "title", "pod", "graphHeight"):
             assert streamed[part] == frozen[part], (until, part)
 
 
@@ -319,20 +335,20 @@ def test_picking_a_chip_or_node_thickens_its_arrows_and_toggles_off(watcher, tmp
     views = render(tmp_path, snapshot_at(watcher, START), steps)
     picked = views["pick chip"]
     assert chips_of(picked)[32813]["className"] == "chip on picked"
-    assert set(nodes_of(picked)["fake manager"]["className"].split()) == {"node", "hot", "picked"}
+    assert set(nodes_of(picked)["fake manager"]["className"].split()) == {"node", "work", "hot", "picked"}
     assert (only_path(picked)["width"], only_path(picked)["className"]) == ("2.4", "")
     assert views["pick chip"]["rows"][0]["className"] == "arow work picked"
     unpicked = views["unpick chip"]
-    assert chips_of(unpicked)[32813]["className"] == "chip on" and nodes_of(unpicked)["fake manager"]["className"] == "node hot"
+    assert chips_of(unpicked)[32813]["className"] == "chip on" and nodes_of(unpicked)["fake manager"]["className"] == "node work hot"
     assert set(nodes_of(views["pick node"])["fake builder"]["className"].split()) == {"node", "hot", "picked"}
     assert only_label(views["hover path"])["zIndex"] == "4" and only_label(views["leave path"])["zIndex"] == "2"
     assert (views["error"]["link"], views["error"]["linkClass"]) == ("reconnecting", "off")
     assert (views["reopen"]["link"], views["reopen"]["linkClass"]) == ("live", "")
 
 
-def session(pid, label, cwd="/home/user/path_finder", role="r", status="IDLE", inbox=0, watching=(), last_seen_at="2026-10-20T12:00:05.000Z", activity=None, idle_since=None):
+def session(pid, label, cwd="/home/user/path_finder", role="r", status="IDLE", inbox=0, watching=(), last_seen_at="2026-10-20T12:00:05.000Z", activity=None, idle_since=None, waiting_on=()):
     return {"pid": pid, "name": label, "role": role, "label": label, "cwd": cwd, "status": status, "inbox": inbox, "last_text": None, "watching": list(watching), "socket": f"uds:/tmp/cc-socks/{pid}.sock",
-        "last_seen_at": last_seen_at, "activity": activity, "activity_at": last_seen_at if activity else None, "idle_since": idle_since, "last_assistant_text": None}
+        "last_seen_at": last_seen_at, "activity": activity, "activity_at": last_seen_at if activity else None, "idle_since": idle_since, "last_assistant_text": None, "waiting_on": list(waiting_on)}
 
 
 def message(key, from_pid, to_pid, stage, summary, sent_at, body=None, reason=None, accepted_at=None, enqueued_at=None, read_at=None, kind="message"):
@@ -377,10 +393,10 @@ def test_ring_drops_sessions_without_recent_traffic_and_falls_back_to_everyone(t
 
 
 def test_watching_keeps_a_session_in_the_ring_and_unidentified_nodes_are_dashed(tmp_path):
-    sessions = [session(1, "a", watching=[3]), session(2, "b"), session(3, "c", role=None)]
+    sessions = [session(1, "a", watching=[3], waiting_on=[3]), session(2, "b"), session(3, "c", role=None)]
     view = render(tmp_path, synthetic(sessions, sources=[source(2, "registry", 1)]), [{"name": "now"}], wall_start=TEN_START)["now"]
     assert [node["pid"] for node in view["nodes"]] == [1, 3]
-    assert nodes_of(view)["a"]["last"] == "👁Watching c"
+    assert nodes_of(view)["a"]["last"] == "waiting on c" and nodes_of(view)["a"]["eye"] is None
     assert nodes_of(view)["c"]["className"] == "node incomplete"
     assert view["caption"] == ["registry", "b"]
     assert view["title"] == "path_finder · 3 sessions · 0 working · 0 in flight"
@@ -393,7 +409,7 @@ def test_empty_snapshot_and_snapshot_event_on_the_stream(tmp_path):
     assert views["empty"]["nodes"] == [] and views["empty"]["chips"] == []
     assert views["empty"]["rows"] == [{"className": "quiet-rows", "text": "No sessions discovered yet"}]
     assert [node["name"] for node in views["replaced"]["nodes"]] == ["only"] and views["replaced"]["quiet"] is None
-    assert rows_of(views["replaced"]) == [("only", "Idle", "idle 0 min")]
+    assert rows_of(views["replaced"]) == [("only", "Idle", "")]
 
 
 @pytest.fixture
@@ -413,17 +429,18 @@ def test_ten_sessions_rows_envelopes_and_label_visibility(ten_view):
     assert {node["name"]: node["headMail"] for node in view["nodes"] if node["headMail"]} == {"manager": "✉ 1", "viz-builder": "✉ 1", "validator": "✉ 1", "discovery-builder": "✉ 1", "listings-bc": "✉ 2"}
     assert {chip["text"]: chip["count"] for chip in view["chips"] if chip["count"]} == {"manager1": "1", "viz-builder1": "1", "validator1": "1", "discovery-builder1": "1", "listings-bc2": "2"}
     assert rows_of(view) == [
-        ("listings-e6", "Working", "Edit scores.py"),
+        ("listings-e6", "Working", "waiting on listings-bc"),
         ("tag-analyzer", "Working", "SendMessage: tags done"),
-        ("viz-builder", "Working", "SendMessage: V7 ready, handoff written"),
+        ("viz-builder", "Working", "waiting on validator, manager"),
         ("fake manager", "Working", "SendMessage: second hello"),
-        ("manager", "Working", "SendMessage: rerun scores"),
-        ("semantic-scores", "Working", "SendMessage: batch 3 written"),
-        ("validator", "Idle", "SendMessage: V6 review: PASS"),
-        ("fake builder", "Idle", "Replied with a hi back."),
-        ("discovery-builder", "Idle", "idle 0 min"),
-        ("listings-bc", "Idle", "idle 0 min"),
+        ("manager", "Working", "waiting on discovery-builder, semantic-scores"),
+        ("semantic-scores", "Working", "waiting on listings-bc"),
+        ("validator", "Idle", "waiting on viz-builder"),
+        ("fake builder", "Idle", ""),
+        ("discovery-builder", "Idle", ""),
+        ("listings-bc", "Idle", ""),
     ]
+    assert view["graphHeight"] == "380px" and view["viewBox"] == "0 0 356 380"
     assert len(view["paths"]) == 9
     stages = {path["key"]: path["stage"] for path in view["paths"]}
     assert stages["902>900"] == "FAILED" and stages["908>906"] == "READ" and sum(stage == "IN_INBOX" for stage in stages.values()) == 7
@@ -432,8 +449,9 @@ def test_ten_sessions_rows_envelopes_and_label_visibility(ten_view):
     assert len(shown) + len(hidden) == 9
     assert all(label["opacity"] == "0" for label in hidden.values())
     assert all(label["opacity"] != "0" for label in shown.values())
-    assert {key: label["text"] for key, label in shown.items()} == {"908>906": "tags done✓✓ Read", "906>907": "rerun scores✓ In inbox", "900>903": "D4 assigned✓ In inbox", "900>909": "rerun scores✓ In inbox", "902>901": "V6 review: PASS✓ In inbox"}
-    assert set(hidden) == {"902>900", "901>902", "901>900", "909>907"}
+    assert {key: label["text"] for key, label in shown.items()} == {"908>906": "tags done✓✓ Read", "906>907": "rerun scores✓ In inbox", "900>903": "D4 assigned✓ In inbox", "901>900": "V7 ready, handoff written✓ In inbox", "902>901": "V6 review: PASS✓ In inbox"}
+    assert set(hidden) == {"902>900", "901>902", "900>909", "909>907"}
+    assert (nodes_of(view)["manager"]["left"], nodes_of(view)["manager"]["top"]) == ("128px", "32px")
     hovered = {label["key"]: label for label in ten_view["hover hidden"]["labels"]}
     assert hovered["901>900"]["opacity"] == "1" and hovered["901>900"]["zIndex"] == "4"
 
@@ -617,3 +635,62 @@ def test_folder_state_survives_a_rerun_with_stored_choices_and_blocked_storage_m
     assert [(f["area"], f["closed"]) for f in blocked["open"]["panel"]["folders"]] == [("Visualization", "0"), ("Discovery", "0")]
     assert [(f["area"], f["closed"]) for f in blocked["close"]["panel"]["folders"]] == [("Visualization", "0"), ("Discovery", "0")]
     assert blocked["close"]["panel"]["storage"] == {}
+
+
+def test_activity_line_waiting_beats_working_and_idle_is_blank(tmp_path):
+    sessions = [session(1, "a", status="WORKING", activity="Edit x.py", waiting_on=[2, 3]), session(2, "b", waiting_on=[1]), session(3, "c", status="WORKING"), session(4, "d", activity="Read old.md"), session(5, "e", status="WORKING", activity="Bash: run it")]
+    sessions[2]["label"] = None
+    view = render(tmp_path, synthetic(sessions), [{"name": "now"}], wall_start=TEN_START)["now"]
+    rows = {row["name"]: row for row in view["rows"]}
+    assert {name: (row["status"], row["activity"], row["activityTitle"]) for name, row in rows.items()} == {
+        "a": ("Working", "waiting on b, r", "waiting on b, r"), "b": ("Idle", "waiting on a", "waiting on a"), "r": ("Working", "working", "working"),
+        "d": ("Idle", "", ""), "e": ("Working", "Bash: run it", f"Bash: run it\n{TEN_START}")}
+    nodes = nodes_of(view)
+    assert {name: (node["className"], node["last"], node["line"]) for name, node in nodes.items()} == {
+        "a": ("node work", "waiting on b, r", "waiting on b, r"), "b": ("node", "waiting on a", "waiting on a"), "r": ("node work", "working", "working"),
+        "d": ("node", "", ""), "e": ("node work", "Bash: run it", "Bash: run it")}
+
+
+def test_waiting_label_falls_back_to_role_name_or_pid(tmp_path):
+    sessions = [session(1, "a", waiting_on=[2, 3, 4, 9]), session(2, "b"), session(3, "c"), session(4, "d")]
+    sessions[1]["label"] = None
+    sessions[2]["label"] = sessions[2]["role"] = None
+    sessions[3]["label"] = sessions[3]["role"] = sessions[3]["name"] = None
+    view = render(tmp_path, synthetic(sessions), [{"name": "now"}], wall_start=TEN_START)["now"]
+    assert rows_of(view)[0] == ("a", "Idle", "waiting on r, c, pid 4, 9")
+
+
+@pytest.fixture(params=[356, 720], ids=["narrow", "wide"])
+def six_view(watcher, tmp_path, request):
+    fixtures = six_sessions_round().write(tmp_path / "six")
+    w = watcher.Watcher(fixtures=fixtures, spec_path=None)
+    w.poll_once()
+    input_path = tmp_path / "input.json"
+    input_path.write_text(json.dumps({"snapshot": w.snapshot(), "steps": [{"name": "six"}], "wallStart": TEN_WALL, "graphWidth": request.param, "localStorage": {}}))
+    result = subprocess.run(["node", str(HARNESS), str(PAGE), str(input_path)], capture_output=True, text=True, check=True)
+    return request.param, json.loads(result.stdout)[0]["view"]
+
+
+def test_six_sessions_show_every_word_of_a_long_line_and_the_ring_grows_without_overlap(six_view):
+    width, view = six_view
+    nodes = nodes_of(view)
+    assert [node["pid"] for node in view["nodes"]] == [900, 901, 902, 903, 904, 905]
+    assert nodes["viz-builder"]["last"] == f"Bash: {LONG_DESCRIPTION}" and nodes["viz-builder"]["height"] == "auto" and "work" in nodes["viz-builder"]["className"].split()
+    assert nodes["manager"]["last"] == "waiting on viz-builder" and nodes["validator"]["last"] == "waiting on manager"
+    assert [nodes[name]["last"] for name in ("discovery-builder", "fake manager", "fake builder")] == ["", "", ""]
+    assert rows_of(view) == [("viz-builder", "Working", f"Bash: {LONG_DESCRIPTION}"), ("fake manager", "Idle", ""), ("fake builder", "Idle", ""), ("validator", "Idle", "waiting on manager"), ("manager", "Idle", "waiting on viz-builder"), ("discovery-builder", "Idle", "")]
+    graph_height = float(view["graphHeight"][:-2])
+    assert view["viewBox"] == f"0 0 {width} {view['graphHeight'][:-2]}" and graph_height > 380
+    rects = {node["name"]: node_rect(node) for node in view["nodes"]}
+    assert rects["viz-builder"][3] - rects["viz-builder"][1] >= NODE_BASE_HEIGHT + 3 * NODE_LINE_PX
+    for name, rect in rects.items():
+        assert rect[0] >= 0 and rect[1] >= 0 and rect[2] <= width and rect[3] <= graph_height, (name, rect)
+    names = list(rects)
+    for i, first in enumerate(names):
+        for second in names[i + 1:]:
+            assert not rects_overlap(rects[first], rects[second]), (first, second)
+    shown = [label for label in view["labels"] if label["clear"] == "1"]
+    assert {label["key"] for label in shown} == {"904>905", "902>900"}
+    for label in shown:
+        for name, rect in rects.items():
+            assert not rects_overlap(label_rect(label), rect), (label["key"], name)

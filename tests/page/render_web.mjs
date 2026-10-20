@@ -88,7 +88,7 @@ function nodeView(node) {
   const headMail = hd ? findByClass(hd, "mail") : null;
   const badge = hd ? findByClass(hd, "task-badge") : null;
   const rowMail = row2 ? findByClass(row2, "mail") : null;
-  return { pid: Number(node.dataset.pid), className: node.className, left: node.style.left, top: node.style.top, width: node.style.width, height: node.style.height, title: node.title,
+  return { pid: Number(node.dataset.pid), className: node.className, left: node.style.left, top: node.style.top, width: node.style.width, height: node.style.height, title: node.title, line: node.dataset.line,
     name: hd ? textOf(findByClass(hd, "name")) : "", dotClass: hd ? findByClass(hd, "dot").className : "", dot: hd ? findByClass(hd, "dot").style.background : "",
     headMail: headMail ? textOf(headMail) : null, headEye: headEye ? headEye.className : null, badge: badge ? textOf(badge) : null, badgeTitle: badge ? badge.title : null,
     pills: row2 ? row2.children.map((p) => [p.className, textOf(p)]) : [], mail: rowMail ? textOf(rowMail) : null, mailTitle: rowMail ? rowMail.title : null,
@@ -151,7 +151,7 @@ function panelView() {
 
 function view() {
   const quiet = fixed.graph.querySelector(".quiet");
-  return { panel: panelView(), title: fixed.title.textContent, link: fixed.link.textContent, linkClass: fixed.link.className, eventsUrl: source.url, intervals: intervals.map((i) => i.delay),
+  return { panel: panelView(), graphHeight: fixed.graph.style.height, title: fixed.title.textContent, link: fixed.link.textContent, linkClass: fixed.link.className, eventsUrl: source.url, intervals: intervals.map((i) => i.delay),
     caption: [fixed["cap-entry"].textContent, fixed["cap-pair"].textContent], pod: fixed.graph.classList.contains("pod"), viewBox: fixed.svg.attrs.viewBox, quiet: quiet ? textOf(quiet) : null,
     nodes: fixed.graph.children.filter((c) => c.className.startsWith("node")).map(nodeView), labels: fixed.graph.children.filter((c) => c.className.startsWith("elab")).map(labelView),
     paths: fixed.arrows.children.map(pathView), chips: fixed.strip.children.map(chipView), rows: fixed.rows.children.map(rowView) };

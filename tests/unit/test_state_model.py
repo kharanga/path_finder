@@ -133,13 +133,13 @@ def test_round_trip_snapshot_is_order_independent(watcher):
 
 def test_round_trip_change_stream(watcher):
     _, changes = round_trip_model(watcher, True)
-    assert len(changes) == 27
+    assert len(changes) == 29
     first = changes[0]
-    assert (first["event"], first["pid"], first["status"], first["watching"], first["at"]) == ("session", MANAGER, "WORKING", [BUILDER], "2026-10-08T04:31:10.318Z")
+    assert (first["event"], first["pid"], first["status"], first["watching"], first["waiting_on"], first["at"]) == ("session", MANAGER, "WORKING", [BUILDER], [BUILDER], "2026-10-08T04:31:10.318Z")
     cleared = [c for c in changes if c["event"] == "session" and c["pid"] == MANAGER and c["at"] == "2026-10-08T04:31:21.055Z"]
     assert cleared and cleared[0]["watching"] == []
     manager_inbox = [c["inbox"] for c in changes if c["event"] == "session" and c["pid"] == MANAGER]
-    assert manager_inbox == [0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0]
+    assert manager_inbox == [0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
     pending = [c for c in changes if c["event"] == "message" and c["stage"] == "PENDING"]
     assert len(pending) == 2
     assert all(c["key"] == c["pending_key"] for c in pending)
@@ -669,3 +669,88 @@ def test_fixture_round_trip_activity_sequence(watcher):
     assert model.sessions[MANAGER]["idle_since"] == "2026-10-08T04:31:23.218Z"
     assert model.sessions[BUILDER]["idle_since"] == "2026-10-08T04:31:19.753Z"
     assert model.sessions[BUILDER]["activity"] == "Replied to fake-session-manager's second hello with another hi back. That's another pulse from this session to that one on the dashboard."
+
+
+def test_waiting_on_holds_a_notify_subscription_until_the_idle_notice(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 2, "name": "builder"})
+    model.apply(1, send_entry("t1", "builder", notify=True))
+    assert model.sessions[1]["waiting_on"] == [2]
+    model.apply(1, result_entry("t1"))
+    model.apply(2, delivery_entry(1, "m-1"))
+    assert model.messages["m-1"]["stage"] == "READ" and model.sessions[1]["waiting_on"] == [2]
+    model.apply(1, idle_notice_entry("builder"))
+    assert model.sessions[1]["waiting_on"] == [] and model.sessions[1]["watching"] == []
+
+
+def test_waiting_on_holds_a_plain_send_until_it_is_read(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 2, "name": "builder"})
+    model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock"))
+    assert model.sessions[1]["waiting_on"] == [2]
+    model.apply(1, result_entry("t1"))
+    model.apply(2, enqueue_entry(1))
+    assert model.messages["m-1"]["stage"] == "IN_INBOX" and model.sessions[1]["waiting_on"] == [2]
+    changes = model.apply(2, delivery_entry(1, "m-1"))
+    assert model.messages["m-1"]["stage"] == "READ" and model.sessions[1]["waiting_on"] == []
+    assert sorted((c["pid"], tuple(c["waiting_on"])) for c in changes if c["event"] == "session") == [(1, ()), (2, ())]
+
+
+def test_waiting_on_clears_when_the_send_fails(watcher):
+    model = watcher.StateModel()
+    model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock"))
+    assert model.sessions[1]["waiting_on"] == [2]
+    model.apply(1, result_entry("t1", success=False, msg_id=None, message="Not sent"))
+    assert model.messages["pending:t1"]["stage"] == "FAILED" and model.sessions[1]["waiting_on"] == []
+
+
+def test_waiting_on_skips_an_unresolved_name_until_it_is_learned(watcher):
+    model = watcher.StateModel()
+    model.apply(1, send_entry("t1", "later-named", notify=True))
+    assert model.sessions[1]["watching"] == ["later-named"] and model.sessions[1]["waiting_on"] == []
+    model.register_session({"pid": 2, "name": "later-named"})
+    changes = model.apply(2, turn_end())
+    assert model.sessions[1]["waiting_on"] == [2]
+    assert [(c["pid"], c["waiting_on"]) for c in changes if c["event"] == "session"] == [(1, [2]), (2, [])]
+
+
+def test_waiting_on_lists_each_target_once_watched_first_then_sends_by_time(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 2, "name": "b"})
+    model.register_session({"pid": 3, "name": "c"})
+    model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/3.sock", at="2026-10-08T04:31:10.318Z"))
+    model.apply(1, send_entry("t2", "b", notify=True, at="2026-10-08T04:31:10.400Z"))
+    model.apply(1, send_entry("t3", "uds:/tmp/cc-socks/3.sock", at="2026-10-08T04:31:10.500Z"))
+    assert model.sessions[1]["waiting_on"] == [2, 3]
+    assert model.sessions[2]["waiting_on"] == [] and model.sessions[3]["waiting_on"] == []
+
+
+def test_waiting_on_is_not_re_emitted_when_unchanged(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": 2, "name": "builder"})
+    model.apply(1, send_entry("t1", "uds:/tmp/cc-socks/2.sock"))
+    changes = model.apply(2, turn_end())
+    assert [(c["pid"], c["waiting_on"]) for c in changes if c["event"] == "session"] == [(2, [])]
+    assert model.snapshot()["sessions"][0]["waiting_on"] == [2]
+
+
+def test_round_trip_waiting_on_in_time_order(watcher):
+    model = watcher.StateModel()
+    model.register_session({"pid": MANAGER, "name": "fake-session-manager"})
+    model.register_session({"pid": BUILDER, "name": "fake-session-builder"})
+    tailer = watcher.TranscriptTailer(MANAGER_FIXTURE)
+    waiting = []
+    for timestamp, _index, pid, line in watcher.entries_in_time_order([(MANAGER, str(MANAGER_FIXTURE)), (BUILDER, str(BUILDER_FIXTURE))]):
+        entry = tailer.parse_line(line)
+        if entry is None:
+            continue
+        for change in model.apply(pid, entry):
+            if change["event"] == "session":
+                waiting.append((change["at"], change["pid"], change["waiting_on"]))
+    manager = [(at, w) for at, pid, w in waiting if pid == MANAGER]
+    builder = [(at, w) for at, pid, w in waiting if pid == BUILDER]
+    assert manager[0] == ("2026-10-08T04:31:10.318Z", [BUILDER])
+    assert all(w == [BUILDER] for at, w in manager if at < "2026-10-08T04:31:21.055Z")
+    assert all(w == [] for at, w in manager if at >= "2026-10-08T04:31:21.055Z")
+    assert [(at, w) for at, w in builder if w] == [("2026-10-08T04:31:16.750Z", [MANAGER])]
+    assert ("2026-10-08T04:31:17.638Z", []) in builder

@@ -29,11 +29,11 @@ class TenSessions:
     def turn_end(self, name, seconds):
         self.lines[PIDS[name]].append({"type": "system", "subtype": "turn_duration", "timestamp": stamp(seconds)})
 
-    def send(self, sender, receiver, seconds, summary, land=None, read=None, fail=None):
+    def send(self, sender, receiver, seconds, summary, land=None, read=None, fail=None, notify=False):
         self.sent += 1
         msg_id, tool_id = f"m-{self.sent}", f"send-{self.sent}"
         body = f"{summary}\nmore text"
-        block = {"type": "tool_use", "id": tool_id, "name": "SendMessage", "input": {"to": socket_of(receiver), "summary": summary, "message": body}}
+        block = {"type": "tool_use", "id": tool_id, "name": "SendMessage", "input": {"to": socket_of(receiver), "summary": summary, "message": body, "notify_when_idle": notify}}
         self.lines[PIDS[sender]].append({"type": "assistant", "timestamp": stamp(seconds), "message": {"role": "assistant", "content": [block]}})
         result = {"success": False, "message": fail} if fail else {"success": True, "msg_id": msg_id}
         self.lines[PIDS[sender]].append({"type": "user", "timestamp": stamp(seconds + 0.3), "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": tool_id, "content": [{"type": "text", "text": json.dumps(result)}]}]}, "toolUseResult": result})
@@ -86,3 +86,26 @@ def ten_sessions_round():
 if __name__ == "__main__":
     import sys
     print(" ".join(f"--fixture {pid}={path}" for pid, path in ten_sessions_round().write(sys.argv[1])))
+
+
+SIX = NAMES[:6]
+LONG_DESCRIPTION = "Run the whole suite and compare the change counts against the pinned numbers for every fixture"
+
+
+def six_sessions_round():
+    six = TenSessions()
+    for name in NAMES[6:]:
+        del six.lines[PIDS[name]]
+    six.text("manager", 0.5, "Assigning V11.")
+    six.send("manager", "viz-builder", 1.0, "V11 assigned", land=1.6, read=2.0, notify=True)
+    six.turn_end("manager", 3.0)
+    six.tool("viz-builder", 2.5, "Bash", {"command": "python3 -m pytest tests -q", "description": LONG_DESCRIPTION})
+    six.send("validator", "manager", 4.0, "V10 review: PASS", land=4.6)
+    six.turn_end("validator", 5.0)
+    six.send("fake manager", "fake builder", 6.0, "second hello", land=6.5, read=7.0)
+    six.text("fake builder", 7.5, "Replied with a hi back.")
+    six.turn_end("fake builder", 7.8)
+    six.turn_end("fake manager", 8.0)
+    six.send("manager", "discovery-builder", 1.2, "D5 assigned", land=1.8, read=2.2)
+    six.turn_end("discovery-builder", 2.6)
+    return six

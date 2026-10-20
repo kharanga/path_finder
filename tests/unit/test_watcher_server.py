@@ -58,7 +58,7 @@ def test_fixture_watcher_first_poll_registers_sessions_and_replays_history(watch
     assert [e["event"] for e in events[:2]] == ["session", "session"]
     assert {e["pid"] for e in events[:2]} == {32813, 33993}
     assert events[0]["transcript"] == str(manager)
-    assert len(events) == 2 + 30
+    assert len(events) == 2 + 31
     snapshot = w.snapshot()
     assert set(snapshot) == {"generated_at", "sessions", "messages", "sources", "tasks", "task_counts", "spec_path"}
     assert [(e["source"], e["source_pid"]) for e in events[:2]] == [("registry", 32813), ("registry", 33993)]
@@ -207,14 +207,14 @@ def test_log_matches_the_stream_for_the_fixture_round_trip(watcher, tmp_path):
     streamed = drain(subscriber)
     logged = [json.loads(l) for l in log_path.read_text().splitlines()]
     assert logged == streamed
-    assert len(logged) == 2 + 30
+    assert len(logged) == 2 + 31
     w.poll_once()
-    assert len(log_path.read_text().splitlines()) == 32
+    assert len(log_path.read_text().splitlines()) == 33
     w.close()
     w2 = watcher.Watcher(spec_path=None, fixtures=[(32813, str(manager)), (33993, str(builder))], log_path=str(log_path))
     w2.poll_once()
     w2.close()
-    assert len(log_path.read_text().splitlines()) == 64
+    assert len(log_path.read_text().splitlines()) == 66
 
 
 def test_serve_parser_log_defaults(watcher):
@@ -427,7 +427,7 @@ def test_watcher_emits_the_tasks_change_on_the_first_poll_and_on_edits(watcher, 
     assert tasks_change["task_counts"] == {"done": 0, "in_progress": 1, "todo": 1}
     assert [(t["id"], t["state"]) for t in tasks_change["tasks"]] == [("V9", "in_progress"), ("V10", "todo")]
     assert re.fullmatch(r".*Z", tasks_change["at"])
-    assert len(events) == 3 + 30
+    assert len(events) == 3 + 31
     snapshot = w.snapshot()
     assert set(snapshot) == {"generated_at", "sessions", "messages", "sources", "tasks", "task_counts", "spec_path"}
     assert snapshot["task_counts"] == {"done": 0, "in_progress": 1, "todo": 1}
