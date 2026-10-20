@@ -266,3 +266,61 @@ def test_default_log_is_next_to_the_script_and_no_log_disables_it(sandbox, fixtu
     process, _ = start_server(sandbox, "--fixture", f"32813={manager}", "--fixture", f"33993={builder}", "--no-log")
     stop(process)
     assert not default_log.exists()
+
+
+def read_sse_frames(sock, want, timeout=3.0):
+    sock.settimeout(0.2)
+    buffer = b""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            buffer += sock.recv(65536)
+        except socket.timeout:
+            pass
+        frames = [json.loads(line[5:]) for line in buffer.decode().splitlines() if line.startswith("data:")]
+        if want(frames):
+            return frames
+    return [json.loads(line[5:]) for line in buffer.decode().splitlines() if line.startswith("data:")]
+
+
+def test_serve_spec_exposes_tasks_and_streams_an_edit_within_a_second(sandbox, fixture_copies):
+    manager, builder = fixture_copies
+    spec = sandbox["home"] / "SPEC.md"
+    spec.write_text("## Tasks\n- [x] V8: web window follow-ups. Done.\n- [~] V9: task panel. A side panel.\n")
+    process, base = start_server(sandbox, "--fixture", f"32813={manager}", "--fixture", f"33993={builder}", "--spec", str(spec))
+    try:
+        _, _, body = get(f"{base}/state")
+        state = json.loads(body)
+        assert set(state) >= {"tasks", "task_counts", "spec_path"}
+        assert state["spec_path"] == str(spec) and state["task_counts"] == {"done": 1, "in_progress": 1, "todo": 0}
+        assert [(t["id"], t["state"], t["title"], t["owner"]) for t in state["tasks"]] == [("V8", "done", "web window follow-ups", "viz-builder"), ("V9", "in_progress", "task panel", "viz-builder")]
+        sock = socket.create_connection(("127.0.0.1", int(base.rsplit(":", 1)[1])), timeout=5)
+        sock.sendall(b"GET /events HTTP/1.1\r\nHost: x\r\nAccept: text/event-stream\r\n\r\n")
+        frames = read_sse_frames(sock, lambda frames: len(frames) >= 1)
+        assert frames[0]["event"] == "snapshot" and frames[0]["task_counts"] == {"done": 1, "in_progress": 1, "todo": 0}
+        assert all(frame["event"] != "tasks" for frame in frames)
+        started = time.monotonic()
+        spec.write_text("## Tasks\n- [ ] V8: web window follow-ups. Done.\n- [x] V9: task panel. A side panel.\n")
+        frames = read_sse_frames(sock, lambda frames: any(frame["event"] == "tasks" for frame in frames))
+        elapsed = time.monotonic() - started
+        tasks_frames = [frame for frame in frames if frame["event"] == "tasks"]
+        assert len(tasks_frames) == 1 and elapsed < 1.0, elapsed
+        assert [(t["id"], t["state"]) for t in tasks_frames[0]["tasks"]] == [("V8", "todo"), ("V9", "done")]
+        assert tasks_frames[0]["task_counts"] == {"done": 1, "in_progress": 0, "todo": 1} and tasks_frames[0]["source"] == "spec"
+        _, _, body = get(f"{base}/state")
+        assert json.loads(body)["task_counts"] == {"done": 1, "in_progress": 0, "todo": 1}
+        spec.write_text(spec.read_text())
+        assert all(frame["event"] != "tasks" for frame in read_sse_frames(sock, lambda frames: False, timeout=0.8))
+        sock.close()
+    finally:
+        stop(process)
+
+
+def test_serve_without_a_spec_file_serves_empty_tasks(sandbox, fixture_copies):
+    manager, builder = fixture_copies
+    process, base = start_server(sandbox, "--fixture", f"32813={manager}", "--fixture", f"33993={builder}", "--spec", str(sandbox["home"] / "missing.md"))
+    try:
+        state = json.loads(get(f"{base}/state")[2])
+        assert (state["tasks"], state["task_counts"]) == ([], {"done": 0, "in_progress": 0, "todo": 0})
+    finally:
+        stop(process)

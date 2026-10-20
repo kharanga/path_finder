@@ -69,9 +69,9 @@ def snapshot_at(watcher, until):
     return {"generated_at": until, **model.snapshot()}
 
 
-def render(tmp_path, snapshot, steps, wall_start=START):
+def render(tmp_path, snapshot, steps, wall_start=START, local_storage=None, storage_throws=False):
     input_path = tmp_path / "input.json"
-    input_path.write_text(json.dumps({"snapshot": snapshot, "steps": steps, "wallStart": wall_start}))
+    input_path.write_text(json.dumps({"snapshot": snapshot, "steps": steps, "wallStart": wall_start, "localStorage": local_storage or {}, "storageThrows": storage_throws}))
     result = subprocess.run(["node", str(HARNESS), str(PAGE), str(input_path)], capture_output=True, text=True, check=True)
     return {step["name"]: step["view"] for step in json.loads(result.stdout)}
 
@@ -399,7 +399,7 @@ def test_empty_snapshot_and_snapshot_event_on_the_stream(tmp_path):
 @pytest.fixture
 def ten_view(watcher, tmp_path):
     fixtures = ten_sessions_round().write(tmp_path / "ten")
-    w = watcher.Watcher(fixtures=fixtures)
+    w = watcher.Watcher(fixtures=fixtures, spec_path=None)
     w.poll_once()
     snapshot = w.snapshot()
     return render(tmp_path, snapshot, [{"name": "ten"}, {"name": "hover hidden", "hoverPath": "901>900"}], wall_start=TEN_WALL)
@@ -466,3 +466,101 @@ def test_ten_sessions_arrows_do_not_pass_through_shown_labels_or_other_nodes(ten
             if pid not in ends and any(point_in(point, rect) for point in points):
                 crossings.append(("arrow through node", path["key"], pid))
     assert crossings == []
+
+
+def task(task_id, state, title, owner="viz-builder", text=None):
+    return {"id": task_id, "state": state, "title": title, "text": text or f"{title}. Full text of {task_id}.", "owner": owner}
+
+
+TASKS = [task("V8", "done", "web window follow-ups"), task("V9", "in_progress", "task panel"), task("D5", "todo", "next discovery step", owner="discovery-builder"), task("D6", "in_progress", "discovery follow-up", owner="discovery-builder")]
+TASK_COUNTS = {"done": 1, "in_progress": 2, "todo": 1}
+
+
+def with_tasks(snapshot, tasks=TASKS, counts=TASK_COUNTS):
+    return {**snapshot, "tasks": tasks, "task_counts": counts, "spec_path": "/home/user/path_finder/SPEC.md"}
+
+
+def test_panel_lists_every_task_with_state_words_and_counts(tmp_path):
+    sessions = [session(1, "manager"), session(2, "viz-builder", status="WORKING"), session(3, "validator")]
+    view = render(tmp_path, with_tasks(synthetic(sessions)), [{"name": "open"}], wall_start=TEN_START)["open"]
+    panel = view["panel"]
+    assert panel["collapsed"] is False and panel["counts"] == "1 done · 2 in progress · 1 to do" and panel["chevron"] == "▾"
+    assert panel["tab"].startswith("Tasks") and panel["tabTitle"] == "hide the task list"
+    assert [(t["id"], t["state"], t["tid"], t["ttitle"], t["tstate"], t["className"]) for t in panel["tasks"]] == [
+        ("V8", "done", "V8", "web window follow-ups", "Done", "task done"),
+        ("V9", "in_progress", "V9", "task panel", "In progress", "task in_progress"),
+        ("D5", "todo", "D5", "next discovery step", "To do", "task todo"),
+        ("D6", "in_progress", "D6", "discovery follow-up", "In progress", "task in_progress"),
+    ]
+    assert [t["owner"] for t in panel["tasks"]] == [None, "viz-builder", None, "discovery-builder"]
+    assert panel["tasks"][1]["ownerDot"] == "#3ed6a4" and panel["tasks"][3]["ownerDot"] is None
+    assert all(t["full"] == f"{t['ttitle']}. Full text of {t['id']}." and t["clickable"] and t["title"] == "click for the full text" for t in panel["tasks"])
+    assert panel["storage"] == {}
+
+
+def test_in_progress_tasks_highlight_the_live_owner_node_and_row(tmp_path):
+    sessions = [session(1, "manager"), session(2, "viz-builder", status="WORKING"), session(3, "validator")]
+    messages = [message("m1", 1, 2, "IN_INBOX", "V9 assigned", "2026-10-20T12:00:00.000Z", enqueued_at="2026-10-20T12:00:01.000Z")]
+    cleared = {"event": "tasks", "at": "2026-10-20T12:00:06.000Z", "source": "spec", "source_pid": None, "tasks": [task("V9", "done", "task panel")], "task_counts": {"done": 1, "in_progress": 0, "todo": 0}, "spec_path": "/x"}
+    views = render(tmp_path, with_tasks(synthetic(sessions, messages)), [{"name": "open"}, {"name": "cleared", "frames": [cleared]}], wall_start=TEN_START)
+    view = views["open"]
+    builder = nodes_of(view)["viz-builder"]
+    assert "tasked" in builder["className"].split() and (builder["badge"], builder["badgeTitle"]) == ("V9", "in progress: V9")
+    assert nodes_of(view)["manager"]["badge"] is None and "tasked" not in nodes_of(view)["manager"]["className"]
+    rows = {row["pid"]: row for row in view["rows"]}
+    assert rows[2]["className"] == "arow work tasked" and rows[2]["badge"] == "V9" and rows[2]["name"] == "viz-builder V9"
+    assert rows[1]["className"] == "arow" and rows[1]["badge"] is None
+    assert view["panel"]["counts"] == "1 done · 2 in progress · 1 to do"
+    after = views["cleared"]
+    assert after["panel"]["counts"] == "1 done · 0 in progress · 0 to do"
+    assert [(t["id"], t["tstate"]) for t in after["panel"]["tasks"]] == [("V9", "Done")]
+    assert nodes_of(after)["viz-builder"]["badge"] is None and "tasked" not in nodes_of(after)["viz-builder"]["className"]
+    assert {row["pid"]: row["className"] for row in after["rows"]}[2] == "arow work"
+
+
+def test_owner_line_falls_back_to_the_owner_name_when_no_session_matches(tmp_path):
+    sessions = [session(1, "manager"), session(2, "fake builder")]
+    view = render(tmp_path, with_tasks(synthetic(sessions)), [{"name": "open"}], wall_start=TEN_START)["open"]
+    assert [t["owner"] for t in view["panel"]["tasks"]] == [None, "viz-builder", None, "discovery-builder"]
+    assert all(node["badge"] is None for node in view["nodes"]) and all(row["badge"] is None for row in view["rows"])
+
+
+def test_owner_matches_on_role_or_label_or_name(tmp_path):
+    sessions = [session(1, "a", role="viz-builder"), session(2, "b")]
+    sessions[1]["label"] = "discovery-builder"
+    view = render(tmp_path, with_tasks(synthetic(sessions)), [{"name": "open"}], wall_start=TEN_START)["open"]
+    assert [t["owner"] for t in view["panel"]["tasks"]] == [None, "a", None, "discovery-builder"]
+    assert {node["pid"]: node["badge"] for node in view["nodes"]} == {1: "V9", 2: "D6"}
+
+
+def test_clicking_a_task_expands_its_full_text_and_the_tab_collapses_the_panel(tmp_path):
+    steps = [{"name": "open"}, {"name": "expand", "clickTask": "V9"}, {"name": "expand second", "clickTask": "D5"}, {"name": "fold", "clickTask": "V9"}, {"name": "collapse", "clickTab": True}, {"name": "reopen", "clickTab": True}]
+    views = render(tmp_path, with_tasks(synthetic([session(1, "a")])), steps, wall_start=TEN_START)
+    by_id = lambda name: {t["id"]: t for t in views[name]["panel"]["tasks"]}
+    assert by_id("open")["V9"]["className"] == "task in_progress"
+    assert by_id("expand")["V9"]["className"] == "task in_progress open" and by_id("expand")["V9"]["title"] == "click to collapse"
+    assert by_id("expand")["V9"]["full"] == "task panel. Full text of V9."
+    assert by_id("expand second")["D5"]["className"] == "task todo open" and by_id("expand second")["V9"]["className"] == "task in_progress open"
+    assert by_id("fold")["V9"]["className"] == "task in_progress" and by_id("fold")["D5"]["className"] == "task todo open"
+    collapsed = views["collapse"]["panel"]
+    assert collapsed["collapsed"] is True and collapsed["counts"] == "1 done · 2 in progress · 1 to do" and collapsed["chevron"] == "▸"
+    assert collapsed["tabTitle"] == "show the task list" and collapsed["storage"] == {"viz-web-panel-collapsed": "1"}
+    assert len(collapsed["tasks"]) == 4
+    reopened = views["reopen"]["panel"]
+    assert reopened["collapsed"] is False and reopened["storage"] == {"viz-web-panel-collapsed": "0"}
+
+
+def test_panel_remembers_collapse_and_survives_blocked_storage(tmp_path):
+    remembered = render(tmp_path, with_tasks(synthetic([session(1, "a")])), [{"name": "open"}], wall_start=TEN_START, local_storage={"viz-web-panel-collapsed": "1"})["open"]
+    assert remembered["panel"]["collapsed"] is True and remembered["panel"]["counts"] == "1 done · 2 in progress · 1 to do"
+    blocked = render(tmp_path, with_tasks(synthetic([session(1, "a")])), [{"name": "open"}, {"name": "toggle", "clickTab": True}], wall_start=TEN_START, storage_throws=True)
+    assert blocked["open"]["panel"]["collapsed"] is False and blocked["toggle"]["panel"]["collapsed"] is True
+
+
+def test_panel_without_tasks_says_so(tmp_path):
+    view = render(tmp_path, synthetic([session(1, "a")]), [{"name": "open"}], wall_start=TEN_START)["open"]
+    assert view["panel"]["counts"] == "0 done · 0 in progress · 0 to do"
+    assert view["panel"]["tasks"] == [{"className": "quiet-rows", "text": "No tasks in SPEC.md"}]
+    replaced = {"event": "snapshot", **with_tasks(synthetic([session(1, "a")]))}
+    after = render(tmp_path, synthetic([session(1, "a")]), [{"name": "snapshot", "frames": [replaced]}], wall_start=TEN_START)["snapshot"]
+    assert [t["id"] for t in after["panel"]["tasks"]] == ["V8", "V9", "D5", "D6"]

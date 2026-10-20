@@ -39,9 +39,14 @@ function makeElement(tag) {
 }
 
 const fixed = {};
-for (const id of ["graph", "svg", "arrows", "title", "link", "cap-entry", "cap-pair", "strip", "rows"]) fixed[id] = makeElement("div");
+for (const id of ["graph", "svg", "arrows", "title", "link", "cap-entry", "cap-pair", "strip", "rows", "panel", "ptab", "plist"]) fixed[id] = makeElement("div");
 const document = { getElementById: (id) => fixed[id], createElement: makeElement, createElementNS: (_ns, name) => makeElement(name), createTextNode: (text) => ({ text: String(text), parent: null, remove() {} }) };
 const windowListeners = {};
+const storage = { ...(input.localStorage || {}) };
+const localStorage = {
+  getItem(key) { if (input.storageThrows) throw new Error("blocked"); return storage[key] === undefined ? null : storage[key]; },
+  setItem(key, value) { if (input.storageThrows) throw new Error("blocked"); storage[key] = String(value); },
+};
 const window = { addEventListener(type, handler) { windowListeners[type] = handler; } };
 const sources = [];
 class EventSource { constructor(url) { this.url = url; sources.push(this); } }
@@ -60,8 +65,8 @@ function tick() {
   for (const interval of intervals) interval.callback();
 }
 
-new Function("document", "window", "fetch", "EventSource", "setTimeout", "setInterval", "clearInterval", "Date", script)(
-  document, window, fetch, EventSource, setTimeout, setInterval, clearInterval, FakeDate);
+new Function("document", "window", "fetch", "EventSource", "setTimeout", "setInterval", "clearInterval", "Date", "localStorage", script)(
+  document, window, fetch, EventSource, setTimeout, setInterval, clearInterval, FakeDate, localStorage);
 await new Promise((resolve) => setImmediate(resolve));
 runTimers();
 const source = sources[0];
@@ -81,10 +86,11 @@ function nodeView(node) {
   const eye = last ? findByClass(last, "eye") : null;
   const headEye = hd ? findByClass(hd, "eye") : null;
   const headMail = hd ? findByClass(hd, "mail") : null;
+  const badge = hd ? findByClass(hd, "task-badge") : null;
   const rowMail = row2 ? findByClass(row2, "mail") : null;
   return { pid: Number(node.dataset.pid), className: node.className, left: node.style.left, top: node.style.top, width: node.style.width, height: node.style.height, title: node.title,
     name: hd ? textOf(findByClass(hd, "name")) : "", dotClass: hd ? findByClass(hd, "dot").className : "", dot: hd ? findByClass(hd, "dot").style.background : "",
-    headMail: headMail ? textOf(headMail) : null, headEye: headEye ? headEye.className : null,
+    headMail: headMail ? textOf(headMail) : null, headEye: headEye ? headEye.className : null, badge: badge ? textOf(badge) : null, badgeTitle: badge ? badge.title : null,
     pills: row2 ? row2.children.map((p) => [p.className, textOf(p)]) : [], mail: rowMail ? textOf(rowMail) : null, mailTitle: rowMail ? rowMail.title : null,
     last: last ? textOf(last) : "", lastTitle: last ? last.title : "", eye: eye ? eye.className : null };
 }
@@ -108,13 +114,28 @@ function chipView(chip) {
 function rowView(row) {
   if (row.className === "quiet-rows") return { className: row.className, text: textOf(row) };
   const name = findByClass(row, "name"), pill = findByClass(row, "pill"), act = findByClass(row, "act");
-  return { pid: Number(row.dataset.pid), status: row.dataset.status, className: row.className, dotClass: findByClass(row, "dot").className, name: textOf(name), nameTitle: name.title,
+  const badge = findByClass(name, "task-badge");
+  return { pid: Number(row.dataset.pid), status: row.dataset.status, className: row.className, dotClass: findByClass(row, "dot").className, name: textOf(name), nameTitle: name.title, badge: badge ? textOf(badge) : null,
     pill: [pill.className, textOf(pill)], activity: textOf(act), activityTitle: act.title, clickable: Boolean(row.listeners.click) };
+}
+
+function taskView(item) {
+  if (item.className === "quiet-rows") return { className: item.className, text: textOf(item) };
+  const owner = findByClass(item, "towner"), full = findByClass(item, "tfull");
+  const ownerDot = owner ? findByClass(owner, "dot") : null;
+  return { id: item.dataset.id, state: item.dataset.state, className: item.className, title: item.title, tid: textOf(findByClass(item, "tid")), ttitle: textOf(findByClass(item, "ttitle")), tstate: textOf(findByClass(item, "tstate")),
+    owner: owner ? textOf(owner) : null, ownerDot: ownerDot ? ownerDot.style.background : null, full: full ? textOf(full) : null, clickable: Boolean(item.listeners.click) };
+}
+
+function panelView() {
+  const tab = fixed.ptab;
+  return { collapsed: fixed.panel.classList.contains("collapsed"), tab: textOf(tab), tabTitle: tab.title, counts: textOf(findByClass(tab, "counts") || { text: "" }), chevron: textOf(findByClass(tab, "chev") || { text: "" }),
+    tasks: fixed.plist.children.map(taskView), storage: { ...storage } };
 }
 
 function view() {
   const quiet = fixed.graph.querySelector(".quiet");
-  return { title: fixed.title.textContent, link: fixed.link.textContent, linkClass: fixed.link.className, eventsUrl: source.url, intervals: intervals.map((i) => i.delay),
+  return { panel: panelView(), title: fixed.title.textContent, link: fixed.link.textContent, linkClass: fixed.link.className, eventsUrl: source.url, intervals: intervals.map((i) => i.delay),
     caption: [fixed["cap-entry"].textContent, fixed["cap-pair"].textContent], pod: fixed.graph.classList.contains("pod"), viewBox: fixed.svg.attrs.viewBox, quiet: quiet ? textOf(quiet) : null,
     nodes: fixed.graph.children.filter((c) => c.className.startsWith("node")).map(nodeView), labels: fixed.graph.children.filter((c) => c.className.startsWith("elab")).map(labelView),
     paths: fixed.arrows.children.map(pathView), chips: fixed.strip.children.map(chipView), rows: fixed.rows.children.map(rowView) };
@@ -129,6 +150,8 @@ for (const step of input.steps || []) {
   if (step.clickChip !== undefined) fixed.strip.children.find((c) => Number(c.dataset.pid) === Number(step.clickChip)).listeners.click();
   if (step.clickNode !== undefined) fixed.graph.children.find((c) => c.className.startsWith("node") && Number(c.dataset.pid) === Number(step.clickNode)).listeners.click();
   if (step.clickRow !== undefined) fixed.rows.children.find((r) => Number(r.dataset.pid) === Number(step.clickRow)).listeners.click();
+  if (step.clickTab) fixed.ptab.listeners.click();
+  if (step.clickTask !== undefined) fixed.plist.children.find((t) => t.dataset.id === step.clickTask).listeners.click();
   if (step.hoverPath !== undefined) fixed.arrows.children.find((p) => p.attrs["data-key"] === step.hoverPath).listeners.mouseenter();
   if (step.leavePath !== undefined) fixed.arrows.children.find((p) => p.attrs["data-key"] === step.leavePath).listeners.mouseleave();
   if (step.resize) windowListeners.resize();

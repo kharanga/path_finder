@@ -51,7 +51,7 @@ def copy_fixtures(tmp_path):
 
 def test_fixture_watcher_first_poll_registers_sessions_and_replays_history(watcher, tmp_path):
     manager, builder = copy_fixtures(tmp_path)
-    w = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))])
+    w = watcher.Watcher(spec_path=None, fixtures=[(32813, str(manager)), (33993, str(builder))])
     subscriber = w.broadcaster.subscribe()
     w.poll_once()
     events = drain(subscriber)
@@ -60,7 +60,7 @@ def test_fixture_watcher_first_poll_registers_sessions_and_replays_history(watch
     assert events[0]["transcript"] == str(manager)
     assert len(events) == 2 + 30
     snapshot = w.snapshot()
-    assert set(snapshot) == {"generated_at", "sessions", "messages", "sources"}
+    assert set(snapshot) == {"generated_at", "sessions", "messages", "sources", "tasks", "task_counts", "spec_path"}
     assert [(e["source"], e["source_pid"]) for e in events[:2]] == [("registry", 32813), ("registry", 33993)]
     assert all(e["source"] and e["source_pid"] in (32813, 33993) for e in events[2:])
     assert [s["pid"] for s in snapshot["sources"]] == [32813, 33993]
@@ -71,7 +71,7 @@ def test_fixture_watcher_first_poll_registers_sessions_and_replays_history(watch
 
 def test_fixture_watcher_streams_appended_line_as_one_change(watcher, tmp_path):
     manager, builder = copy_fixtures(tmp_path)
-    w = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))])
+    w = watcher.Watcher(spec_path=None, fixtures=[(32813, str(manager)), (33993, str(builder))])
     w.poll_once()
     subscriber = w.broadcaster.subscribe()
     with open(builder, "a") as handle:
@@ -90,7 +90,7 @@ def test_fixture_watcher_takes_name_and_label_from_live_registry(watcher, tmp_pa
     monkeypatch.setattr(watcher, "pid_is_alive", lambda pid: pid == 32813)
     (watcher.SESSIONS_DIR / "32813.json").write_text(json.dumps({"pid": 32813, "name": "mgr-from-registry", "cwd": "/x", "sessionId": "sid"}))
     (watcher.IDENTITY_DIR / "32813.json").write_text(json.dumps({"role": "manager", "label": "the manager"}))
-    w = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))])
+    w = watcher.Watcher(spec_path=None, fixtures=[(32813, str(manager)), (33993, str(builder))])
     w.poll_once()
     sessions = {s["pid"]: s for s in w.snapshot()["sessions"]}
     assert (sessions[32813]["label"], sessions[32813]["role"], sessions[32813]["session_id"]) == ("the manager", "manager", "sid")
@@ -104,7 +104,7 @@ def test_registry_watcher_adds_session_with_resolved_transcript(watcher, monkeyp
     folder = watcher.PROJECTS_DIR / watcher.encoded_cwd(cwd)
     folder.mkdir()
     (folder / "sid-100.jsonl").write_text(json.dumps({"type": "agent-name", "agentName": "one"}) + "\n")
-    w = watcher.Watcher(root="/home/user/path_finder")
+    w = watcher.Watcher(spec_path=None, root="/home/user/path_finder")
     subscriber = w.broadcaster.subscribe()
     w.poll_once()
     first = drain(subscriber)
@@ -122,7 +122,7 @@ def test_registry_watcher_publishes_session_removed(watcher, monkeypatch):
     folder = watcher.PROJECTS_DIR / watcher.encoded_cwd(cwd)
     folder.mkdir()
     (folder / "sid-100.jsonl").write_text("")
-    w = watcher.Watcher(root=cwd)
+    w = watcher.Watcher(spec_path=None, root=cwd)
     w.poll_once()
     subscriber = w.broadcaster.subscribe()
     alive.clear()
@@ -136,7 +136,7 @@ def test_registry_watcher_skips_session_without_transcript_and_outside_root(watc
     monkeypatch.setattr(watcher, "pid_is_alive", lambda pid: True)
     (watcher.SESSIONS_DIR / "1.json").write_text(json.dumps({"pid": 1, "name": "no-transcript", "cwd": "/home/user/path_finder", "sessionId": "missing"}))
     (watcher.SESSIONS_DIR / "2.json").write_text(json.dumps({"pid": 2, "name": "outside", "cwd": "/elsewhere", "sessionId": "sid-2"}))
-    w = watcher.Watcher(root="/home/user/path_finder")
+    w = watcher.Watcher(spec_path=None, root="/home/user/path_finder")
     w.poll_once()
     assert w.snapshot()["sessions"] == []
 
@@ -148,7 +148,7 @@ def test_registry_watcher_republishes_when_identity_changes(watcher, monkeypatch
     folder = watcher.PROJECTS_DIR / watcher.encoded_cwd(cwd)
     folder.mkdir()
     (folder / "sid-1.jsonl").write_text("")
-    w = watcher.Watcher(root=cwd)
+    w = watcher.Watcher(spec_path=None, root=cwd)
     w.poll_once()
     subscriber = w.broadcaster.subscribe()
     (watcher.IDENTITY_DIR / "1.json").write_text(json.dumps({"role": "validator", "label": "validator"}))
@@ -159,7 +159,7 @@ def test_registry_watcher_republishes_when_identity_changes(watcher, monkeypatch
 
 def test_snapshot_is_a_copy(watcher, tmp_path):
     manager, builder = copy_fixtures(tmp_path)
-    w = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))])
+    w = watcher.Watcher(spec_path=None, fixtures=[(32813, str(manager)), (33993, str(builder))])
     w.poll_once()
     snapshot = w.snapshot()
     snapshot["sessions"][0]["status"] = "MUTATED"
@@ -178,7 +178,7 @@ def test_serve_parser_defaults(watcher):
 
 def test_emit_writes_one_json_line_per_change_and_publishes(watcher, tmp_path):
     log_path = tmp_path / "logs" / "events.jsonl"
-    w = watcher.Watcher(fixtures=[], log_path=str(log_path))
+    w = watcher.Watcher(spec_path=None, fixtures=[], log_path=str(log_path))
     subscriber = w.broadcaster.subscribe()
     assert not log_path.exists()
     w.emit({"event": "session", "at": "t1", "pid": 1})
@@ -190,7 +190,7 @@ def test_emit_writes_one_json_line_per_change_and_publishes(watcher, tmp_path):
 
 
 def test_emit_without_log_path_only_publishes(watcher, tmp_path):
-    w = watcher.Watcher(fixtures=[])
+    w = watcher.Watcher(spec_path=None, fixtures=[])
     subscriber = w.broadcaster.subscribe()
     w.emit({"event": "session", "at": "t", "pid": 1})
     assert len(drain(subscriber)) == 1
@@ -201,7 +201,7 @@ def test_emit_without_log_path_only_publishes(watcher, tmp_path):
 def test_log_matches_the_stream_for_the_fixture_round_trip(watcher, tmp_path):
     manager, builder = copy_fixtures(tmp_path)
     log_path = tmp_path / "events.jsonl"
-    w = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))], log_path=str(log_path))
+    w = watcher.Watcher(spec_path=None, fixtures=[(32813, str(manager)), (33993, str(builder))], log_path=str(log_path))
     subscriber = w.broadcaster.subscribe()
     w.poll_once()
     streamed = drain(subscriber)
@@ -211,7 +211,7 @@ def test_log_matches_the_stream_for_the_fixture_round_trip(watcher, tmp_path):
     w.poll_once()
     assert len(log_path.read_text().splitlines()) == 32
     w.close()
-    w2 = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))], log_path=str(log_path))
+    w2 = watcher.Watcher(spec_path=None, fixtures=[(32813, str(manager)), (33993, str(builder))], log_path=str(log_path))
     w2.poll_once()
     w2.close()
     assert len(log_path.read_text().splitlines()) == 64
@@ -239,7 +239,7 @@ def test_first_poll_newest_source_is_the_newest_transcript_entry_across_files(wa
     manager, builder = tmp_path / "m.jsonl", tmp_path / "b.jsonl"
     truncate_fixture(MANAGER_FIXTURE, manager, "2026-10-08T04:31:17.600Z")
     truncate_fixture(BUILDER_FIXTURE, builder, "2026-10-08T04:31:17.600Z")
-    w = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))])
+    w = watcher.Watcher(spec_path=None, fixtures=[(32813, str(manager)), (33993, str(builder))])
     w.poll_once()
     sources = {s["pid"]: s for s in w.snapshot()["sources"]}
     assert (sources[32813]["source"], sources[32813]["at"]) == ("queue-operation · enqueue", "2026-10-08T04:31:17.590Z")
@@ -256,7 +256,7 @@ def test_registry_watcher_session_removed_carries_source_and_drops_its_source_ro
     for pid in (100, 101):
         (watcher.SESSIONS_DIR / f"{pid}.json").write_text(json.dumps({"pid": pid, "name": f"s{pid}", "cwd": cwd, "sessionId": f"sid-{pid}"}))
         (folder / f"sid-{pid}.jsonl").write_text("")
-    w = watcher.Watcher(root=cwd)
+    w = watcher.Watcher(spec_path=None, root=cwd)
     subscriber = w.broadcaster.subscribe()
     w.poll_once()
     first = drain(subscriber)
@@ -271,7 +271,7 @@ def test_registry_watcher_session_removed_carries_source_and_drops_its_source_ro
 
 def test_first_poll_applies_both_files_in_timestamp_order(watcher, tmp_path):
     manager, builder = copy_fixtures(tmp_path)
-    w = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))])
+    w = watcher.Watcher(spec_path=None, fixtures=[(32813, str(manager)), (33993, str(builder))])
     subscriber = w.broadcaster.subscribe()
     w.poll_once()
     streamed = [(e["event"], e["source_pid"], e["source"], e["at"]) for e in drain(subscriber)[2:] if e["source"] != "agent-name"]
@@ -297,7 +297,7 @@ def test_timestamp_less_lines_inherit_the_previous_timestamp_in_their_file_acros
     a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
     write_lines(a, [{"type": "user", "turnOrigin": "human", "timestamp": "2026-10-08T04:31:12.000Z", "message": {"content": "go"}}, {"type": "agent-name", "agentName": "a-renamed"}])
     write_lines(b, [{"type": "user", "turnOrigin": "human", "timestamp": "2026-10-08T04:31:11.000Z", "message": {"content": "go"}}])
-    w = watcher.Watcher(fixtures=[(1, str(a)), (2, str(b))])
+    w = watcher.Watcher(spec_path=None, fixtures=[(1, str(a)), (2, str(b))])
     subscriber = w.broadcaster.subscribe()
     w.poll_once()
     first = [(e["source_pid"], e["source"]) for e in drain(subscriber)[2:]]
@@ -308,3 +308,141 @@ def test_timestamp_less_lines_inherit_the_previous_timestamp_in_their_file_acros
         handle.write(json.dumps({"type": "system", "subtype": "turn_duration", "timestamp": "2026-10-08T04:31:13.000Z"}) + "\n")
     w.poll_once()
     assert [(e["source_pid"], e["source"]) for e in drain(subscriber)] == [(1, "agent-name"), (2, "system · turn_duration")]
+
+
+SPEC_TEXT = """# SPEC
+
+## Decisions so far
+
+- [ ] not a task, wrong section
+
+## Tasks
+
+The manager assigns every task by ID.
+
+- [x] D1: role prompt in discovery (label equals role). When a round starts, each session asks.
+- [x] V3: `GET /state` (full snapshot) and `GET /events` (SSE) on the port 4780 server. Done when `curl /state` returns.
+- [~] V9: task panel. A side panel on `viz/web.html`.
+- [ ] D4: retire `ui`. Remove `discover.py ui`. Done when it fails.
+- [ ] X7: something else entirely
+- [ ] V10: no period at all
+- [?] V11: unknown mark is skipped
+- [ ] bad line without an id
+  - [ ] indented is skipped
+
+## Open questions
+
+- [ ] Z1: after the section
+"""
+
+
+def test_parse_spec_tasks_reads_only_the_tasks_section(watcher):
+    tasks = watcher.parse_spec_tasks(SPEC_TEXT)
+    assert [(t["id"], t["state"], t["owner"]) for t in tasks] == [("D1", "done", "discovery-builder"), ("V3", "done", "viz-builder"), ("V9", "in_progress", "viz-builder"), ("D4", "todo", "discovery-builder"), ("X7", "todo", None), ("V10", "todo", "viz-builder")]
+    assert [t["title"] for t in tasks] == ["role prompt in discovery (label equals role)", "`GET /state` (full snapshot) and `GET /events` (SSE) on the port 4780 server", "task panel", "retire `ui`", "something else entirely", "no period at all"]
+    assert tasks[2]["text"] == "task panel. A side panel on `viz/web.html`."
+    assert tasks[3]["text"] == "retire `ui`. Remove `discover.py ui`. Done when it fails."
+
+
+def test_parse_spec_tasks_without_a_section_or_text(watcher):
+    assert watcher.parse_spec_tasks("") == []
+    assert watcher.parse_spec_tasks("## Tasks\n") == []
+    assert watcher.parse_spec_tasks("## Tasks\n- [x] V1: done.\n## Tasks\n- [ ] V2: again.\n") == [
+        {"id": "V1", "state": "done", "title": "done", "text": "done.", "owner": "viz-builder"}, {"id": "V2", "state": "todo", "title": "again", "text": "again.", "owner": "viz-builder"}]
+
+
+@pytest.mark.parametrize("text, title", [
+    ("retire `ui`. Remove things.", "retire `ui`"),
+    ("uses discover.py ui then stops. Next", "uses discover.py ui then stops"),
+    ("ends with a period.", "ends with a period"),
+    ("no period", "no period"),
+    ("  padded.   ", "padded"),
+    ("v1.2 release. Then", "v1.2 release"),
+])
+def test_task_title_cuts_at_the_first_sentence_end(watcher, text, title):
+    assert watcher.task_title(text) == title
+
+
+def test_task_counts(watcher):
+    tasks = watcher.parse_spec_tasks(SPEC_TEXT)
+    assert watcher.task_counts(tasks) == {"done": 2, "in_progress": 1, "todo": 3}
+    assert watcher.task_counts([]) == {"done": 0, "in_progress": 0, "todo": 0}
+
+
+def test_parse_repo_spec_has_every_task_with_a_known_state(watcher):
+    tasks = watcher.parse_spec_tasks(watcher.SPEC_PATH.read_text(encoding="utf-8"))
+    ids = [t["id"] for t in tasks]
+    assert len(ids) == len(set(ids)) and {"D1", "D3", "V0", "V9"} <= set(ids)
+    assert all(t["state"] in ("done", "in_progress", "todo") and t["title"] and t["owner"] in ("viz-builder", "discovery-builder") for t in tasks)
+
+
+def test_spec_tasks_refresh_follows_the_file(watcher, tmp_path):
+    path = tmp_path / "SPEC.md"
+    spec = watcher.SpecTasks(path)
+    assert spec.refresh() is False and spec.payload() == {"tasks": [], "task_counts": {"done": 0, "in_progress": 0, "todo": 0}, "spec_path": str(path)}
+    path.write_text("## Tasks\n- [ ] V1: first.\n")
+    assert spec.refresh() is True and [t["state"] for t in spec.tasks] == ["todo"]
+    assert spec.refresh() is False
+    path.write_text("## Tasks\n- [ ] V1: first.\n")
+    assert spec.refresh() is False
+    path.write_text("## Tasks\n- [~] V1: first.\n")
+    assert spec.refresh() is True and spec.payload()["task_counts"] == {"done": 0, "in_progress": 1, "todo": 0}
+    path.unlink()
+    assert spec.refresh() is True and spec.tasks == []
+    assert watcher.SpecTasks(None).refresh() is False and watcher.SpecTasks(None).payload()["spec_path"] is None
+
+
+def test_spec_tasks_payload_is_a_copy(watcher, tmp_path):
+    path = tmp_path / "SPEC.md"
+    path.write_text("## Tasks\n- [x] V1: first.\n")
+    spec = watcher.SpecTasks(path)
+    spec.refresh()
+    payload = spec.payload()
+    payload["tasks"][0]["state"] = "todo"
+    assert spec.tasks[0]["state"] == "done"
+
+
+def test_watcher_emits_the_tasks_change_on_the_first_poll_and_on_edits(watcher, tmp_path):
+    path = tmp_path / "SPEC.md"
+    path.write_text("## Tasks\n- [~] V9: task panel. Full.\n- [ ] V10: next.\n")
+    manager, builder = copy_fixtures(tmp_path)
+    w = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))], spec_path=path)
+    subscriber = w.broadcaster.subscribe()
+    w.poll_once()
+    events = drain(subscriber)
+    assert [e["event"] for e in events[:3]] == ["session", "session", "tasks"]
+    tasks_change = events[2]
+    assert (tasks_change["source"], tasks_change["source_pid"], tasks_change["spec_path"]) == ("spec", None, str(path))
+    assert tasks_change["task_counts"] == {"done": 0, "in_progress": 1, "todo": 1}
+    assert [(t["id"], t["state"]) for t in tasks_change["tasks"]] == [("V9", "in_progress"), ("V10", "todo")]
+    assert re.fullmatch(r".*Z", tasks_change["at"])
+    assert len(events) == 3 + 30
+    snapshot = w.snapshot()
+    assert set(snapshot) == {"generated_at", "sessions", "messages", "sources", "tasks", "task_counts", "spec_path"}
+    assert snapshot["task_counts"] == {"done": 0, "in_progress": 1, "todo": 1}
+    w.poll_once()
+    assert drain(subscriber) == []
+    path.write_text("## Tasks\n- [x] V9: task panel. Full.\n- [~] V10: next.\n")
+    w.poll_once()
+    edited = drain(subscriber)
+    assert [e["event"] for e in edited] == ["tasks"]
+    assert [(t["id"], t["state"]) for t in edited[0]["tasks"]] == [("V9", "done"), ("V10", "in_progress")]
+    assert w.snapshot()["task_counts"] == {"done": 1, "in_progress": 1, "todo": 0}
+
+
+def test_watcher_without_a_spec_emits_no_tasks_change_and_empty_tasks(watcher, tmp_path):
+    manager, builder = copy_fixtures(tmp_path)
+    w = watcher.Watcher(fixtures=[(32813, str(manager)), (33993, str(builder))], spec_path=None)
+    subscriber = w.broadcaster.subscribe()
+    w.poll_once()
+    assert all(e["event"] != "tasks" for e in drain(subscriber))
+    snapshot = w.snapshot()
+    assert (snapshot["tasks"], snapshot["task_counts"], snapshot["spec_path"]) == ([], {"done": 0, "in_progress": 0, "todo": 0}, None)
+
+
+def test_watcher_default_spec_path_is_the_repo_spec(watcher):
+    assert watcher.Watcher.__init__.__defaults__[-1] == watcher.SPEC_PATH
+    assert watcher.SPEC_PATH.name == "SPEC.md" and watcher.SPEC_PATH.parent == watcher.VIZ_DIR.parent
+    args = watcher.build_parser().parse_args(["serve"])
+    assert args.spec == str(watcher.SPEC_PATH)
+    assert watcher.build_parser().parse_args(["serve", "--spec", "/tmp/x.md"]).spec == "/tmp/x.md"

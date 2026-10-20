@@ -47,7 +47,7 @@ discovery/identity/*.json ─┼─► watcher.py ──► state (in memory) �
 ```
 
 - **watcher.py**: polls or inotify-watches the three sources. Tails each transcript by byte offset, parses complete lines only, ignores unknown types (rules in `jsonl-transcript-spec.md` §2, with the `isMeta` exception from `cross-session-message-format.md` §0).
-- **state**: `sessions{}` keyed by PID and `messages{}` keyed by `msg_id`, plus a socket→PID map. Each session also carries `activity` (latest tool description or last assistant text), `activity_at`, `idle_since`, and `last_assistant_text` (V8), which the compact window's activity rows read.
+- **state**: `sessions{}` keyed by PID and `messages{}` keyed by `msg_id`, plus a socket→PID map. Each session also carries `activity` (latest tool description or last assistant text), `activity_at`, `idle_since`, and `last_assistant_text` (V8), which the compact window's activity rows read. `/state` also carries `tasks`, `task_counts`, and `spec_path`, parsed from the SPEC.md Tasks section on every mtime change, with a `tasks` change on `/events` (V9). Convention: the manager marks a task `[~]` on assignment and `[x]` on PASS, so SPEC.md is the task panel's source of truth.
 - **server**: `watcher.py serve` owns port 4780 (`discover.py ui` is retired, D4). `GET /state` is the full snapshot and carries `sources` (latest entry per PID); `GET /events` streams one JSON line per change, each with `source` and `source_pid`, which the page caption reads.
 - **index.html**: renders capsules from `/state`, applies `/events` deltas. Connectors drawn as SVG lines over the capsule layout.
 
