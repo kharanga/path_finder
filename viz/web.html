@@ -35,23 +35,22 @@
   .node.incomplete { border-style: dashed; }
   .node .hd { display: flex; align-items: center; gap: 6px; font-size: 13px; min-width: 0; }
   .node .hd .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .node .row2 { display: flex; gap: 4px; flex-wrap: wrap; min-height: 18px; }
+  .node .row2 { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-height: 18px; }
   .node .last { color: var(--win-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 15px; }
   .node.compact { flex-direction: row; align-items: center; gap: 5px; padding: 0 7px; border-radius: 99px; font-size: 11px; white-space: nowrap; }
   .node.compact .hd .name { font-weight: 500; }
   .node.compact .row2, .node.compact .last { display: none; }
   .node.compact:hover { z-index: 3; flex-direction: column; align-items: stretch; height: auto !important; padding: 7px 9px; border-radius: 8px; white-space: normal; }
   .node.compact:hover .row2, .node.compact:hover .last { display: flex; }
-  .node .n { font-size: 10px; color: var(--orange-fg); background: var(--orange-bg); padding: 0 4px; border-radius: 4px; font-weight: 600; }
+  .mail { color: var(--orange-fg); font-size: 11px; font-weight: 600; white-space: nowrap; }
   .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; transition: box-shadow .3s; }
   .dot.work { box-shadow: 0 0 0 3px var(--blue-bg); }
-  .pill { display: inline-block; padding: 0 5px; border-radius: 6px; font-size: 11px; font-weight: 500; line-height: 1.6; }
+  .pill { display: inline-block; padding: 0 5px; border-radius: 6px; font-size: 11px; font-weight: 500; line-height: 1.6; white-space: nowrap; }
   .pill.idle { background: var(--grey-bg); color: var(--grey-fg); }
   .pill.work { background: var(--blue-bg); color: var(--blue-fg); }
-  .pill.inbox { background: var(--orange-bg); color: var(--orange-fg); }
-  .eye { display: inline-block; transition: transform .2s, color .2s; }
+  .eye { display: inline-block; margin-right: 4px; transition: transform .2s, color .2s; transform-origin: center; }
   .eye.pulse { color: var(--blue-fg); transform: scale(1.35); }
-  .elab { position: absolute; z-index: 2; transform: translate(-50%, -50%); background: #121212; padding: 1px 6px; border-radius: 5px; font-size: 11px; display: flex; flex-direction: column; align-items: center; line-height: 1.3; white-space: nowrap; box-shadow: 0 0 0 1px #2a2a2a; pointer-events: none; transition: opacity .3s; }
+  .elab { position: absolute; z-index: 2; transform: translate(-50%, -50%); background: #121212; padding: 1px 6px; border-radius: 5px; font-size: 11px; display: flex; flex-direction: column; align-items: center; line-height: 1.3; white-space: nowrap; box-shadow: 0 0 0 1px #2a2a2a; pointer-events: none; transition: opacity .3s, left .3s, top .3s; }
   .elab .esum { color: var(--win-fg); max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
   .ok { color: var(--green); } .pend { color: var(--pend); } .fail { color: var(--red); }
   .cap { margin-top: 8px; display: flex; justify-content: space-between; gap: 10px; font-family: var(--mono); font-size: 11px; color: var(--win-muted); min-height: 16px; }
@@ -61,17 +60,15 @@
   .chip.on { border-color: #2e4a6e; } .chip.hot { border-color: #4a3618; } .chip.picked { border-color: #7cb4ff; }
   .chip.out { opacity: .7; }
   .chip .n { font-size: 11px; color: var(--orange-fg); background: var(--orange-bg); padding: 0 5px; border-radius: 5px; font-weight: 600; }
-  .toasts { padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 6px; min-height: 60px; flex: 1; overflow: auto; }
-  .toast { min-width: 0; background: var(--card); border: 1px solid #2e2e2e; border-left: 3px solid var(--green); border-radius: 8px; padding: 8px 11px; display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; font-size: 13px; align-items: baseline; transition: opacity .6s, border-color .3s; cursor: default; }
-  .toast.pend { border-left-color: var(--pend); } .toast.fail { border-left-color: var(--red); } .toast.notice { border-left-color: #3a3a3a; opacity: .6; }
-  .toast.gone { opacity: .35; }
-  .toast.lit { border-color: #35506f; }
-  .toast .from { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; } .toast .from b { font-weight: 600; }
-  .toast .sum { grid-column: 1 / -1; min-width: 0; color: var(--win-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .toast .st { font-size: 12px; white-space: nowrap; }
-  .more { font-size: 12px; color: var(--win-muted); text-align: center; }
-  .quiet-toasts { color: var(--win-muted); font-size: 12px; text-align: center; padding: 10px 0; }
-  @media (prefers-reduced-motion: reduce) { .graph path, .node, .toast, .elab, .dot, .eye { transition: none; } }
+  .rows { padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 5px; min-height: 60px; flex: 1; overflow: auto; }
+  .arow { display: grid; grid-template-columns: auto minmax(60px, auto) auto 1fr; gap: 8px; align-items: center; min-width: 0; padding: 6px 10px; border-radius: 8px; background: var(--card); border: 1px solid #262626; font-size: 12px; transition: border-color .3s; cursor: pointer; }
+  .arow.work { border-left: 3px solid var(--blue-fg); }
+  .arow.picked { border-color: #7cb4ff; }
+  .arow .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .arow .act { min-width: 0; color: var(--win-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .arow.work .act { color: var(--win-fg); }
+  .quiet-rows { color: var(--win-muted); font-size: 12px; text-align: center; padding: 10px 0; }
+  @media (prefers-reduced-motion: reduce) { .graph path, .node, .arow, .elab, .dot, .eye { transition: none; } }
 </style>
 </head>
 <body>
@@ -86,13 +83,11 @@
     <div class="cap"><span id="cap-entry"></span><span id="cap-pair"></span></div>
   </div>
   <div class="strip" id="strip"></div>
-  <div class="toasts" id="toasts"></div>
+  <div class="rows" id="rows"></div>
 </div>
 <script>
   const READ_FLASH_MS = 3000;
-  const TOAST_LINGER_MS = 8000;
   const PULSE_MS = 1200;
-  const MAX_TOASTS = 3;
   const RING_WINDOW_MS = 10 * 60 * 1000;
   const COMPACT_ABOVE = 8;
   const POD_LIFT = 80;
@@ -102,6 +97,17 @@
   const PALETTE = ["#f06292", "#ba68c8", "#ffd54f", "#4db6ac", "#ff8a65", "#9ccc65", "#4fc3f7", "#ce93d8"];
   const STAGE_LABEL = { PENDING: ["Pending", "pend"], IN_INBOX: ["✓ In inbox", "ok"], READ: ["✓✓ Read", "ok"], FAILED: ["✗ Failed", "fail"] };
   const STAGE_STROKE = { PENDING: ["#8a8a8a", "mp"], IN_INBOX: ["#4ad17a", "mg"], READ: ["#4ad17a", "mg"], FAILED: ["#ff6b6b", "mr"] };
+  const RING_PULLS = [0.35, 0.15, 0.55, -0.15, 0.75, 0, 0.95, -0.3, 1.15];
+  const POD_LIFTS = [POD_LIFT, POD_LIFT + 24, POD_LIFT - 20];
+  const LABEL_POSITIONS = [0.5, 0.38, 0.62, 0.28, 0.72, 0.2, 0.8];
+  const LABEL_SIDE_OFFSETS = [0, 20, -20];
+  const LABEL_CHAR_PX = 6.3;
+  const LABEL_HEIGHT = 30;
+  const CURVE_SAMPLES = 16;
+  const OVERLAP_PENALTY = 100;
+  const CROSSING_PENALTY = 4;
+  const NODE_HIT_PENALTY = 400;
+  const PLACEMENT_ROUNDS = 2;
 
   const graph = document.getElementById("graph");
   const svg = document.getElementById("svg");
@@ -111,7 +117,7 @@
   const capEntry = document.getElementById("cap-entry");
   const capPair = document.getElementById("cap-pair");
   const strip = document.getElementById("strip");
-  const toasts = document.getElementById("toasts");
+  const rows = document.getElementById("rows");
 
   const state = { sessions: new Map(), messages: new Map(), sources: new Map(), sourceSequence: 0, caption: { entry: "", pair: "" } };
   const feedClock = { latestFeedMs: 0, seenAtWallMs: 0 };
@@ -189,10 +195,6 @@
 
   function sentMs(message) {
     return parseMs(message.sent_at || message.read_at);
-  }
-
-  function firstLine(text) {
-    return (text || "").split("\n").map((line) => line.trim()).find(Boolean) || "";
   }
 
   function truncate(text, max) {
@@ -305,15 +307,14 @@
   }
 
   function withinHorizon(message, now) {
-    const age = now - messageMs(message);
-    return age < RING_WINDOW_MS;
+    return now - messageMs(message) < RING_WINDOW_MS;
   }
 
   function visibleArrows(now) {
     return messagesOnly().filter((m) => {
+      if (m.stage === "FAILED") return !failedIsResolved(m);
       if (!withinHorizon(m, now)) return false;
       if (m.stage === "PENDING" || m.stage === "IN_INBOX") return true;
-      if (m.stage === "FAILED") return !failedIsResolved(m);
       return m.stage === "READ" && flashRemaining(m, now) > 0;
     });
   }
@@ -332,14 +333,14 @@
     for (const m of state.messages.values()) {
       const ends = endpointsOf(m);
       if (!ends) continue;
-      if (withinHorizon(m, now)) { active.add(ends[0]); active.add(ends[1]); }
+      if (withinHorizon(m, now) || (m.kind === "message" && m.stage === "FAILED" && !failedIsResolved(m))) { active.add(ends[0]); active.add(ends[1]); }
     }
     for (const s of state.sessions.values()) for (const w of s.watching || []) { active.add(s.pid); const pid = Number.isInteger(Number(w)) ? Number(w) : pidByName(String(w)); if (pid !== null) active.add(pid); }
     const all = [...state.sessions.values()].sort((a, b) => a.pid - b.pid);
     return active.size ? all.filter((s) => active.has(s.pid)) : all;
   }
 
-  let layout = { W: 376, H: 380, CW: 108, CH: 62, compact: false, pos: new Map() };
+  let layout = { W: 376, H: 380, CW: 108, CH: 62, compact: false, pod: false, pos: new Map(), cx: 188, cy: 198 };
 
   function layoutNodes(ring) {
     const W = graph.clientWidth || 376;
@@ -383,22 +384,28 @@
     return el("span", "eye" + (pulse ? " pulse" : ""), "👁");
   }
 
+  function mailEl(count) {
+    const mail = el("span", "mail", `✉ ${count}`);
+    mail.title = `${count} queued message${count === 1 ? "" : "s"}`;
+    return mail;
+  }
+
   function buildNodeContent(session, pulse) {
     const status = statusText(session);
     const working = session.status === "WORKING";
     const hd = el("div", "hd");
     hd.append(dotEl(session.pid, working && layout.compact), el("span", "name", labelOf(session)));
-    if (layout.compact && session.inbox > 0) hd.append(el("span", "n", String(session.inbox)));
+    if (layout.compact && session.inbox > 0) hd.append(mailEl(session.inbox));
     if (layout.compact && pulse) hd.append(eyeEl(true));
     const row2 = el("div", "row2");
     row2.append(el("span", `pill ${status === "Idle" ? "idle" : "work"}`, status));
-    if (session.inbox > 0) row2.append(el("span", "pill inbox", `Inbox ${session.inbox}`));
+    if (session.inbox > 0) row2.append(mailEl(session.inbox));
     const last = el("div", "last");
     const watched = (session.watching || []).map(labelFor).filter(Boolean);
     if (watched.length) {
-      last.append(eyeEl(pulse), document.createTextNode(` Watching ${watched.join(", ")}`));
+      last.append(eyeEl(pulse), document.createTextNode(`Watching ${watched.join(", ")}`));
     } else if (pulse) {
-      last.append(eyeEl(true), document.createTextNode(" idle notice"));
+      last.append(eyeEl(true), document.createTextNode("idle notice"));
     } else {
       const text = lastLineOf(session);
       last.textContent = text;
@@ -446,28 +453,162 @@
     return el("span", cls, text);
   }
 
-  function renderArrows(visible, now) {
+  function bezierPoint(S, C, E, t) {
+    const u = 1 - t;
+    return [u * u * S[0] + 2 * u * t * C[0] + t * t * E[0], u * u * S[1] + 2 * u * t * C[1] + t * t * E[1]];
+  }
+
+  function bezierNormal(S, C, E, t) {
+    const dx = 2 * (1 - t) * (C[0] - S[0]) + 2 * t * (E[0] - C[0]);
+    const dy = 2 * (1 - t) * (C[1] - S[1]) + 2 * t * (E[1] - C[1]);
+    const length = Math.hypot(dx, dy) || 1;
+    return [-dy / length, dx / length];
+  }
+
+  function sampleCurve(S, C, E) {
+    const points = [];
+    for (let i = 0; i <= CURVE_SAMPLES; i += 1) points.push(bezierPoint(S, C, E, i / CURVE_SAMPLES));
+    return points;
+  }
+
+  function rectAround(center, width, height) {
+    return { x1: center[0] - width / 2, y1: center[1] - height / 2, x2: center[0] + width / 2, y2: center[1] + height / 2 };
+  }
+
+  function rectsOverlap(a, b) {
+    return a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
+  }
+
+  function pointInRect(p, r) {
+    return p[0] >= r.x1 && p[0] <= r.x2 && p[1] >= r.y1 && p[1] <= r.y2;
+  }
+
+  function orientation(a, b, c) {
+    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  }
+
+  function segmentsCross(p1, p2, p3, p4) {
+    const d1 = orientation(p3, p4, p1), d2 = orientation(p3, p4, p2), d3 = orientation(p1, p2, p3), d4 = orientation(p1, p2, p4);
+    return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+  }
+
+  function curveHitsRect(points, rect) {
+    const corners = [[rect.x1, rect.y1], [rect.x2, rect.y1], [rect.x2, rect.y2], [rect.x1, rect.y2]];
+    for (let i = 0; i < points.length; i += 1) {
+      if (pointInRect(points[i], rect)) return true;
+      if (i > 0) for (let c = 0; c < 4; c += 1) if (segmentsCross(points[i - 1], points[i], corners[c], corners[(c + 1) % 4])) return true;
+    }
+    return false;
+  }
+
+  function curvesCross(a, b) {
+    let count = 0;
+    for (let i = 1; i < a.length; i += 1) for (let j = 1; j < b.length; j += 1) if (segmentsCross(a[i - 1], a[i], b[j - 1], b[j])) count += 1;
+    return count;
+  }
+
+  function nodeRects(ring) {
+    const rects = new Map();
+    for (const session of ring) {
+      const node = nodeEls.get(session.pid);
+      const height = (node && node.offsetHeight) || layout.CH;
+      const center = layout.pos.get(session.pid);
+      rects.set(session.pid, { x1: center[0] - layout.CW / 2 - 2, y1: center[1] - layout.CH / 2 - 2, x2: center[0] + layout.CW / 2 + 2, y2: center[1] - layout.CH / 2 + height + 2 });
+    }
+    return rects;
+  }
+
+  function labelSize(message, count) {
+    const summary = truncate(message.summary || message.body || message.key, 40) + (count > 1 ? ` +${count - 1}` : "");
+    const stage = (STAGE_LABEL[message.stage] || [message.stage])[0];
+    return [Math.min(170, Math.max(summary.length, stage.length) * LABEL_CHAR_PX + 14), LABEL_HEIGHT];
+  }
+
+  function controlCandidates(A, B, key, reverseKey, hasReverse) {
+    const { cx, cy, pod } = layout;
+    const mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
+    if (pod) {
+      const sign = hasReverse && key > reverseKey ? -1 : 1;
+      return POD_LIFTS.map((lift) => [mx, my - sign * lift]);
+    }
+    const preferred = key < reverseKey ? 0.15 : 0.55;
+    const pulls = [preferred, ...RING_PULLS.filter((p) => p !== preferred)];
+    return pulls.map((pull) => [mx + (cx - mx) * pull, my + (cy - my) * pull]);
+  }
+
+  function placeArrow(entry, placed, rects, otherPids) {
+    const { A, B, key, reverseKey, size, hasReverse } = entry;
+    const bounds = { x1: 0, y1: 0, x2: layout.W, y2: layout.H };
+    let best = null;
+    controlCandidates(A, B, key, reverseKey, hasReverse).forEach((C, controlIndex) => {
+      const S = exitPoint(A, C, 3), E = exitPoint(B, C, 6);
+      const points = sampleCurve(S, C, E);
+      let curveScore = controlIndex * 0.5;
+      for (const pid of otherPids) if (curveHitsRect(points, rects.get(pid))) curveScore += NODE_HIT_PENALTY;
+      for (const other of placed) {
+        curveScore += CROSSING_PENALTY * curvesCross(points, other.points);
+        if (other.labelRect && curveHitsRect(points, other.labelRect)) curveScore += OVERLAP_PENALTY / 2;
+      }
+      for (const t of LABEL_POSITIONS) {
+        const onCurve = bezierPoint(S, C, E, t), normal = bezierNormal(S, C, E, t);
+        for (const side of LABEL_SIDE_OFFSETS) {
+          const center = [onCurve[0] + normal[0] * side, onCurve[1] + normal[1] * side];
+          const labelRect = rectAround(center, size[0], size[1]);
+          let score = curveScore + Math.abs(t - 0.5) * 10 + Math.abs(side) / 10;
+          if (labelRect.x1 < bounds.x1 || labelRect.y1 < bounds.y1 || labelRect.x2 > bounds.x2 || labelRect.y2 > bounds.y2) score += OVERLAP_PENALTY / 4;
+          for (const rect of rects.values()) if (rectsOverlap(labelRect, rect)) score += OVERLAP_PENALTY;
+          for (const other of placed) {
+            if (other.labelRect && rectsOverlap(labelRect, other.labelRect)) score += OVERLAP_PENALTY;
+            if (curveHitsRect(other.points, labelRect)) score += OVERLAP_PENALTY / 2;
+          }
+          if (!best || score < best.score) best = { score, S, C, E, points, labelCenter: center, labelRect };
+        }
+      }
+    });
+    return best;
+  }
+
+  function placeAll(entries, rects, ring) {
+    const fits = entries.map(() => null);
+    for (let round = 0; round < PLACEMENT_ROUNDS; round += 1) {
+      entries.forEach((entry, index) => {
+        const others = fits.filter((fit, j) => fit && j !== index).map((fit) => ({ points: fit.points, labelRect: fit.score < OVERLAP_PENALTY / 2 ? fit.labelRect : null }));
+        const otherPids = ring.map((s) => s.pid).filter((pid) => pid !== entry.ends[0] && pid !== entry.ends[1]);
+        fits[index] = placeArrow(entry, others, rects, otherPids);
+      });
+    }
+    fits.forEach((fit, index) => {
+      const crossedByOther = fits.some((other, j) => j !== index && curveHitsRect(other.points, fit.labelRect));
+      fit.labelClear = fit.score < OVERLAP_PENALTY / 2 && !crossedByOther;
+    });
+    return fits;
+  }
+
+  function renderArrows(visible, ring, now) {
     const byPair = new Map();
     for (const m of visible) {
       const key = arrowKey(m);
       if (!byPair.has(key)) byPair.set(key, []);
       byPair.get(key).push(m);
     }
-    const newest = visible.reduce((best, m) => (!best || sentMs(m) > sentMs(best)) ? m : best, null);
-    const keep = new Set();
-    const { cx, cy, pod, pos } = layout;
+    const entries = [];
     for (const [key, list] of byPair) {
       const m = list.reduce((best, x) => (!best || sentMs(x) > sentMs(best)) ? x : best, null);
       const ends = endpointsOf(m);
-      const A = pos.get(ends[0]), B = pos.get(ends[1]);
+      const A = layout.pos.get(ends[0]), B = layout.pos.get(ends[1]);
       if (!A || !B) continue;
       const reverseKey = `${ends[1]}>${ends[0]}`;
-      const reverse = byPair.has(reverseKey);
-      const mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
-      const pull = pod ? 0 : (reverse ? (key < reverseKey ? 0.15 : 0.55) : 0.35);
-      const C = [mx + (cx - mx) * pull, my + (cy - my) * pull - (pod ? (reverse && key > reverseKey ? -POD_LIFT : POD_LIFT) : 0)];
-      const S = exitPoint(A, C, 3), E = exitPoint(B, C, 6);
-      const P = [0.25 * S[0] + 0.5 * C[0] + 0.25 * E[0], 0.25 * S[1] + 0.5 * C[1] + 0.25 * E[1]];
+      entries.push({ key, reverseKey, hasReverse: byPair.has(reverseKey), message: m, count: list.length, ends, A, B, size: labelSize(m, list.length) });
+    }
+    entries.sort((a, b) => sentMs(b.message) - sentMs(a.message) || a.key.localeCompare(b.key));
+    const newest = entries.length ? entries[0].message : null;
+    const rects = nodeRects(ring);
+    const fits = placeAll(entries, rects, ring);
+    const keep = new Set();
+    entries.forEach((entry, index) => {
+      const fit = fits[index];
+      const labelClear = fit.labelClear;
+      const { key, message: m, ends } = entry;
       const [stroke, marker] = STAGE_STROKE[m.stage] || STAGE_STROKE.PENDING;
       let path = pathEls.get(key);
       if (!path) {
@@ -479,7 +620,7 @@
         arrows.append(path);
         pathEls.set(key, path);
       }
-      path.setAttribute("d", `M${S[0].toFixed(1)},${S[1].toFixed(1)} Q${C[0].toFixed(1)},${C[1].toFixed(1)} ${E[0].toFixed(1)},${E[1].toFixed(1)}`);
+      path.setAttribute("d", `M${fit.S[0].toFixed(1)},${fit.S[1].toFixed(1)} Q${fit.C[0].toFixed(1)},${fit.C[1].toFixed(1)} ${fit.E[0].toFixed(1)},${fit.E[1].toFixed(1)}`);
       path.setAttribute("stroke", stroke);
       path.setAttribute("marker-end", `url(#${marker})`);
       path.setAttribute("data-stage", m.stage);
@@ -497,14 +638,16 @@
         labelEls.set(key, label);
       }
       const summary = el("span", "esum", truncate(m.summary || m.body || m.key, 40));
-      if (list.length > 1) summary.append(document.createTextNode(" "), el("span", "pend", `+${list.length - 1}`));
+      if (entry.count > 1) summary.append(document.createTextNode(" "), el("span", "pend", `+${entry.count - 1}`));
       label.replaceChildren(summary, stageSpan(m.stage));
       label.title = `${m.stage}${m.reason ? ": " + m.reason : ""}\n${m.body || ""}`;
-      label.style.left = `${P[0]}px`;
-      label.style.top = `${P[1]}px`;
-      const hidden = layout.compact && m !== newest && !lit;
+      label.style.left = `${fit.labelCenter[0].toFixed(1)}px`;
+      label.style.top = `${fit.labelCenter[1].toFixed(1)}px`;
+      label.dataset.clear = labelClear ? "1" : "0";
+      const hidden = !lit && !labelClear;
       label.style.opacity = hidden ? "0" : (flash ? String(Math.max(0, flashRemaining(m, now))) : "1");
-    }
+      label.style.zIndex = lit ? "4" : "2";
+    });
     for (const [key, path] of pathEls) if (!keep.has(key)) { path.remove(); pathEls.delete(key); }
     for (const [key, label] of labelEls) if (!keep.has(key)) { label.remove(); labelEls.delete(key); }
   }
@@ -529,60 +672,42 @@
     render();
   }
 
-  function toastItems(now) {
-    const items = [];
-    for (const m of messagesOnly()) {
-      if (!withinHorizon(m, now)) continue;
-      if (m.stage === "READ" && now - parseMs(m.read_at) >= TOAST_LINGER_MS) continue;
-      if (m.stage === "FAILED" && failedIsResolved(m)) continue;
-      items.push({ kind: "message", message: m, at: sentMs(m) });
-    }
-    for (const n of noticesOnly()) {
-      const at = parseMs(n.read_at || n.sent_at);
-      if (now - at < TOAST_LINGER_MS) items.push({ kind: "notice", notice: n, at });
-      if (now - at < RING_WINDOW_MS) { const ends = [n.from_pid !== null && n.from_pid !== undefined ? n.from_pid : pidFromSocket(n.to), n.to_pid]; }
-    }
-    return items.sort((a, b) => b.at - a.at);
+  function activityOf(session, now) {
+    if (session.activity) return session.activity;
+    if (session.status === "WORKING") return "working";
+    const since = parseMs(session.idle_since || session.last_seen_at);
+    return since ? `idle ${Math.max(0, Math.floor((now - since) / 60000))} min` : "idle";
   }
 
-  function renderToasts(now) {
-    const items = toastItems(now);
-    toasts.replaceChildren();
-    if (!items.length) {
-      toasts.append(el("div", "quiet-toasts", "No traffic"));
+  function activityRows() {
+    const lastChange = (s) => parseMs(s.last_seen_at);
+    return [...state.sessions.values()].sort((a, b) => {
+      const aWorking = a.status === "WORKING" ? 0 : 1, bWorking = b.status === "WORKING" ? 0 : 1;
+      return aWorking - bWorking || lastChange(b) - lastChange(a) || a.pid - b.pid;
+    });
+  }
+
+  function renderRows(now) {
+    rows.replaceChildren();
+    const sessions = activityRows();
+    if (!sessions.length) {
+      rows.append(el("div", "quiet-rows", "No sessions discovered yet"));
       return;
     }
-    for (const item of items.slice(0, MAX_TOASTS)) {
-      if (item.kind === "notice") {
-        const n = item.notice;
-        const toast = el("div", "toast notice");
-        const from = el("div", "from");
-        const watchedPid = n.from_pid !== null && n.from_pid !== undefined ? n.from_pid : pidFromSocket(n.to);
-        from.append(dotEl(watchedPid), el("b", "", labelFor(watchedPid !== null ? watchedPid : n.to)), el("span", "pend", "idle notice to"), dotEl(n.to_pid), el("b", "", labelFor(n.to_pid)));
-        toast.append(from, el("span", "st pend", "👁"));
-        toasts.append(toast);
-        continue;
-      }
-      const m = item.message;
-      const ends = endpointsOf(m);
-      const key = arrowKey(m);
-      const cls = m.stage === "PENDING" ? "pend" : (m.stage === "FAILED" ? "fail" : (m.stage === "READ" && flashRemaining(m, now) <= 0 ? "gone" : ""));
-      const toast = el("div", `toast ${cls}` + (litKey === key ? " lit" : ""));
-      toast.dataset.key = key;
-      toast.dataset.msg = m.key;
-      const from = el("div", "from");
-      from.append(dotEl(ends[0]), el("b", "", labelFor(ends[0])), el("span", "pend", "→"), dotEl(ends[1]), el("b", "", labelFor(ends[1])));
-      const [text, stageCls] = STAGE_LABEL[m.stage] || [m.stage, "pend"];
-      const stage = el("span", `st ${stageCls}`, text);
-      if (m.reason) stage.title = m.reason;
-      const sum = el("div", "sum", firstLine(m.body) || m.summary || "");
-      sum.title = m.body || m.summary || "";
-      toast.append(from, stage, sum);
-      toast.addEventListener("mouseenter", () => { litKey = key; render(); });
-      toast.addEventListener("mouseleave", () => { litKey = null; render(); });
-      toasts.append(toast);
+    for (const session of sessions) {
+      const status = statusText(session);
+      const working = session.status === "WORKING";
+      const row = el("div", "arow" + (working ? " work" : "") + (pickedPid === session.pid ? " picked" : ""));
+      row.dataset.pid = session.pid;
+      row.dataset.status = status;
+      const name = el("span", "name", labelOf(session));
+      name.title = `${session.name || "unnamed"} · pid ${session.pid}`;
+      const activity = el("span", "act", activityOf(session, now));
+      activity.title = session.activity ? `${session.activity}${session.activity_at ? "\n" + session.activity_at : ""}` : activity.textContent;
+      row.append(dotEl(session.pid, working), name, el("span", `pill ${status === "Idle" ? "idle" : "work"}`, status), activity);
+      row.addEventListener("click", () => pick(session.pid));
+      rows.append(row);
     }
-    if (items.length > MAX_TOASTS) toasts.append(el("div", "more", `+${items.length - MAX_TOASTS} more`));
   }
 
   function renderTitle(ring, inFlight) {
@@ -604,11 +729,11 @@
     if (!ring.length && !quiet) graph.append(el("div", "quiet", "No sessions discovered yet"));
     if (ring.length && quiet) quiet.remove();
     renderNodes(ring, now, inFlight);
-    renderArrows(visible.filter((m) => { const ends = endpointsOf(m); return layout.pos.has(ends[0]) && layout.pos.has(ends[1]); }), now);
+    renderArrows(visible.filter((m) => { const ends = endpointsOf(m); return layout.pos.has(ends[0]) && layout.pos.has(ends[1]); }), ring, now);
     capEntry.textContent = state.caption.entry;
     capPair.textContent = state.caption.pair;
     renderStrip(ring);
-    renderToasts(now);
+    renderRows(now);
     renderTitle(ring, inFlight);
   }
 
@@ -632,7 +757,6 @@
   }
 
   let fallbackTimer = null;
-  let eventsReceived = 0;
   function connectEvents() {
     const source = new EventSource("./events");
     source.onopen = () => {
@@ -641,7 +765,6 @@
       if (fallbackTimer) { clearInterval(fallbackTimer); fallbackTimer = null; }
     };
     source.onmessage = (event) => {
-      eventsReceived += 1;
       try {
         applyChange(JSON.parse(event.data));
         scheduleRender();
