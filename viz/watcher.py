@@ -49,6 +49,11 @@ KEPT_META_TURN_ORIGINS = {"peer", "system"}
 SOCKET_PREFIX = "uds:/tmp/cc-socks/"
 PEER_MESSAGE_PREFIX = "<cross-session-message"
 REGISTRY_SOURCE = "registry"
+SPEC_SOURCE = "spec"
+SPEC_PATH = VIZ_DIR.parent / "SPEC.md"
+TASK_LINE = re.compile(r"^- \[(?P<mark>[ x~])\] (?P<id>[A-Za-z]+\d+): (?P<text>.+)$")
+TASK_STATES = {" ": "todo", "x": "done", "~": "in_progress"}
+TASK_OWNERS = {"D": "discovery-builder", "V": "viz-builder"}
 IDLE_NOTICE_PREFIX = "[Cross-session idle notice]"
 SENDER_OWNED_MESSAGE_FIELDS = ("pending_key", "tool_use_id", "from_pid", "to", "summary", "body", "notify_when_idle", "sent_at")
 
@@ -630,10 +635,73 @@ def identified_live_sessions(root):
     return rows
 
 
+def task_title(text):
+    stripped = text.strip()
+    match = re.search(r"\.(\s|$)", stripped)
+    return (stripped[:match.start()] if match else stripped).strip()
+
+
+def parse_spec_tasks(text):
+    tasks = []
+    in_tasks = False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            in_tasks = line.strip() == "## Tasks"
+            continue
+        if not in_tasks:
+            continue
+        match = TASK_LINE.match(line.rstrip())
+        if not match:
+            continue
+        task_id = match.group("id")
+        tasks.append({
+            "id": task_id,
+            "state": TASK_STATES[match.group("mark")],
+            "title": task_title(match.group("text")),
+            "text": match.group("text").strip(),
+            "owner": TASK_OWNERS.get(task_id[0].upper()),
+        })
+    return tasks
+
+
+def task_counts(tasks):
+    return {state: sum(1 for task in tasks if task["state"] == state) for state in ("done", "in_progress", "todo")}
+
+
+class SpecTasks:
+    def __init__(self, path):
+        self.path = Path(path) if path else None
+        self.signature = None
+        self.tasks = []
+
+    def refresh(self):
+        if self.path is None:
+            return False
+        try:
+            stat = self.path.stat()
+            signature = (stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            signature = None
+        if signature == self.signature:
+            return False
+        self.signature = signature
+        try:
+            tasks = parse_spec_tasks(self.path.read_text(encoding="utf-8"))
+        except OSError:
+            tasks = []
+        changed = tasks != self.tasks
+        self.tasks = tasks
+        return changed
+
+    def payload(self):
+        return {"tasks": copy.deepcopy(self.tasks), "task_counts": task_counts(self.tasks), "spec_path": str(self.path) if self.path else None}
+
+
 class Watcher:
-    def __init__(self, root=None, fixtures=None, log_path=None):
+    def __init__(self, root=None, fixtures=None, log_path=None, spec_path=SPEC_PATH):
         self.root = root
         self.fixtures = fixtures
+        self.spec = SpecTasks(spec_path)
         self.model = StateModel()
         self.tailers = {}
         self.last_timestamp_by_pid = {}
@@ -694,9 +762,14 @@ class Watcher:
     def poll_once(self):
         with self.lock:
             self.refresh_sessions()
+            self.refresh_tasks()
             for pid, entry in self.entries_in_time_order():
                 for change in self.model.apply(pid, entry):
                     self.emit(change)
+
+    def refresh_tasks(self):
+        if self.spec.refresh():
+            self.emit({"event": "tasks", "at": now_iso(), "source": SPEC_SOURCE, "source_pid": None, **self.spec.payload()})
 
     def entries_in_time_order(self):
         timed = []
@@ -716,7 +789,7 @@ class Watcher:
 
     def snapshot(self):
         with self.lock:
-            return {"generated_at": now_iso(), **copy.deepcopy(self.model.snapshot())}
+            return {"generated_at": now_iso(), **copy.deepcopy(self.model.snapshot()), **self.spec.payload()}
 
 
 class VizRequestHandler(SimpleHTTPRequestHandler):
@@ -789,7 +862,7 @@ class VizRequestHandler(SimpleHTTPRequestHandler):
 
 
 def command_serve(args):
-    watcher = Watcher(root=args.root, fixtures=args.fixture or None, log_path=None if args.no_log else args.log)
+    watcher = Watcher(root=args.root, fixtures=args.fixture or None, log_path=None if args.no_log else args.log, spec_path=args.spec)
     handler = type("BoundVizRequestHandler", (VizRequestHandler,), {"watcher": watcher, "quiet": not args.verbose})
     try:
         server = ThreadingHTTPServer(("127.0.0.1", args.port), handler)
@@ -1015,6 +1088,7 @@ def build_parser():
     serve_parser.add_argument("--verbose", action="store_true", help="log every request")
     serve_parser.add_argument("--log", default=str(EVENT_LOG_PATH), help="append every change here as one JSON line")
     serve_parser.add_argument("--no-log", action="store_true", help="do not write the event log")
+    serve_parser.add_argument("--spec", default=str(SPEC_PATH), help="SPEC.md to read the task list from")
     serve_parser.set_defaults(func=command_serve)
     replay_parser = sub.add_parser("replay", help="write fixture lines into fresh files in timestamp order, for serve --fixture to tail")
     replay_parser.add_argument("--fixture", action="append", required=True, type=parse_fixture_argument, metavar="PID=PATH")

@@ -16,7 +16,37 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--win-fg); font-family: var(--sans); font-size: 13px; line-height: 1.45; }
-  .win { background: var(--win); min-height: 100vh; display: flex; flex-direction: column; width: 100%; overflow: hidden; }
+  .win { background: var(--win); min-height: 100vh; display: flex; flex-direction: row; align-items: stretch; width: 100%; overflow: hidden; }
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .panel { flex: none; width: 250px; display: flex; flex-direction: column; border-left: 1px solid #222; background: #141414; min-height: 0; }
+  .panel.collapsed { width: 34px; }
+  .ptab { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #222; font-size: 11px; color: var(--win-muted); cursor: pointer; white-space: nowrap; user-select: none; }
+  .ptab b { color: var(--win-fg); font-weight: 600; }
+  .ptab .chev { margin-left: auto; }
+  .panel.collapsed .ptab { writing-mode: vertical-rl; transform: rotate(180deg); border-bottom: 0; border-left: 1px solid #222; padding: 10px 8px; height: 100%; justify-content: flex-end; }
+  .panel.collapsed .ptab .chev { margin-left: 0; margin-top: auto; }
+  .panel.collapsed .plist { display: none; }
+  .plist { overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 4px; }
+  .task { border: 1px solid #262626; border-radius: 8px; background: var(--card); padding: 6px 8px; cursor: pointer; font-size: 12px; display: grid; grid-template-columns: auto 1fr auto; gap: 2px 8px; align-items: baseline; }
+  .task.in_progress { border-color: #35506f; }
+  .task .tid { font-family: var(--mono); font-size: 11px; color: var(--win-muted); }
+  .task .ttitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task.open .ttitle { white-space: normal; }
+  .task .tstate { font-size: 11px; white-space: nowrap; }
+  .task.done .tstate { color: var(--green); } .task.in_progress .tstate { color: var(--blue-fg); } .task.todo .tstate { color: var(--win-muted); }
+  .task .towner { grid-column: 2 / -1; font-size: 11px; color: var(--blue-fg); display: flex; align-items: center; gap: 5px; }
+  .task .tfull { grid-column: 1 / -1; display: none; color: var(--win-muted); font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; border-top: 1px solid #262626; padding-top: 5px; margin-top: 3px; }
+  .task.open .tfull { display: block; }
+  .task-badge { font-family: var(--mono); font-size: 10px; color: var(--blue-fg); background: var(--blue-bg); padding: 0 4px; border-radius: 4px; flex: none; }
+  .node.tasked, .arow.tasked { border-color: #35506f; box-shadow: 0 0 0 1px #2e4a6e; }
+  @media (max-width: 639px) {
+    .win { flex-direction: column; }
+    .panel { width: auto; border-left: 0; border-top: 1px solid #222; }
+    .panel.collapsed { width: auto; }
+    .panel.collapsed .ptab { writing-mode: horizontal-tb; transform: none; border-left: 0; height: auto; padding: 8px 10px; justify-content: flex-start; }
+    .panel.collapsed .ptab .chev { margin-left: auto; margin-top: 0; }
+    .plist { max-height: 300px; }
+  }
   .bar { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-bottom: 1px solid #222; font-size: 11px; color: var(--win-muted); }
   .bar .dots i { width: 10px; height: 10px; border-radius: 50%; background: #3a3a3a; display: inline-block; margin-right: 6px; }
   .bar span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -73,6 +103,7 @@
 </head>
 <body>
 <div class="win">
+<div class="main">
   <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span id="title"></span><span id="link"></span></div>
   <div class="body">
     <div class="graph" id="graph"><svg id="svg" aria-hidden="true"><defs>
@@ -84,6 +115,8 @@
   </div>
   <div class="strip" id="strip"></div>
   <div class="rows" id="rows"></div>
+</div>
+<aside class="panel" id="panel"><div class="ptab" id="ptab"></div><div class="plist" id="plist"></div></aside>
 </div>
 <script>
   const READ_FLASH_MS = 3000;
@@ -118,8 +151,16 @@
   const capPair = document.getElementById("cap-pair");
   const strip = document.getElementById("strip");
   const rows = document.getElementById("rows");
+  const panel = document.getElementById("panel");
+  const panelTab = document.getElementById("ptab");
+  const panelList = document.getElementById("plist");
+  const TASK_STATE_TEXT = { done: "Done", in_progress: "In progress", todo: "To do" };
+  const PANEL_STORAGE_KEY = "viz-web-panel-collapsed";
 
-  const state = { sessions: new Map(), messages: new Map(), sources: new Map(), sourceSequence: 0, caption: { entry: "", pair: "" } };
+  const state = { sessions: new Map(), messages: new Map(), sources: new Map(), sourceSequence: 0, caption: { entry: "", pair: "" }, tasks: [], taskCounts: { done: 0, in_progress: 0, todo: 0 } };
+  const openTaskIds = new Set();
+  let panelCollapsed = false;
+  try { panelCollapsed = localStorage.getItem(PANEL_STORAGE_KEY) === "1"; } catch (error) { panelCollapsed = false; }
   const feedClock = { latestFeedMs: 0, seenAtWallMs: 0 };
   const nodeEls = new Map();
   const labelEls = new Map();
@@ -216,6 +257,7 @@
     state.sessions = new Map((snapshot.sessions || []).map((s) => [s.pid, s]));
     state.messages = new Map((snapshot.messages || []).map((m) => [m.key, m]));
     state.sources = new Map((snapshot.sources || []).map((s) => [s.pid, s]));
+    applyTasks(snapshot);
     state.sourceSequence = Math.max(0, ...[...state.sources.values()].map((s) => s.seq || 0));
     for (const m of state.messages.values()) advanceFeedClock(m.read_at || m.accepted_at || m.enqueued_at || m.sent_at);
     for (const s of state.sessions.values()) advanceFeedClock(s.last_seen_at);
@@ -232,6 +274,11 @@
   function applyChange(change) {
     if (change.event === "snapshot") {
       applySnapshot(change);
+      return;
+    }
+    if (change.event === "tasks") {
+      applyTasks(change);
+      if (change.at) advanceFeedClock(change.at);
       return;
     }
     if (change.event === "session") {
@@ -251,6 +298,40 @@
       noteCaption(change);
     }
     if (change.at) advanceFeedClock(change.at);
+  }
+
+  function applyTasks(payload) {
+    if (!Array.isArray(payload.tasks)) return;
+    state.tasks = payload.tasks;
+    state.taskCounts = payload.task_counts || { done: 0, in_progress: 0, todo: 0 };
+  }
+
+  function ownerPidOf(owner) {
+    if (!owner) return null;
+    const needle = String(owner).toLowerCase();
+    for (const s of state.sessions.values()) {
+      const words = `${s.role || ""} ${s.label || ""} ${s.name || ""}`.toLowerCase();
+      if (words.includes(needle)) return s.pid;
+    }
+    return null;
+  }
+
+  function taskedPids() {
+    const byPid = new Map();
+    for (const task of state.tasks) {
+      if (task.state !== "in_progress") continue;
+      const pid = ownerPidOf(task.owner);
+      if (pid === null) continue;
+      if (!byPid.has(pid)) byPid.set(pid, []);
+      byPid.get(pid).push(task.id);
+    }
+    return byPid;
+  }
+
+  function taskBadge(ids) {
+    const badge = el("span", "task-badge", ids.join(" "));
+    badge.title = `in progress: ${ids.join(", ")}`;
+    return badge;
   }
 
   function messagesOnly() {
@@ -416,6 +497,7 @@
 
   function renderNodes(ring, now, inFlight) {
     const pulsing = pulsingPids(now);
+    const tasked = taskedPids();
     const keep = new Set();
     for (const session of ring) {
       keep.add(session.pid);
@@ -436,9 +518,12 @@
       node.style.minHeight = `${layout.CH}px`;
       node.style.height = layout.compact ? `${layout.CH}px` : "auto";
       node.title = `${session.name || "unnamed"} · pid ${session.pid}`;
-      node.replaceChildren(...buildNodeContent(session, pulsing.has(session.pid)));
+      const content = buildNodeContent(session, pulsing.has(session.pid));
+      if (tasked.has(session.pid)) content[0].append(taskBadge(tasked.get(session.pid)));
+      node.replaceChildren(...content);
       const hot = inFlight.some((m) => (m.stage === "PENDING" || m.stage === "IN_INBOX") && (Number(m.from_pid) === session.pid || Number(m.to_pid) === session.pid));
       node.classList.toggle("hot", hot);
+      node.classList.toggle("tasked", tasked.has(session.pid));
     }
     for (const [pid, node] of nodeEls) if (!keep.has(pid)) { node.remove(); nodeEls.delete(pid); }
   }
@@ -689,6 +774,7 @@
 
   function renderRows(now) {
     rows.replaceChildren();
+    const tasked = taskedPids();
     const sessions = activityRows();
     if (!sessions.length) {
       rows.append(el("div", "quiet-rows", "No sessions discovered yet"));
@@ -697,7 +783,7 @@
     for (const session of sessions) {
       const status = statusText(session);
       const working = session.status === "WORKING";
-      const row = el("div", "arow" + (working ? " work" : "") + (pickedPid === session.pid ? " picked" : ""));
+      const row = el("div", "arow" + (working ? " work" : "") + (pickedPid === session.pid ? " picked" : "") + (tasked.has(session.pid) ? " tasked" : ""));
       row.dataset.pid = session.pid;
       row.dataset.status = status;
       const name = el("span", "name", labelOf(session));
@@ -705,8 +791,53 @@
       const activity = el("span", "act", activityOf(session, now));
       activity.title = session.activity ? `${session.activity}${session.activity_at ? "\n" + session.activity_at : ""}` : activity.textContent;
       row.append(dotEl(session.pid, working), name, el("span", `pill ${status === "Idle" ? "idle" : "work"}`, status), activity);
+      if (tasked.has(session.pid)) name.append(document.createTextNode(" "), taskBadge(tasked.get(session.pid)));
       row.addEventListener("click", () => pick(session.pid));
       rows.append(row);
+    }
+  }
+
+  function countsText() {
+    const c = state.taskCounts;
+    return `${c.done || 0} done · ${c.in_progress || 0} in progress · ${c.todo || 0} to do`;
+  }
+
+  function togglePanel() {
+    panelCollapsed = !panelCollapsed;
+    try { localStorage.setItem(PANEL_STORAGE_KEY, panelCollapsed ? "1" : "0"); } catch (error) { }
+    render();
+  }
+
+  function toggleTask(id) {
+    if (openTaskIds.has(id)) openTaskIds.delete(id); else openTaskIds.add(id);
+    render();
+  }
+
+  function renderPanel() {
+    panel.classList.toggle("collapsed", panelCollapsed);
+    panelTab.replaceChildren(el("b", "", "Tasks"), el("span", "counts", countsText()), el("span", "chev", panelCollapsed ? "▸" : "▾"));
+    panelTab.title = panelCollapsed ? "show the task list" : "hide the task list";
+    panelList.replaceChildren();
+    if (!state.tasks.length) {
+      panelList.append(el("div", "quiet-rows", "No tasks in SPEC.md"));
+      return;
+    }
+    for (const task of state.tasks) {
+      const item = el("div", `task ${task.state}` + (openTaskIds.has(task.id) ? " open" : ""));
+      item.dataset.id = task.id;
+      item.dataset.state = task.state;
+      item.append(el("span", "tid", task.id), el("span", "ttitle", task.title), el("span", "tstate", TASK_STATE_TEXT[task.state] || task.state));
+      if (task.state === "in_progress" && task.owner) {
+        const owner = el("span", "towner");
+        const pid = ownerPidOf(task.owner);
+        if (pid !== null) owner.append(dotEl(pid, false));
+        owner.append(document.createTextNode(pid !== null ? labelFor(pid) : task.owner));
+        item.append(owner);
+      }
+      item.append(el("div", "tfull", task.text));
+      item.title = openTaskIds.has(task.id) ? "click to collapse" : "click for the full text";
+      item.addEventListener("click", () => toggleTask(task.id));
+      panelList.append(item);
     }
   }
 
@@ -734,6 +865,7 @@
     capPair.textContent = state.caption.pair;
     renderStrip(ring);
     renderRows(now);
+    renderPanel();
     renderTitle(ring, inFlight);
   }
 
@@ -779,6 +911,7 @@
     };
   }
 
+  panelTab.addEventListener("click", togglePanel);
   window.addEventListener("resize", scheduleRender);
   setInterval(render, RENDER_EVERY_MS);
   loadState();
