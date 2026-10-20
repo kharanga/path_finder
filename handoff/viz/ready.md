@@ -1,44 +1,43 @@
-# Ready: V13 2026-10-20
+# Ready: V14 2026-10-20
 
 ## Done
 
-Every live session is always a node; the activity line never starts with the tool name.
+Readable arrows and task hover, both in `viz/web.html`; the watcher is unchanged.
 
-`viz/watcher.py`:
+Arrows:
 
-- `describe_tool_use` returns the tool call's `description` (or `summary`) alone: `Restart the watcher on port 4780`, `V13 assigned`. Only a call with neither falls back to the tool name and target (`Read SPEC.md`) or the bare name. `activity` therefore carries no `Bash:` style prefix, so the row and the node agree.
+- `readOpacity(message, now)` replaces `flashRemaining`. A READ arrow is visible for `READ_LINGER_MS` = 30 s after `read_at`: full opacity at the read, easing to `READ_MUTED_OPACITY` = 0.55 over the first 3 s (the V5 flash), then muted at 0.55 with its label until the 30 s are up. PENDING and IN_INBOX are unchanged; FAILED stays until resolved; the ten-minute arrow horizon still applies.
+- A reply on the reversed pair ends it early: `replyAfterRead(message)` finds the earliest message from the receiver back to the sender sent after `read_at`; from that message's `sent_at` the old arrow fades over `READ_FADE_MS` = 600 ms and is gone, while the reply arrow appears at once. One arrow per (from, to) pair still holds: a newer message on the same pair replaces the lingering one.
+- Pod layout for the overlap window: while both directions are visible, the fading arrow takes the lower lane and the live one keeps the upper lane (`entry.lower`), instead of the key-order rule, so the new arrow never jumps; with two live arrows (both PENDING) key order still decides. `positionNodes(ring, lowerLane)` grows the pod graph (`cy + lift + LABEL_HEIGHT/2 + 6`, 185 px today) while any reversed pair is visible, so the lower label stays inside the graph and off the caption. Rings are unaffected.
 
-`viz/web.html`:
+Task panel:
 
-- `ringSessions()` returns every session the watcher reports, sorted by PID; the V7 ten-minute ring rule and the watching rule are gone. A session is a node from the poll that registers it until the watcher drops it. The strip lists the same set with no dimmed `out` chips (CSS and title removed). Arrows keep their own V7/V8 rules (PENDING, IN_INBOX, unresolved FAILED, READ flash, ten-minute arrow horizon), so `RING_WINDOW_MS` now only bounds arrows.
-- Ring geometry fix needed for the full count: with seven nodes two of them sit at the same height on opposite sides and closer than a card width, which no amount of vertical ring growth separates (the V11 loop ran to its 700 px cap and still overlapped). `positionNodes` now grows the ring only while a step reduces the number of overlapping pairs, capped at 2.5 × rx, then `relaxVertically` pushes any still-overlapping pair apart along y (up to 60 rounds, each push half the overlap plus 1 px). Result: six nodes at 380 px fit in a 454 px graph (was 644), seven in 474 px, no overlaps at 380 or 720 px. Pod and compact layouts are unchanged.
+- Hovering a card shows its full SPEC text inline, the same `.tfull` block the V9 click opens, via `.task:hover` CSS and a `hover` class kept in `hoveredTaskId` across re-renders (`mouseenter` / `mouseleave`); the title wraps too. It closes when the pointer leaves; click still pins it (`.open`). The text wraps inside the card (`pre-wrap`, `break-word`), the panel scrolls, nothing is clipped at the panel edge.
 
-Files: `viz/watcher.py`, `viz/web.html`.
+Files: `viz/web.html`.
 
 ## How to test
 
-Seven-session fixture (six from V11 plus `scribe`, whose transcript has only its `agent-name` line and never sends or receives anything), spare port:
+Round trip frozen at moments (spare port; 4780 is the manager's):
 
 ```
-python3 <scratchpad>/make_six.py $PWD/seven > seven_args.txt      # or any transcript set with one silent session
-python3 viz/watcher.py serve --port 4792 --no-log --spec /dev/null $(cat seven_args.txt) &
+F="--fixture 32813=tests/fixtures/viz/round_trip_manager_32813_33993.jsonl --fixture 33993=tests/fixtures/viz/round_trip_builder_32813_33993.jsonl"
+S=$(mktemp -d); python3 viz/watcher.py replay $F --out-dir $S --speed 0 --until 2026-10-08T04:31:15.000Z
+python3 viz/watcher.py serve --port 4792 --no-log --fixture 32813=$S/32813.jsonl --fixture 33993=$S/33993.jsonl &
 open http://127.0.0.1:4792/web
 ```
 
-Expected: seven nodes in the ring from the first poll, `scribe` among them with the `Idle` pill and a blank line, seven chips in the strip, seven rows; viz-builder's row and node read `Run the whole suite and compare the change counts against the pinned numbers for every fixture` with no `Bash:`; the title reads `7 sessions · 3 working · 2 in flight`. Leave it open for more than ten minutes (or jump the page clock in the harness): every node stays; only arrows older than ten minutes go. Live: `http://127.0.0.1:4780/web` shows every session under the project root as a node (four today: manager, discovery-builder, viz-builder, validator); after the 4780 restart the working line shows the description without a prefix.
+Expected: at 15.000 (4 s after the builder read) the manager → builder arrow is still on the pod, muted, with its `second hello … ✓✓ Read` label; it would stay until 41.097. At 17.000 (reply sent 16.750) the reply `Second hi back … Pending` is drawn above, the old arrow is fading below inside a taller graph, and by 17.350 only the reply remains; at 17.700 the reply is read and starts its own 30 s. In the live replay (`--speed 1`) the same sequence plays in real time. Task panel: hover any card, the full text opens under it and wraps within the panel; move the pointer away, it closes; click, it stays open; hover another card while one is pinned, both show.
 
-Checked here: harness (`web_seven.json`): seven nodes and seven chips at the first poll and after an eleven-minute jump (arrows 3 → 0, nodes unchanged), rows and node lines as above, `scribe` blank; `cdp_check.mjs` in headless Chrome: seven nodes at 380 px (graph 474 px) and 720 px (502 px) and six nodes at both widths with no node/node or node/label overlap and no clipped line; `webseven-narrow.png` is the 380 px view; compact ten-session harness unchanged (10 nodes, 9 arrows); pod harness unchanged; the live 4780 page already serves the new file and its DevTools check shows all four sessions as nodes with no overlap (its working line still has the `Bash:` prefix until the restart).
+Checked here: harness `web_linger.json` (read → 1.0, +5 s 0.55 with label, +29 s 0.55, +31 s gone) and `web_linger_reply.json` (advance to 16.75, reply frame: old 0.55 on the lower lane, new PENDING above; +0.3 s old 0.50; +0.7 s old gone; reply read 1.0; +10 s 0.55); `web_hover.json` (`hover` class on enter, off on leave, `open` on click, hover another while pinned, kept across a render tick); `cdp_hover.mjs` in headless Chrome at 720 px: moving the pointer onto V9 makes `.tfull` `display: block` with the card at 468 px tall and its right edge inside the panel, moving away returns it to `none`; frames `webv14_a.png` (15.0), `webv14_b.png` (17.0), `webv14_c.png` (17.7) at 380 px; validator's `test_pod_labels_stay_inside_the_graph` passes.
 
-Suite: `python3 -m pytest tests` → 331 passed, 15 failed, all expected pins:
-
-- `tests/unit/test_state_model.py` (8): `test_describe_tool_use` cases and the activity-sequence tests expect `Bash: …` / `SendMessage: …`; the text after the prefix is unchanged.
-- `tests/integration/test_web_render.py` (7): `test_ring_drops_sessions_without_recent_traffic_and_falls_back_to_everyone`, `test_watching_keeps_a_session_in_the_ring…`, `test_failed_arrow_stays_past_the_horizon…` expect the old ring membership; the ten-, six- and round-trip tests pin the prefixed line or positions from the old growth loop.
+Suite: `python3 -m pytest tests` → 340 passed, 9 failed, all expected pins in `tests/integration/test_web_render.py`: arrows that used to be gone 3 s after the read are now present (`test_read_clears…`, `test_reply_shows…`, `test_idle_notice_pulses…`, `test_round_ends…` expect `paths == []`), and the six/seven/ten geometry tests pin the set of visible arrow keys and label visibility, which now includes the lingering READ arrows.
 
 ## Requests
 
-- Manager: restart the 4780 watcher on the new `viz/watcher.py` so `activity` loses the prefix; the page change is live already.
-- Validator: re-pin the 15; replace the ring-membership tests with "every session is a node, idle or not, ten minutes later too"; add a seven-node geometry case (two nodes at the same height) to the overlap test.
-- Docs (user): plan §6 drop the ten-minute ring rule and note the activity line is the description alone.
+- Manager: nothing to restart; the page is served from the file.
+- Validator: re-pin the 9; add the 30 s linger (visible at 29 s, gone at 31 s), the reversed-reply fade (old arrow 0.55 → 0 within 600 ms of the reply's `sent_at`, lower lane, graph grown, label inside), and the hover (`hover` class, `.tfull` shown, closes on leave, click pins) — my scratchpad has `web_linger.json`, `web_linger_reply.json`, `web_hover.json`, `cdp_hover.mjs`.
+- Docs (user): plan §6 replace the 3 s flash with the 30 s linger and the reply rule; note the hover expansion.
 
 ## Blocked
 

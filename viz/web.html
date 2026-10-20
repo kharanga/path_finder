@@ -38,12 +38,12 @@
   .task.in_progress { border-color: #35506f; }
   .task .tid { font-family: var(--mono); font-size: 11px; color: var(--win-muted); }
   .task .ttitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .task.open .ttitle { white-space: normal; }
+  .task.open .ttitle, .task.hover .ttitle, .task:hover .ttitle { white-space: normal; }
   .task .tstate { font-size: 11px; white-space: nowrap; }
   .task.done .tstate { color: var(--green); } .task.in_progress .tstate { color: var(--blue-fg); } .task.todo .tstate { color: var(--win-muted); }
   .task .towner { grid-column: 2 / -1; font-size: 11px; color: var(--blue-fg); display: flex; align-items: center; gap: 5px; }
   .task .tfull { grid-column: 1 / -1; display: none; color: var(--win-muted); font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; border-top: 1px solid #262626; padding-top: 5px; margin-top: 3px; }
-  .task.open .tfull { display: block; }
+  .task.open .tfull, .task.hover .tfull, .task:hover .tfull { display: block; }
   .task-badge { font-family: var(--mono); font-size: 10px; color: var(--blue-fg); background: var(--blue-bg); padding: 0 4px; border-radius: 4px; flex: none; }
   .node.tasked, .arow.tasked { border-color: #35506f; box-shadow: 0 0 0 1px #2e4a6e; }
   @media (max-width: 639px) {
@@ -127,6 +127,9 @@
 </div>
 <script>
   const READ_FLASH_MS = 3000;
+  const READ_LINGER_MS = 30000;
+  const READ_FADE_MS = 600;
+  const READ_MUTED_OPACITY = 0.55;
   const PULSE_MS = 1200;
   const RING_WINDOW_MS = 10 * 60 * 1000;
   const COMPACT_ABOVE = 8;
@@ -175,6 +178,7 @@
 
   const state = { sessions: new Map(), messages: new Map(), sources: new Map(), sourceSequence: 0, caption: { entry: "", pair: "" }, tasks: [], taskCounts: { done: 0, in_progress: 0, todo: 0 } };
   const openTaskIds = new Set();
+  let hoveredTaskId = null;
   let panelCollapsed = false;
   try { panelCollapsed = localStorage.getItem(PANEL_STORAGE_KEY) === "1"; } catch (error) { panelCollapsed = false; }
   const feedClock = { latestFeedMs: 0, seenAtWallMs: 0 };
@@ -381,9 +385,24 @@
     return false;
   }
 
-  function flashRemaining(message, now) {
+  function replyAfterRead(message) {
+    let earliest = null;
+    for (const m of messagesOnly()) {
+      if (Number(m.from_pid) !== Number(message.to_pid) || Number(m.to_pid) !== Number(message.from_pid)) continue;
+      if (sentMs(m) <= parseMs(message.read_at)) continue;
+      if (!earliest || sentMs(m) < sentMs(earliest)) earliest = m;
+    }
+    return earliest;
+  }
+
+  function readOpacity(message, now) {
     if (message.stage !== "READ") return 1;
-    return 1 - (now - parseMs(message.read_at)) / READ_FLASH_MS;
+    const sinceRead = now - parseMs(message.read_at);
+    if (sinceRead >= READ_LINGER_MS) return 0;
+    const reply = replyAfterRead(message);
+    const fade = reply ? 1 - (now - sentMs(reply)) / READ_FADE_MS : 1;
+    const settled = sinceRead < READ_FLASH_MS ? 1 - (1 - READ_MUTED_OPACITY) * (sinceRead / READ_FLASH_MS) : READ_MUTED_OPACITY;
+    return Math.max(0, Math.min(settled, fade));
   }
 
   function withinHorizon(message, now) {
@@ -395,7 +414,7 @@
       if (m.stage === "FAILED") return !failedIsResolved(m);
       if (!withinHorizon(m, now)) return false;
       if (m.stage === "PENDING" || m.stage === "IN_INBOX") return true;
-      return m.stage === "READ" && flashRemaining(m, now) > 0;
+      return m.stage === "READ" && readOpacity(m, now) > 0;
     });
   }
 
@@ -473,14 +492,14 @@
     }
   }
 
-  function positionNodes(ring) {
+  function positionNodes(ring, lowerLane) {
     const { W, CW, compact, pod } = layout;
     const pos = new Map();
     if (pod) {
       const lift = POD_LIFT + (layout.maxH - BASE_CH) / 2;
       const cy = Math.max(150 / 2 + 15, lift + 10);
       ring.forEach((s, i) => pos.set(s.pid, ring.length === 1 ? [layout.cx, cy] : [i === 0 ? CW / 2 + 20 : W - CW / 2 - 20, cy]));
-      layout.H = Math.max(150, cy + layout.maxH / 2 + 12);
+      layout.H = Math.max(150, cy + layout.maxH / 2 + 12, lowerLane ? cy + lift + LABEL_HEIGHT / 2 + 6 : 0);
       layout.cy = cy;
       layout.podLift = lift;
     } else {
@@ -595,6 +614,11 @@
     for (const [pid, node] of nodeEls) if (!keep.has(pid)) { node.remove(); nodeEls.delete(pid); }
   }
 
+  function hasReversedPair(messages) {
+    const keys = new Set(messages.map(arrowKey));
+    return messages.some((m) => { const ends = endpointsOf(m); return keys.has(`${ends[1]}>${ends[0]}`); });
+  }
+
   function arrowKey(message) {
     const ends = endpointsOf(message);
     return `${ends[0]}>${ends[1]}`;
@@ -674,11 +698,11 @@
     return [Math.min(170, Math.max(summary.length, stage.length) * LABEL_CHAR_PX + 14), LABEL_HEIGHT];
   }
 
-  function controlCandidates(A, B, key, reverseKey, hasReverse) {
+  function controlCandidates(A, B, key, reverseKey, lower) {
     const { cx, cy, pod } = layout;
     const mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
     if (pod) {
-      const sign = hasReverse && key > reverseKey ? -1 : 1;
+      const sign = lower ? -1 : 1;
       return POD_LIFT_OFFSETS.map((offset) => [mx, my - sign * (layout.podLift + offset)]);
     }
     const preferred = key < reverseKey ? 0.15 : 0.55;
@@ -687,10 +711,10 @@
   }
 
   function placeArrow(entry, placed, rects, otherPids) {
-    const { A, B, key, reverseKey, size, hasReverse, ends } = entry;
+    const { A, B, key, reverseKey, size, lower, ends } = entry;
     const bounds = { x1: 0, y1: 0, x2: layout.W, y2: layout.H };
     let best = null;
-    controlCandidates(A, B, key, reverseKey, hasReverse).forEach((C, controlIndex) => {
+    controlCandidates(A, B, key, reverseKey, lower).forEach((C, controlIndex) => {
       const S = exitPoint(A, C, 3, sizeOf(ends[0])), E = exitPoint(B, C, 6, sizeOf(ends[1]));
       const points = sampleCurve(S, C, E);
       let curveScore = controlIndex * 0.5;
@@ -750,6 +774,11 @@
       const reverseKey = `${ends[1]}>${ends[0]}`;
       entries.push({ key, reverseKey, hasReverse: byPair.has(reverseKey), message: m, count: list.length, ends, A, B, size: labelSize(m, list.length) });
     }
+    const fading = (m) => m.stage === "READ" && replyAfterRead(m) !== null;
+    for (const entry of entries) {
+      const reverse = entries.find((other) => other.key === entry.reverseKey);
+      entry.lower = Boolean(reverse) && (fading(entry.message) || (!fading(reverse.message) && entry.key > entry.reverseKey));
+    }
     entries.sort((a, b) => sentMs(b.message) - sentMs(a.message) || a.key.localeCompare(b.key));
     const newest = entries.length ? entries[0].message : null;
     const rects = nodeRects(ring);
@@ -774,10 +803,11 @@
       path.setAttribute("stroke", stroke);
       path.setAttribute("marker-end", `url(#${marker})`);
       path.setAttribute("data-stage", m.stage);
-      const flash = m.stage === "READ";
+      const read = m.stage === "READ";
+      const fresh = read && now - parseMs(m.read_at) < READ_FLASH_MS;
       const lit = litKey === key || (pickedPid !== null && (ends[0] === pickedPid || ends[1] === pickedPid));
-      path.setAttribute("stroke-width", m === newest || flash || lit ? 2.4 : 1.5);
-      path.style.opacity = flash ? String(Math.max(0, flashRemaining(m, now))) : "1";
+      path.setAttribute("stroke-width", m === newest || fresh || lit ? 2.4 : 1.5);
+      path.style.opacity = read ? readOpacity(m, now).toFixed(3) : "1";
       path.classList.toggle("dim", pickedPid !== null && !lit);
       keep.add(key);
       let label = labelEls.get(key);
@@ -795,7 +825,7 @@
       label.style.top = `${fit.labelCenter[1].toFixed(1)}px`;
       label.dataset.clear = labelClear ? "1" : "0";
       const hidden = !lit && !labelClear;
-      label.style.opacity = hidden ? "0" : (flash ? String(Math.max(0, flashRemaining(m, now))) : "1");
+      label.style.opacity = hidden ? "0" : (read ? readOpacity(m, now).toFixed(3) : "1");
       label.style.zIndex = lit ? "4" : "2";
     });
     for (const [key, path] of pathEls) if (!keep.has(key)) { path.remove(); pathEls.delete(key); }
@@ -943,7 +973,7 @@
   }
 
   function taskEl(task) {
-    const item = el("div", `task ${task.state}` + (openTaskIds.has(task.id) ? " open" : ""));
+    const item = el("div", `task ${task.state}` + (openTaskIds.has(task.id) ? " open" : "") + (hoveredTaskId === task.id ? " hover" : ""));
     item.dataset.id = task.id;
     item.dataset.state = task.state;
     item.append(el("span", "tid", task.id), el("span", "ttitle", task.title), el("span", "tstate", TASK_STATE_TEXT[task.state] || task.state));
@@ -957,6 +987,8 @@
     item.append(el("div", "tfull", task.text));
     item.title = openTaskIds.has(task.id) ? "click to collapse" : "click for the full text";
     item.addEventListener("click", () => toggleTask(task.id));
+    item.addEventListener("mouseenter", () => { hoveredTaskId = task.id; item.classList.add("hover"); });
+    item.addEventListener("mouseleave", () => { if (hoveredTaskId === task.id) hoveredTaskId = null; item.classList.remove("hover"); });
     return item;
   }
 
@@ -979,7 +1011,7 @@
     if (ring.length && quiet) quiet.remove();
     renderNodes(ring, now, inFlight);
     measureNodes(ring);
-    positionNodes(ring);
+    positionNodes(ring, ring.length <= 2 && hasReversedPair(visible));
     svg.setAttribute("viewBox", `0 0 ${layout.W} ${layout.H}`);
     renderArrows(visible.filter((m) => { const ends = endpointsOf(m); return layout.pos.has(ends[0]) && layout.pos.has(ends[1]); }), ring, now);
     capEntry.textContent = state.caption.entry;

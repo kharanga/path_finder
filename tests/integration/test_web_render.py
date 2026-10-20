@@ -137,6 +137,10 @@ def curve_points(d, samples=16):
     return points
 
 
+def control_y(d):
+    return float(re.findall(r"-?\d+\.?\d*", d)[3])
+
+
 def point_in(point, rect):
     return rect[0] <= point[0] <= rect[2] and rect[1] <= point[1] <= rect[3]
 
@@ -231,7 +235,8 @@ def test_read_clears_the_envelope_flashes_and_sets_the_builder_row_working(round
     assert rows_of(view) == [("fake builder", "Working", "working"), ("fake manager", "Working", "waiting on fake builder")]
     assert view["rows"][0]["activityTitle"] == "working"
     faded = round_views["flash gone"]
-    assert faded["paths"] == [] and faded["labels"] == []
+    assert (only_path(faded)["stage"], only_path(faded)["opacity"], only_path(faded)["width"]) == ("READ", "0.550", "2.4")
+    assert (only_label(faded)["opacity"], only_label(faded)["clear"], only_label(faded)["stage"]) == ("0.550", "1", ["ok", "✓✓ Read"])
     ended = round_views["manager turn end"]
     manager_row = ended["rows"][1]
     assert rows_of(ended)[0] == ("fake builder", "Working", "working")
@@ -244,8 +249,14 @@ def test_reply_shows_the_envelope_on_the_manager_and_the_rows_follow(round_views
     pending = round_views["reply pending"]
     builder = nodes_of(pending)["fake builder"]
     assert pills(builder) == ["Sending"] and builder["last"] == "waiting on fake manager" and builder["className"] == "node work hot"
-    path = only_path(pending)
-    assert (path["key"], path["stage"], path["stroke"]) == ("33993>32813", "PENDING", PENDING_STROKE)
+    paths = {path["key"]: path for path in pending["paths"]}
+    assert set(paths) == {"32813>33993", "33993>32813"}
+    assert (paths["33993>32813"]["stage"], paths["33993>32813"]["stroke"], paths["33993>32813"]["opacity"], paths["33993>32813"]["width"]) == ("PENDING", PENDING_STROKE, "1", "2.4")
+    assert (paths["32813>33993"]["stage"], paths["32813>33993"]["opacity"], paths["32813>33993"]["width"]) == ("READ", "0.550", "1.5")
+    labels = {label["key"]: label for label in pending["labels"]}
+    assert control_y(paths["33993>32813"]["d"]) < 57 < 138 < control_y(paths["32813>33993"]["d"])
+    assert labels["33993>32813"]["top"] < 60 < 150 < labels["32813>33993"]["top"] and pending["graphHeight"] == "206px" and pending["viewBox"] == "0 0 356 206"
+    assert label_rect(labels["32813>33993"])[3] <= 206
     assert rows_of(pending)[0] == ("fake builder", "Sending", "waiting on fake manager")
     assert rows_of(pending)[1] == ("fake manager", "Idle", "waiting on fake builder")
     inbox = round_views["reply in inbox"]
@@ -268,7 +279,7 @@ def test_idle_notice_pulses_the_eye_without_an_arrow(round_views):
     assert view["caption"] == ["user · cross-session idle notice", "fake builder → fake manager"]
     manager = nodes_of(view)["fake manager"]
     assert manager["last"] == "👁idle notice" and manager["eye"] == "eye pulse"
-    assert view["paths"] == [] and view["labels"] == []
+    assert (only_path(view)["key"], only_path(view)["stage"], only_path(view)["opacity"]) == ("33993>32813", "READ", "0.550") and only_label(view)["opacity"] == "0.550"
     assert nodes_of(view)["fake builder"]["last"] == "" and rows_of(view)[1] == ("fake builder", "Idle", "")
     assert rows_of(view)[0][:2] == ("fake manager", "Working") and rows_of(view)[0][2].startswith(MANAGER_REPLY_TEXT_START)
     after = round_views["pulse gone"]
@@ -279,7 +290,7 @@ def test_idle_notice_pulses_the_eye_without_an_arrow(round_views):
 def test_round_ends_with_idle_rows_ordered_by_last_change(round_views):
     end = round_views["end"]
     assert end["title"] == "fake_session · 2 sessions · 0 working · 0 in flight"
-    assert end["paths"] == []
+    assert (only_path(end)["key"], only_path(end)["stage"], only_path(end)["opacity"]) == ("33993>32813", "READ", "0.550")
     assert [pills(node) for node in end["nodes"]] == [["Idle"], ["Idle"]]
     assert rows_of(end) == [("fake manager", "Idle", ""), ("fake builder", "Idle", "")]
     assert [node["last"] for node in end["nodes"]] == ["", ""] and end["graphHeight"] == "150px"
@@ -288,7 +299,7 @@ def test_round_ends_with_idle_rows_ordered_by_last_change(round_views):
     assert chips_of(picked)[33993]["className"] == "chip picked"
     assert round_views["row unpick"]["rows"][1]["className"] == "arow"
     later = round_views["eleven minutes later"]
-    assert [node["pid"] for node in later["nodes"]] == [32813, 33993]
+    assert [node["pid"] for node in later["nodes"]] == [32813, 33993] and later["paths"] == [] and later["labels"] == []
     assert [row["activity"] for row in later["rows"]] == [row["activity"] for row in end["rows"]]
 
 
@@ -449,15 +460,16 @@ def test_ten_sessions_rows_envelopes_and_label_visibility(ten_view):
         ("listings-bc", "Idle", ""),
     ]
     assert view["graphHeight"] == "380px" and view["viewBox"] == "0 0 356 380"
-    assert len(view["paths"]) == 9
+    assert len(view["paths"]) == 10
     stages = {path["key"]: path["stage"] for path in view["paths"]}
-    assert stages["902>900"] == "FAILED" and stages["908>906"] == "READ" and sum(stage == "IN_INBOX" for stage in stages.values()) == 7
+    assert stages["902>900"] == "FAILED" and stages["908>906"] == "READ" and stages["904>905"] == "READ" and sum(stage == "IN_INBOX" for stage in stages.values()) == 7
+    assert {path["key"]: path["opacity"] for path in view["paths"] if path["stage"] == "READ"} == {"908>906": "0.925", "904>905": "0.550"}
     shown = {label["key"]: label for label in view["labels"] if label["clear"] == "1"}
     hidden = {label["key"]: label for label in view["labels"] if label["clear"] == "0"}
-    assert len(shown) + len(hidden) == 9
+    assert len(shown) + len(hidden) == 10
     assert all(label["opacity"] == "0" for label in hidden.values())
     assert all(label["opacity"] != "0" for label in shown.values())
-    assert {key: label["text"] for key, label in shown.items()} == {"908>906": "tags done✓✓ Read", "906>907": "rerun scores✓ In inbox", "900>903": "D4 assigned✓ In inbox", "900>909": "rerun scores✓ In inbox", "902>901": "V6 review: PASS✓ In inbox"}
+    assert {key: label["text"] for key, label in shown.items()} == {"908>906": "tags done✓✓ Read", "906>907": "rerun scores✓ In inbox", "900>903": "D4 assigned✓ In inbox", "900>909": "rerun scores✓ In inbox", "902>901": "V6 review: PASS✓ In inbox", "904>905": "second hello✓✓ Read"}
     assert set(hidden) == {"902>900", "901>902", "901>900", "909>907"}
     hovered = {label["key"]: label for label in ten_view["hover hidden"]["labels"]}
     assert hovered["901>900"]["opacity"] == "1" and hovered["901>900"]["zIndex"] == "4"
@@ -703,7 +715,78 @@ def test_ring_shows_every_word_of_a_long_line_and_grows_without_overlap(ring_vie
         for second in names[i + 1:]:
             assert not rects_overlap(rects[first], rects[second]), (first, second)
     shown = [label for label in view["labels"] if label["clear"] == "1"]
-    assert {label["key"] for label in view["labels"]} == {"904>905", "902>900"} and shown
+    assert {(path["key"], path["stage"]) for path in view["paths"]} == {("900>901", "READ"), ("900>903", "READ"), ("902>900", "IN_INBOX"), ("904>905", "READ")}
+    assert {label["key"] for label in view["labels"]} == {"900>901", "900>903", "902>900", "904>905"} and shown
     for label in shown:
         for name, rect in rects.items():
             assert not rects_overlap(label_rect(label), rect), (label["key"], name)
+
+
+def test_read_arrow_lingers_thirty_seconds_muted_with_its_label(watcher, tmp_path):
+    timed = timed_changes(watcher)
+    steps = [{"name": "read", "frames": frames_between(timed, START, at("11.300"))}, {"name": "+5s", "advanceMs": 5000}, {"name": "+29s", "advanceMs": 24000}, {"name": "+31s", "advanceMs": 2000}]
+    views = render(tmp_path, snapshot_at(watcher, START), steps)
+    assert only_path(views["read"])["stage"] == "READ" and 0.9 < float(only_path(views["read"])["opacity"]) < 1
+    for name in ("+5s", "+29s"):
+        path, label = only_path(views[name]), only_label(views[name])
+        assert (path["key"], path["stage"], path["opacity"], path["stroke"], path["width"]) == ("32813>33993", "READ", "0.550", OK_STROKE, "2.4"), name
+        assert (label["opacity"], label["clear"], label["summary"], label["stage"]) == ("0.550", "1", FIRST_SUMMARY, ["ok", "✓✓ Read"]), name
+    assert views["+31s"]["paths"] == [] and views["+31s"]["labels"] == []
+
+
+def test_reply_on_the_reversed_pair_fades_the_read_arrow_within_600ms_and_takes_the_upper_lane(watcher, tmp_path):
+    timed = timed_changes(watcher)
+    steps = [{"name": "read", "frames": frames_between(timed, START, at("11.300"))}, {"name": "before reply", "advanceMs": 5400}, {"name": "reply sent", "frames": frames_between(timed, at("11.300"), at("17.000"))},
+        {"name": "+0.3s", "advanceMs": 300}, {"name": "+0.7s", "advanceMs": 400}, {"name": "reply read", "frames": frames_between(timed, at("17.000"), at("17.700"))}, {"name": "+10s", "advanceMs": 10000}]
+    views = render(tmp_path, snapshot_at(watcher, START), steps)
+    assert only_path(views["before reply"])["opacity"] == "0.550" and views["before reply"]["graphHeight"] == "150px"
+    sent = {path["key"]: path for path in views["reply sent"]["paths"]}
+    assert (sent["32813>33993"]["stage"], sent["32813>33993"]["opacity"]) == ("READ", "0.550") and (sent["33993>32813"]["stage"], sent["33993>32813"]["opacity"]) == ("PENDING", "1")
+    assert control_y(sent["33993>32813"]["d"]) < 57 and control_y(sent["32813>33993"]["d"]) > 138 and views["reply sent"]["graphHeight"] == "206px"
+    labels = {label["key"]: label for label in views["reply sent"]["labels"]}
+    assert labels["33993>32813"]["summary"] == REPLY_SUMMARY and labels["32813>33993"]["summary"] == FIRST_SUMMARY
+    for label in labels.values():
+        rect = label_rect(label)
+        assert 0 <= rect[1] and rect[3] <= 206, label["key"]
+        for node in views["reply sent"]["nodes"]:
+            assert not rects_overlap(rect, node_rect(node)), (label["key"], node["name"])
+    fading = {path["key"]: path for path in views["+0.3s"]["paths"]}
+    assert fading["32813>33993"]["opacity"] == "0.500" and fading["33993>32813"]["opacity"] == "1"
+    assert (only_path(views["+0.7s"])["key"], only_path(views["+0.7s"])["stage"]) == ("33993>32813", "PENDING") and views["+0.7s"]["graphHeight"] == "150px"
+    assert (only_path(views["reply read"])["stage"], only_path(views["reply read"])["opacity"]) == ("READ", "1.000")
+    assert (only_path(views["+10s"])["stage"], only_path(views["+10s"])["opacity"]) == ("READ", "0.550")
+
+
+def test_newer_message_on_the_same_pair_replaces_the_lingering_read_arrow(tmp_path):
+    sessions = [session(1, "a"), session(2, "b")]
+    old = message("m1", 1, 2, "READ", "first", "2026-10-20T11:59:40.000Z", read_at="2026-10-20T11:59:55.000Z")
+    newer = message("m2", 1, 2, "PENDING", "second", "2026-10-20T12:00:04.000Z")
+    view = render(tmp_path, synthetic(sessions, [old, newer]), [{"name": "now"}], wall_start=TEN_START)["now"]
+    assert (only_path(view)["key"], only_path(view)["stage"], only_path(view)["opacity"]) == ("1>2", "PENDING", "1") and only_label(view)["summary"] == "second +1"
+    alone = render(tmp_path, synthetic(sessions, [old]), [{"name": "now"}], wall_start=TEN_START)["now"]
+    assert (only_path(alone)["stage"], only_path(alone)["opacity"]) == ("READ", "0.550") and only_label(alone)["summary"] == "first"
+
+
+def test_hovering_a_task_shows_its_full_text_until_the_pointer_leaves_and_click_pins(tmp_path):
+    changed = {"event": "tasks", "at": "2026-10-20T12:00:06.000Z", "source": "spec", "source_pid": None, "tasks": TASKS, "task_counts": TASK_COUNTS, "spec_path": "/x"}
+    steps = [{"name": "open"}, {"name": "hover", "hoverTask": "V9"}, {"name": "tick"}, {"name": "tasks change", "frames": [changed]}, {"name": "leave", "leaveTask": "V9"}, {"name": "hover second", "hoverTask": "D5"},
+        {"name": "click second", "clickTask": "D5"}, {"name": "leave second", "leaveTask": "D5"}, {"name": "hover first again", "hoverTask": "V9"}]
+    views = render(tmp_path, with_tasks(synthetic([session(1, "a")])), steps, wall_start=TEN_START)
+    by_id = lambda name: {t["id"]: t for t in views[name]["panel"]["tasks"]}
+    assert all(t["hoverable"] and t["clickable"] for t in views["open"]["panel"]["tasks"])
+    assert by_id("open")["V9"]["className"] == "task in_progress"
+    for name in ("hover", "tick", "tasks change"):
+        assert by_id(name)["V9"]["className"] == "task in_progress hover" and by_id(name)["V9"]["title"] == "click for the full text", name
+        assert by_id(name)["V9"]["full"] == "task panel. Full text of V9."
+    assert by_id("leave")["V9"]["className"] == "task in_progress"
+    assert by_id("hover second")["D5"]["className"] == "task todo hover"
+    assert by_id("click second")["D5"]["className"] == "task todo open hover" and by_id("click second")["D5"]["title"] == "click to collapse"
+    assert by_id("leave second")["D5"]["className"] == "task todo open"
+    assert by_id("hover first again")["V9"]["className"] == "task in_progress hover" and by_id("hover first again")["D5"]["className"] == "task todo open"
+
+
+def test_task_hover_and_wrap_rules_are_in_the_page_css():
+    css = PAGE.read_text(encoding="utf-8")
+    assert ".task.open .tfull, .task.hover .tfull, .task:hover .tfull { display: block; }" in css
+    assert ".task.open .ttitle, .task.hover .ttitle, .task:hover .ttitle { white-space: normal; }" in css
+    assert re.search(r"\.task \.tfull \{[^}]*white-space: pre-wrap;[^}]*word-break: break-word;", css)

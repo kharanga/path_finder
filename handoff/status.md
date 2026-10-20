@@ -137,3 +137,7 @@ All edits below are applied. CLAUDE.md, SPEC.md, .claude/roles/, docs/ remain un
 - 2026-10-20T20:40Z User asked for read arrows to linger 30 s (or until a reply in the opposite direction) and for the full task text on hover. Added V14 to SPEC.md as [ ], queued behind V13.
 - 2026-10-20T20:55Z V13 ready received from viz-builder (handoff/viz/ready.md); builder pointed the validator at it. Restarted the manager-started 4780 watcher on the V13 code (old pid 10761 stopped, new pid 15153); activity lines drop the tool-name prefix. Waiting on the V13 review.
 - 2026-10-20T21:10Z V13 review PASS; 349 tests pass. Marked V13 done and V14 in progress in SPEC.md; plan §6 records the always-a-node rule, the prefix-free line, and the relax step. Committing and pushing, assigning V14.
+- 2026-10-20T21:12Z Committed 823dbcb and pushed. Assigned V14 to viz-builder. Live: http://127.0.0.1:4780/web on the V13 code.
+- 2026-10-20T21:25Z User asked to drag and rearrange the pods. Added V15 to SPEC.md as [ ] (pinned positions in localStorage keyed by role, Reset layout control), queued behind V14.
+- 2026-10-20T21:45Z V14 ready received from viz-builder (handoff/viz/ready.md, viz/web.html only, no watcher restart needed); builder pointed the validator at it. Waiting on the V14 review.
+- 2026-10-20T22:00Z V14 review PASS; 354 tests pass. Marked V14 done and V15 in progress in SPEC.md; plan §6 records the lingering arrows and task hover. Cosmetic note: the pod graph grows briefly during the fade. Committing and pushing, assigning V15.

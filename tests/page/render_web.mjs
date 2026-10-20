@@ -124,7 +124,7 @@ function taskView(item) {
   const owner = findByClass(item, "towner"), full = findByClass(item, "tfull");
   const ownerDot = owner ? findByClass(owner, "dot") : null;
   return { id: item.dataset.id, state: item.dataset.state, className: item.className, title: item.title, tid: textOf(findByClass(item, "tid")), ttitle: textOf(findByClass(item, "ttitle")), tstate: textOf(findByClass(item, "tstate")),
-    owner: owner ? textOf(owner) : null, ownerDot: ownerDot ? ownerDot.style.background : null, full: full ? textOf(full) : null, clickable: Boolean(item.listeners.click) };
+    owner: owner ? textOf(owner) : null, ownerDot: ownerDot ? ownerDot.style.background : null, full: full ? textOf(full) : null, clickable: Boolean(item.listeners.click), hoverable: Boolean(item.listeners.mouseenter && item.listeners.mouseleave) };
 }
 
 function folderView(folder) {
@@ -168,6 +168,8 @@ for (const step of input.steps || []) {
   if (step.clickRow !== undefined) fixed.rows.children.find((r) => Number(r.dataset.pid) === Number(step.clickRow)).listeners.click();
   if (step.clickTab) fixed.ptab.listeners.click();
   if (step.clickTask !== undefined) taskCards().find((t) => t.dataset.id === step.clickTask).listeners.click();
+  if (step.hoverTask !== undefined) taskCards().find((t) => t.dataset.id === step.hoverTask).listeners.mouseenter();
+  if (step.leaveTask !== undefined) taskCards().find((t) => t.dataset.id === step.leaveTask).listeners.mouseleave();
   if (step.clickFolder !== undefined) findByClass(folders().find((f) => f.dataset.area === step.clickFolder), "fhead").listeners.click();
   if (step.hoverPath !== undefined) fixed.arrows.children.find((p) => p.attrs["data-key"] === step.hoverPath).listeners.mouseenter();
   if (step.leavePath !== undefined) fixed.arrows.children.find((p) => p.attrs["data-key"] === step.leavePath).listeners.mouseleave();
