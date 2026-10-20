@@ -159,23 +159,24 @@ def test_events_response_headers(sandbox, fixture_copies):
         stop(process)
 
 
-def test_static_files_fall_back_to_discovery_and_viz_wins(sandbox, fixture_copies):
+def test_static_files_come_from_viz_only_and_web_route_serves_the_compact_page(sandbox, fixture_copies):
     manager, builder = fixture_copies
+    shutil.copy(WATCHER_SCRIPT.parent / "index.html", sandbox["viz_dir"] / "index.html")
+    shutil.copy(WATCHER_SCRIPT.parent / "web.html", sandbox["viz_dir"] / "web.html")
     (sandbox["viz_dir"] / "app.js").write_text("console.log(1)")
     process, base = start_server(sandbox, "--fixture", f"32813={manager}", "--fixture", f"33993={builder}")
     try:
         status, headers, body = get(f"{base}/")
-        assert status == 200 and "text/html" in headers["Content-Type"] and b"d2" in body
-        status, headers, body = get(f"{base}/sessions.json")
-        assert status == 200 and headers["Content-Type"] == "application/json"
+        assert status == 200 and "text/html" in headers["Content-Type"] and b"<title>Session Messages</title>" in body
+        for route in ("/web", "/web.html"):
+            status, headers, body = get(f"{base}{route}")
+            assert status == 200 and "text/html" in headers["Content-Type"] and b"<title>Session Web</title>" in body
         status, _, body = get(f"{base}/app.js")
         assert status == 200 and body == b"console.log(1)"
-        with pytest.raises(urllib.error.HTTPError) as missing:
-            get(f"{base}/nope.txt")
-        assert missing.value.code == 404
-        with pytest.raises(urllib.error.HTTPError) as traversal:
-            get(f"{base}/../home/.claude/sessions/")
-        assert traversal.value.code == 404
+        for missing_route in ("/sessions.json", "/index.html.bak", "/identity/32813.json", "/nope.txt", "/../home/.claude/sessions/"):
+            with pytest.raises(urllib.error.HTTPError) as missing:
+                get(f"{base}{missing_route}")
+            assert missing.value.code == 404, missing_route
     finally:
         stop(process)
 

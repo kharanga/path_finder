@@ -172,7 +172,8 @@ def test_serve_parser_defaults(watcher):
     args = watcher.build_parser().parse_args(["serve", "--port", "4799", "--fixture", "1=/a.jsonl", "--fixture", "2=/b.jsonl"])
     assert args.fixture == [(1, "/a.jsonl"), (2, "/b.jsonl")]
     assert watcher.SSE_KEEPALIVE_S == 15
-    assert watcher.STATIC_DIRS == (watcher.VIZ_DIR, watcher.DISCOVERY_DIR)
+    assert watcher.STATIC_DIRS == (watcher.VIZ_DIR,)
+    assert watcher.PAGE_ROUTES == {"/web": "/web.html"}
 
 
 def test_emit_writes_one_json_line_per_change_and_publishes(watcher, tmp_path):

@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Session Web</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #0c0c0c; --win: #121212; --card: #1c1c1c; --card-edge: #2a2a2a; --win-fg: #ededed; --win-muted: #8a8a8a;
+    --blue-bg: #1b2f4a; --blue-fg: #7cb4ff; --grey-bg: #2a2a2a; --grey-fg: #cfcfcf;
+    --orange-bg: #3a2a12; --orange-fg: #ffb454; --green: #4ad17a; --red: #ff6b6b; --pend: #8a8a8a;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--win-fg); font-family: var(--sans); font-size: 13px; line-height: 1.45; }
+  .win { background: var(--win); min-height: 100vh; display: flex; flex-direction: column; width: 100%; overflow: hidden; }
+  .bar { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-bottom: 1px solid #222; font-size: 11px; color: var(--win-muted); }
+  .bar .dots i { width: 10px; height: 10px; border-radius: 50%; background: #3a3a3a; display: inline-block; margin-right: 6px; }
+  .bar span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar #title { flex: 1; min-width: 0; }
+  .bar #link.off { color: var(--orange-fg); }
+  .body { padding: 12px; }
+  .graph { position: relative; width: 100%; height: 380px; }
+  .graph.pod { height: 150px; }
+  .graph svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .graph path { transition: opacity .4s, stroke-width .3s; pointer-events: stroke; cursor: pointer; }
+  .graph path.dim { opacity: .25 !important; }
+  .graph .quiet { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--win-muted); font-size: 12px; }
+  .node { position: absolute; z-index: 1; background: var(--card); border: 1px solid var(--card-edge); border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; transition: border-color .3s, box-shadow .3s, left .4s, top .4s; }
+  .node.hot { border-color: #35506f; }
+  .node.picked { border-color: #4a6a94; box-shadow: 0 0 0 1px #4a6a94; }
+  .node.incomplete { border-style: dashed; }
+  .node .hd { display: flex; align-items: center; gap: 6px; font-size: 13px; min-width: 0; }
+  .node .hd .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .node .row2 { display: flex; gap: 4px; flex-wrap: wrap; min-height: 18px; }
+  .node .last { color: var(--win-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 15px; }
+  .node.compact { flex-direction: row; align-items: center; gap: 5px; padding: 0 7px; border-radius: 99px; font-size: 11px; white-space: nowrap; }
+  .node.compact .hd .name { font-weight: 500; }
+  .node.compact .row2, .node.compact .last { display: none; }
+  .node.compact:hover { z-index: 3; flex-direction: column; align-items: stretch; height: auto !important; padding: 7px 9px; border-radius: 8px; white-space: normal; }
+  .node.compact:hover .row2, .node.compact:hover .last { display: flex; }
+  .node .n { font-size: 10px; color: var(--orange-fg); background: var(--orange-bg); padding: 0 4px; border-radius: 4px; font-weight: 600; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; transition: box-shadow .3s; }
+  .dot.work { box-shadow: 0 0 0 3px var(--blue-bg); }
+  .pill { display: inline-block; padding: 0 5px; border-radius: 6px; font-size: 11px; font-weight: 500; line-height: 1.6; }
+  .pill.idle { background: var(--grey-bg); color: var(--grey-fg); }
+  .pill.work { background: var(--blue-bg); color: var(--blue-fg); }
+  .pill.inbox { background: var(--orange-bg); color: var(--orange-fg); }
+  .eye { display: inline-block; transition: transform .2s, color .2s; }
+  .eye.pulse { color: var(--blue-fg); transform: scale(1.35); }
+  .elab { position: absolute; z-index: 2; transform: translate(-50%, -50%); background: #121212; padding: 1px 6px; border-radius: 5px; font-size: 11px; display: flex; flex-direction: column; align-items: center; line-height: 1.3; white-space: nowrap; box-shadow: 0 0 0 1px #2a2a2a; pointer-events: none; transition: opacity .3s; }
+  .elab .esum { color: var(--win-fg); max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+  .ok { color: var(--green); } .pend { color: var(--pend); } .fail { color: var(--red); }
+  .cap { margin-top: 8px; display: flex; justify-content: space-between; gap: 10px; font-family: var(--mono); font-size: 11px; color: var(--win-muted); min-height: 16px; }
+  .cap span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .strip { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px; border-top: 1px solid #202020; background: #151515; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; border-radius: 99px; border: 1px solid #262626; font-size: 12px; background: var(--card); transition: border-color .3s; cursor: pointer; }
+  .chip.on { border-color: #2e4a6e; } .chip.hot { border-color: #4a3618; } .chip.picked { border-color: #7cb4ff; }
+  .chip.out { opacity: .7; }
+  .chip .n { font-size: 11px; color: var(--orange-fg); background: var(--orange-bg); padding: 0 5px; border-radius: 5px; font-weight: 600; }
+  .toasts { padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 6px; min-height: 60px; flex: 1; overflow: auto; }
+  .toast { min-width: 0; background: var(--card); border: 1px solid #2e2e2e; border-left: 3px solid var(--green); border-radius: 8px; padding: 8px 11px; display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; font-size: 13px; align-items: baseline; transition: opacity .6s, border-color .3s; cursor: default; }
+  .toast.pend { border-left-color: var(--pend); } .toast.fail { border-left-color: var(--red); } .toast.notice { border-left-color: #3a3a3a; opacity: .6; }
+  .toast.gone { opacity: .35; }
+  .toast.lit { border-color: #35506f; }
+  .toast .from { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; } .toast .from b { font-weight: 600; }
+  .toast .sum { grid-column: 1 / -1; min-width: 0; color: var(--win-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toast .st { font-size: 12px; white-space: nowrap; }
+  .more { font-size: 12px; color: var(--win-muted); text-align: center; }
+  .quiet-toasts { color: var(--win-muted); font-size: 12px; text-align: center; padding: 10px 0; }
+  @media (prefers-reduced-motion: reduce) { .graph path, .node, .toast, .elab, .dot, .eye { transition: none; } }
+</style>
+</head>
+<body>
+<div class="win">
+  <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span id="title"></span><span id="link"></span></div>
+  <div class="body">
+    <div class="graph" id="graph"><svg id="svg" aria-hidden="true"><defs>
+      <marker id="mg" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#4ad17a"></path></marker>
+      <marker id="mp" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#8a8a8a"></path></marker>
+      <marker id="mr" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#ff6b6b"></path></marker>
+    </defs><g id="arrows"></g></svg></div>
+    <div class="cap"><span id="cap-entry"></span><span id="cap-pair"></span></div>
+  </div>
+  <div class="strip" id="strip"></div>
+  <div class="toasts" id="toasts"></div>
+</div>
+<script>
+  const READ_FLASH_MS = 3000;
+  const TOAST_LINGER_MS = 8000;
+  const PULSE_MS = 1200;
+  const MAX_TOASTS = 3;
+  const RING_WINDOW_MS = 10 * 60 * 1000;
+  const COMPACT_ABOVE = 8;
+  const POD_LIFT = 80;
+  const RENDER_EVERY_MS = 250;
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const ROLE_COLORS = [["fake", "#aaaaaa"], ["manager", "#a98bff"], ["viz", "#3ed6a4"], ["validator", "#ff9f43"], ["discovery", "#6ec1ff"]];
+  const PALETTE = ["#f06292", "#ba68c8", "#ffd54f", "#4db6ac", "#ff8a65", "#9ccc65", "#4fc3f7", "#ce93d8"];
+  const STAGE_LABEL = { PENDING: ["Pending", "pend"], IN_INBOX: ["✓ In inbox", "ok"], READ: ["✓✓ Read", "ok"], FAILED: ["✗ Failed", "fail"] };
+  const STAGE_STROKE = { PENDING: ["#8a8a8a", "mp"], IN_INBOX: ["#4ad17a", "mg"], READ: ["#4ad17a", "mg"], FAILED: ["#ff6b6b", "mr"] };
+
+  const graph = document.getElementById("graph");
+  const svg = document.getElementById("svg");
+  const arrows = document.getElementById("arrows");
+  const title = document.getElementById("title");
+  const link = document.getElementById("link");
+  const capEntry = document.getElementById("cap-entry");
+  const capPair = document.getElementById("cap-pair");
+  const strip = document.getElementById("strip");
+  const toasts = document.getElementById("toasts");
+
+  const state = { sessions: new Map(), messages: new Map(), sources: new Map(), sourceSequence: 0, caption: { entry: "", pair: "" } };
+  const feedClock = { latestFeedMs: 0, seenAtWallMs: 0 };
+  const nodeEls = new Map();
+  const labelEls = new Map();
+  const pathEls = new Map();
+  let pickedPid = null;
+  let litKey = null;
+
+  function parseMs(iso) {
+    const ms = Date.parse(iso || "");
+    return Number.isNaN(ms) ? 0 : ms;
+  }
+
+  function advanceFeedClock(iso) {
+    const ms = parseMs(iso);
+    if (ms > feedClock.latestFeedMs) {
+      feedClock.latestFeedMs = ms;
+      feedClock.seenAtWallMs = Date.now();
+    }
+  }
+
+  function feedNowMs() {
+    if (!feedClock.latestFeedMs) return Date.now();
+    return feedClock.latestFeedMs + (Date.now() - feedClock.seenAtWallMs);
+  }
+
+  function labelOf(session) {
+    return session.label || session.role || session.name || `pid ${session.pid}`;
+  }
+
+  function pidFromSocket(target) {
+    const match = /^uds:\/tmp\/cc-socks\/(\d+)\.sock$/.exec(String(target || ""));
+    return match ? Number(match[1]) : null;
+  }
+
+  function labelFor(target) {
+    if (target === null || target === undefined) return "";
+    const socketPid = pidFromSocket(target);
+    const session = state.sessions.get(socketPid !== null ? socketPid : Number(target));
+    if (session) return labelOf(session);
+    for (const s of state.sessions.values()) if (s.name === target || s.label === target) return labelOf(s);
+    return String(target);
+  }
+
+  function colorOf(pid) {
+    const session = state.sessions.get(Number(pid));
+    if (!session) return "#aaaaaa";
+    const words = `${session.role || ""} ${session.label || ""} ${session.name || ""}`.toLowerCase();
+    for (const [word, color] of ROLE_COLORS) if (words.includes(word)) return color;
+    const order = [...state.sessions.keys()].sort((a, b) => a - b).indexOf(session.pid);
+    return PALETTE[Math.max(order, 0) % PALETTE.length];
+  }
+
+  function folderOf(cwd) {
+    const parts = (cwd || "").split("/").filter(Boolean);
+    return parts[parts.length - 1] || "";
+  }
+
+  function pidByName(name) {
+    for (const s of state.sessions.values()) if (s.name === name || s.label === name) return s.pid;
+    return null;
+  }
+
+  function endpointsOf(message) {
+    const from = message.from_pid;
+    let to = message.to_pid;
+    if (to === null || to === undefined) to = pidByName(String(message.to || "").replace(/\s*\[[0-9a-f]+\]$/, ""));
+    return (from === null || from === undefined || to === null || to === undefined) ? null : [Number(from), Number(to)];
+  }
+
+  function messageMs(message) {
+    return parseMs(message.read_at || message.accepted_at || message.enqueued_at || message.sent_at);
+  }
+
+  function sentMs(message) {
+    return parseMs(message.sent_at || message.read_at);
+  }
+
+  function firstLine(text) {
+    return (text || "").split("\n").map((line) => line.trim()).find(Boolean) || "";
+  }
+
+  function truncate(text, max) {
+    const oneLine = (text || "").replace(/\s+/g, " ").trim();
+    return oneLine.length > max ? oneLine.slice(0, max - 1) + "…" : oneLine;
+  }
+
+  function noteCaption(change) {
+    state.caption.entry = change.source || state.caption.entry;
+    if (change.event === "message") {
+      const ends = endpointsOf(change);
+      state.caption.pair = ends ? `${labelFor(ends[0])} → ${labelFor(ends[1])}` : labelFor(change.source_pid);
+    } else {
+      state.caption.pair = labelFor(change.pid !== undefined ? change.pid : change.source_pid);
+    }
+  }
+
+  function applySnapshot(snapshot) {
+    state.sessions = new Map((snapshot.sessions || []).map((s) => [s.pid, s]));
+    state.messages = new Map((snapshot.messages || []).map((m) => [m.key, m]));
+    state.sources = new Map((snapshot.sources || []).map((s) => [s.pid, s]));
+    state.sourceSequence = Math.max(0, ...[...state.sources.values()].map((s) => s.seq || 0));
+    for (const m of state.messages.values()) advanceFeedClock(m.read_at || m.accepted_at || m.enqueued_at || m.sent_at);
+    for (const s of state.sessions.values()) advanceFeedClock(s.last_seen_at);
+    let latest = null;
+    for (const source of state.sources.values()) if (!latest || (source.seq || 0) > (latest.seq || 0)) latest = source;
+    if (latest) {
+      state.caption.entry = latest.source;
+      const newestMessage = [...state.messages.values()].filter((m) => m.kind === "message").sort((a, b) => messageMs(b) - messageMs(a))[0];
+      const ends = newestMessage && endpointsOf(newestMessage);
+      state.caption.pair = ends && Math.abs(messageMs(newestMessage) - parseMs(latest.at)) < 1000 ? `${labelFor(ends[0])} → ${labelFor(ends[1])}` : labelFor(latest.pid);
+    }
+  }
+
+  function applyChange(change) {
+    if (change.event === "snapshot") {
+      applySnapshot(change);
+      return;
+    }
+    if (change.event === "session") {
+      state.sessions.set(change.pid, change);
+      advanceFeedClock(change.last_seen_at);
+    } else if (change.event === "session_removed") {
+      state.sessions.delete(change.pid);
+      state.sources.delete(change.pid);
+    } else if (change.event === "message") {
+      if (change.pending_key && change.pending_key !== change.key) state.messages.delete(change.pending_key);
+      state.messages.set(change.key, change);
+      advanceFeedClock(change.read_at || change.accepted_at || change.enqueued_at || change.sent_at);
+    }
+    if (change.source && change.source_pid !== undefined && change.event !== "session_removed") {
+      state.sourceSequence += 1;
+      state.sources.set(change.source_pid, { pid: change.source_pid, at: change.at, source: change.source, seq: state.sourceSequence });
+      noteCaption(change);
+    }
+    if (change.at) advanceFeedClock(change.at);
+  }
+
+  function messagesOnly() {
+    return [...state.messages.values()].filter((m) => m.kind === "message" && endpointsOf(m));
+  }
+
+  function noticesOnly() {
+    return [...state.messages.values()].filter((m) => m.kind === "idle_notice");
+  }
+
+  function latestSendOf(pid) {
+    let latest = null;
+    for (const m of messagesOnly()) {
+      if (Number(m.from_pid) !== pid || !m.sent_at) continue;
+      if (!latest || m.sent_at > latest.sent_at) latest = m;
+    }
+    return latest;
+  }
+
+  function latestReadBy(pid) {
+    let latest = null;
+    for (const m of messagesOnly()) {
+      if (Number(m.to_pid) !== pid || !m.read_at) continue;
+      if (!latest || m.read_at > latest.read_at) latest = m;
+    }
+    return latest;
+  }
+
+  function statusText(session) {
+    if (session.status !== "WORKING") return "Idle";
+    const send = latestSendOf(session.pid);
+    return send && send.stage === "PENDING" ? "Sending" : "Working";
+  }
+
+  function lastLineOf(session) {
+    const send = latestSendOf(session.pid);
+    const read = latestReadBy(session.pid);
+    const sendIsLatest = send && (!read || send.sent_at > read.read_at);
+    if (sendIsLatest) return send.stage === "PENDING" ? truncate(send.summary || send.body, 60) : "";
+    return read ? `“${truncate(read.body || read.summary, 60)}”` : "";
+  }
+
+  function failedIsResolved(failed) {
+    for (const m of messagesOnly()) {
+      if (m === failed || Number(m.from_pid) !== Number(failed.from_pid) || Number(m.to_pid) !== Number(failed.to_pid)) continue;
+      if ((m.stage === "READ" || m.stage === "IN_INBOX") && sentMs(m) > sentMs(failed)) return true;
+    }
+    return false;
+  }
+
+  function flashRemaining(message, now) {
+    if (message.stage !== "READ") return 1;
+    return 1 - (now - parseMs(message.read_at)) / READ_FLASH_MS;
+  }
+
+  function withinHorizon(message, now) {
+    const age = now - messageMs(message);
+    return age < RING_WINDOW_MS;
+  }
+
+  function visibleArrows(now) {
+    return messagesOnly().filter((m) => {
+      if (!withinHorizon(m, now)) return false;
+      if (m.stage === "PENDING" || m.stage === "IN_INBOX") return true;
+      if (m.stage === "FAILED") return !failedIsResolved(m);
+      return m.stage === "READ" && flashRemaining(m, now) > 0;
+    });
+  }
+
+  function pulsingPids(now) {
+    const pids = new Set();
+    for (const n of noticesOnly()) {
+      const at = parseMs(n.read_at || n.sent_at);
+      if (now - at >= 0 && now - at < PULSE_MS && n.to_pid !== null && n.to_pid !== undefined) pids.add(Number(n.to_pid));
+    }
+    return pids;
+  }
+
+  function ringSessions(now) {
+    const active = new Set();
+    for (const m of state.messages.values()) {
+      const ends = endpointsOf(m);
+      if (!ends) continue;
+      if (withinHorizon(m, now)) { active.add(ends[0]); active.add(ends[1]); }
+    }
+    for (const s of state.sessions.values()) for (const w of s.watching || []) { active.add(s.pid); const pid = Number.isInteger(Number(w)) ? Number(w) : pidByName(String(w)); if (pid !== null) active.add(pid); }
+    const all = [...state.sessions.values()].sort((a, b) => a.pid - b.pid);
+    return active.size ? all.filter((s) => active.has(s.pid)) : all;
+  }
+
+  let layout = { W: 376, H: 380, CW: 108, CH: 62, compact: false, pos: new Map() };
+
+  function layoutNodes(ring) {
+    const W = graph.clientWidth || 376;
+    const compact = ring.length > COMPACT_ABOVE;
+    const pod = ring.length <= 2;
+    const H = pod ? 150 : 380;
+    const CW = compact ? 100 : 116, CH = compact ? 24 : 62;
+    const r = compact ? Math.min(150, W / 2 - CW / 2 + 10) : Math.min(140, W / 2 - CW / 2 - 2);
+    const cx = W / 2, cy = pod ? H / 2 + 15 : H / 2 + 8;
+    const pos = new Map();
+    ring.forEach((s, i) => {
+      if (ring.length === 2) pos.set(s.pid, [i === 0 ? CW / 2 + 20 : W - CW / 2 - 20, cy]);
+      else if (ring.length === 1) pos.set(s.pid, [cx, cy]);
+      else { const a = -Math.PI / 2 + i * 2 * Math.PI / ring.length; pos.set(s.pid, [cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
+    });
+    layout = { W, H, CW, CH, compact, pod, pos, cx, cy };
+    graph.classList.toggle("pod", pod);
+  }
+
+  function exitPoint(from, toward, gap) {
+    const { CW, CH } = layout;
+    const dx = toward[0] - from[0], dy = toward[1] - from[1], length = Math.hypot(dx, dy) || 1, ux = dx / length, uy = dy / length;
+    const t = Math.min(ux ? CW / 2 / Math.abs(ux) : 1e9, uy ? CH / 2 / Math.abs(uy) : 1e9) + gap;
+    return [from[0] + ux * t, from[1] + uy * t];
+  }
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function dotEl(pid, working) {
+    const dot = el("span", "dot" + (working ? " work" : ""));
+    dot.style.background = colorOf(pid);
+    return dot;
+  }
+
+  function eyeEl(pulse) {
+    return el("span", "eye" + (pulse ? " pulse" : ""), "👁");
+  }
+
+  function buildNodeContent(session, pulse) {
+    const status = statusText(session);
+    const working = session.status === "WORKING";
+    const hd = el("div", "hd");
+    hd.append(dotEl(session.pid, working && layout.compact), el("span", "name", labelOf(session)));
+    if (layout.compact && session.inbox > 0) hd.append(el("span", "n", String(session.inbox)));
+    if (layout.compact && pulse) hd.append(eyeEl(true));
+    const row2 = el("div", "row2");
+    row2.append(el("span", `pill ${status === "Idle" ? "idle" : "work"}`, status));
+    if (session.inbox > 0) row2.append(el("span", "pill inbox", `Inbox ${session.inbox}`));
+    const last = el("div", "last");
+    const watched = (session.watching || []).map(labelFor).filter(Boolean);
+    if (watched.length) {
+      last.append(eyeEl(pulse), document.createTextNode(` Watching ${watched.join(", ")}`));
+    } else if (pulse) {
+      last.append(eyeEl(true), document.createTextNode(" idle notice"));
+    } else {
+      const text = lastLineOf(session);
+      last.textContent = text;
+      if (text) last.title = text;
+    }
+    return [hd, row2, last];
+  }
+
+  function renderNodes(ring, now, inFlight) {
+    const pulsing = pulsingPids(now);
+    const keep = new Set();
+    for (const session of ring) {
+      keep.add(session.pid);
+      let node = nodeEls.get(session.pid);
+      if (!node) {
+        node = el("div", "node");
+        node.dataset.pid = session.pid;
+        node.id = `session-${session.pid}`;
+        node.addEventListener("click", () => pick(session.pid));
+        graph.append(node);
+        nodeEls.set(session.pid, node);
+      }
+      node.className = "node" + (layout.compact ? " compact" : "") + (session.role ? "" : " incomplete") + (pickedPid === session.pid ? " picked" : "");
+      const [x, y] = layout.pos.get(session.pid);
+      node.style.left = `${x - layout.CW / 2}px`;
+      node.style.top = `${y - layout.CH / 2}px`;
+      node.style.width = `${layout.CW}px`;
+      node.style.minHeight = `${layout.CH}px`;
+      node.style.height = layout.compact ? `${layout.CH}px` : "auto";
+      node.title = `${session.name || "unnamed"} · pid ${session.pid}`;
+      node.replaceChildren(...buildNodeContent(session, pulsing.has(session.pid)));
+      const hot = inFlight.some((m) => (m.stage === "PENDING" || m.stage === "IN_INBOX") && (Number(m.from_pid) === session.pid || Number(m.to_pid) === session.pid));
+      node.classList.toggle("hot", hot);
+    }
+    for (const [pid, node] of nodeEls) if (!keep.has(pid)) { node.remove(); nodeEls.delete(pid); }
+  }
+
+  function arrowKey(message) {
+    const ends = endpointsOf(message);
+    return `${ends[0]}>${ends[1]}`;
+  }
+
+  function stageSpan(stage) {
+    const [text, cls] = STAGE_LABEL[stage] || [stage, "pend"];
+    return el("span", cls, text);
+  }
+
+  function renderArrows(visible, now) {
+    const byPair = new Map();
+    for (const m of visible) {
+      const key = arrowKey(m);
+      if (!byPair.has(key)) byPair.set(key, []);
+      byPair.get(key).push(m);
+    }
+    const newest = visible.reduce((best, m) => (!best || sentMs(m) > sentMs(best)) ? m : best, null);
+    const keep = new Set();
+    const { cx, cy, pod, pos } = layout;
+    for (const [key, list] of byPair) {
+      const m = list.reduce((best, x) => (!best || sentMs(x) > sentMs(best)) ? x : best, null);
+      const ends = endpointsOf(m);
+      const A = pos.get(ends[0]), B = pos.get(ends[1]);
+      if (!A || !B) continue;
+      const reverseKey = `${ends[1]}>${ends[0]}`;
+      const reverse = byPair.has(reverseKey);
+      const mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
+      const pull = pod ? 0 : (reverse ? (key < reverseKey ? 0.15 : 0.55) : 0.35);
+      const C = [mx + (cx - mx) * pull, my + (cy - my) * pull - (pod ? (reverse && key > reverseKey ? -POD_LIFT : POD_LIFT) : 0)];
+      const S = exitPoint(A, C, 3), E = exitPoint(B, C, 6);
+      const P = [0.25 * S[0] + 0.5 * C[0] + 0.25 * E[0], 0.25 * S[1] + 0.5 * C[1] + 0.25 * E[1]];
+      const [stroke, marker] = STAGE_STROKE[m.stage] || STAGE_STROKE.PENDING;
+      let path = pathEls.get(key);
+      if (!path) {
+        path = document.createElementNS(SVG_NS, "path");
+        path.setAttribute("fill", "none");
+        path.setAttribute("data-key", key);
+        path.addEventListener("mouseenter", () => { litKey = key; render(); });
+        path.addEventListener("mouseleave", () => { litKey = null; render(); });
+        arrows.append(path);
+        pathEls.set(key, path);
+      }
+      path.setAttribute("d", `M${S[0].toFixed(1)},${S[1].toFixed(1)} Q${C[0].toFixed(1)},${C[1].toFixed(1)} ${E[0].toFixed(1)},${E[1].toFixed(1)}`);
+      path.setAttribute("stroke", stroke);
+      path.setAttribute("marker-end", `url(#${marker})`);
+      path.setAttribute("data-stage", m.stage);
+      const flash = m.stage === "READ";
+      const lit = litKey === key || (pickedPid !== null && (ends[0] === pickedPid || ends[1] === pickedPid));
+      path.setAttribute("stroke-width", m === newest || flash || lit ? 2.4 : 1.5);
+      path.style.opacity = flash ? String(Math.max(0, flashRemaining(m, now))) : "1";
+      path.classList.toggle("dim", pickedPid !== null && !lit);
+      keep.add(key);
+      let label = labelEls.get(key);
+      if (!label) {
+        label = el("div", "elab");
+        label.dataset.key = key;
+        graph.append(label);
+        labelEls.set(key, label);
+      }
+      const summary = el("span", "esum", truncate(m.summary || m.body || m.key, 40));
+      if (list.length > 1) summary.append(document.createTextNode(" "), el("span", "pend", `+${list.length - 1}`));
+      label.replaceChildren(summary, stageSpan(m.stage));
+      label.title = `${m.stage}${m.reason ? ": " + m.reason : ""}\n${m.body || ""}`;
+      label.style.left = `${P[0]}px`;
+      label.style.top = `${P[1]}px`;
+      const hidden = layout.compact && m !== newest && !lit;
+      label.style.opacity = hidden ? "0" : (flash ? String(Math.max(0, flashRemaining(m, now))) : "1");
+    }
+    for (const [key, path] of pathEls) if (!keep.has(key)) { path.remove(); pathEls.delete(key); }
+    for (const [key, label] of labelEls) if (!keep.has(key)) { label.remove(); labelEls.delete(key); }
+  }
+
+  function renderStrip(ring) {
+    const inRing = new Set(ring.map((s) => s.pid));
+    strip.replaceChildren();
+    for (const session of [...state.sessions.values()].sort((a, b) => a.pid - b.pid)) {
+      const working = session.status === "WORKING";
+      const chip = el("span", "chip" + (working ? " on" : "") + (session.inbox > 0 ? " hot" : "") + (pickedPid === session.pid ? " picked" : "") + (inRing.has(session.pid) ? "" : " out"));
+      chip.dataset.pid = session.pid;
+      chip.title = inRing.has(session.pid) ? `${session.name || "unnamed"} · pid ${session.pid}` : `${session.name || "unnamed"} · pid ${session.pid} · no message in the last 10 min`;
+      chip.append(dotEl(session.pid, working), document.createTextNode(labelOf(session)));
+      if (session.inbox > 0) chip.append(el("span", "n", String(session.inbox)));
+      chip.addEventListener("click", () => pick(session.pid));
+      strip.append(chip);
+    }
+  }
+
+  function pick(pid) {
+    pickedPid = pickedPid === pid ? null : pid;
+    render();
+  }
+
+  function toastItems(now) {
+    const items = [];
+    for (const m of messagesOnly()) {
+      if (!withinHorizon(m, now)) continue;
+      if (m.stage === "READ" && now - parseMs(m.read_at) >= TOAST_LINGER_MS) continue;
+      if (m.stage === "FAILED" && failedIsResolved(m)) continue;
+      items.push({ kind: "message", message: m, at: sentMs(m) });
+    }
+    for (const n of noticesOnly()) {
+      const at = parseMs(n.read_at || n.sent_at);
+      if (now - at < TOAST_LINGER_MS) items.push({ kind: "notice", notice: n, at });
+      if (now - at < RING_WINDOW_MS) { const ends = [n.from_pid !== null && n.from_pid !== undefined ? n.from_pid : pidFromSocket(n.to), n.to_pid]; }
+    }
+    return items.sort((a, b) => b.at - a.at);
+  }
+
+  function renderToasts(now) {
+    const items = toastItems(now);
+    toasts.replaceChildren();
+    if (!items.length) {
+      toasts.append(el("div", "quiet-toasts", "No traffic"));
+      return;
+    }
+    for (const item of items.slice(0, MAX_TOASTS)) {
+      if (item.kind === "notice") {
+        const n = item.notice;
+        const toast = el("div", "toast notice");
+        const from = el("div", "from");
+        const watchedPid = n.from_pid !== null && n.from_pid !== undefined ? n.from_pid : pidFromSocket(n.to);
+        from.append(dotEl(watchedPid), el("b", "", labelFor(watchedPid !== null ? watchedPid : n.to)), el("span", "pend", "idle notice to"), dotEl(n.to_pid), el("b", "", labelFor(n.to_pid)));
+        toast.append(from, el("span", "st pend", "👁"));
+        toasts.append(toast);
+        continue;
+      }
+      const m = item.message;
+      const ends = endpointsOf(m);
+      const key = arrowKey(m);
+      const cls = m.stage === "PENDING" ? "pend" : (m.stage === "FAILED" ? "fail" : (m.stage === "READ" && flashRemaining(m, now) <= 0 ? "gone" : ""));
+      const toast = el("div", `toast ${cls}` + (litKey === key ? " lit" : ""));
+      toast.dataset.key = key;
+      toast.dataset.msg = m.key;
+      const from = el("div", "from");
+      from.append(dotEl(ends[0]), el("b", "", labelFor(ends[0])), el("span", "pend", "→"), dotEl(ends[1]), el("b", "", labelFor(ends[1])));
+      const [text, stageCls] = STAGE_LABEL[m.stage] || [m.stage, "pend"];
+      const stage = el("span", `st ${stageCls}`, text);
+      if (m.reason) stage.title = m.reason;
+      const sum = el("div", "sum", firstLine(m.body) || m.summary || "");
+      sum.title = m.body || m.summary || "";
+      toast.append(from, stage, sum);
+      toast.addEventListener("mouseenter", () => { litKey = key; render(); });
+      toast.addEventListener("mouseleave", () => { litKey = null; render(); });
+      toasts.append(toast);
+    }
+    if (items.length > MAX_TOASTS) toasts.append(el("div", "more", `+${items.length - MAX_TOASTS} more`));
+  }
+
+  function renderTitle(ring, inFlight) {
+    const sessions = [...state.sessions.values()];
+    const folders = new Set(sessions.map((s) => folderOf(s.cwd)).filter(Boolean));
+    const place = folders.size === 1 ? [...folders][0] : (folders.size ? "all folders" : "");
+    const working = sessions.filter((s) => s.status === "WORKING").length;
+    title.textContent = sessions.length ? `${place ? place + " · " : ""}${sessions.length} sessions · ${working} working · ${inFlight.length} in flight` : "No sessions discovered yet";
+  }
+
+  function render() {
+    const now = feedNowMs();
+    const ring = ringSessions(now);
+    const visible = visibleArrows(now);
+    const inFlight = visible.filter((m) => m.stage !== "READ");
+    layoutNodes(ring);
+    svg.setAttribute("viewBox", `0 0 ${layout.W} ${layout.H}`);
+    const quiet = graph.querySelector(".quiet");
+    if (!ring.length && !quiet) graph.append(el("div", "quiet", "No sessions discovered yet"));
+    if (ring.length && quiet) quiet.remove();
+    renderNodes(ring, now, inFlight);
+    renderArrows(visible.filter((m) => { const ends = endpointsOf(m); return layout.pos.has(ends[0]) && layout.pos.has(ends[1]); }), now);
+    capEntry.textContent = state.caption.entry;
+    capPair.textContent = state.caption.pair;
+    renderStrip(ring);
+    renderToasts(now);
+    renderTitle(ring, inFlight);
+  }
+
+  let renderQueued = false;
+  function scheduleRender() {
+    if (renderQueued) return;
+    renderQueued = true;
+    setTimeout(() => { renderQueued = false; render(); }, 0);
+  }
+
+  async function loadState() {
+    try {
+      const response = await fetch("./state", { cache: "no-store" });
+      if (response.ok) {
+        applySnapshot(await response.json());
+        scheduleRender();
+      }
+    } catch {
+      scheduleRender();
+    }
+  }
+
+  let fallbackTimer = null;
+  let eventsReceived = 0;
+  function connectEvents() {
+    const source = new EventSource("./events");
+    source.onopen = () => {
+      link.textContent = "live";
+      link.className = "";
+      if (fallbackTimer) { clearInterval(fallbackTimer); fallbackTimer = null; }
+    };
+    source.onmessage = (event) => {
+      eventsReceived += 1;
+      try {
+        applyChange(JSON.parse(event.data));
+        scheduleRender();
+      } catch (error) {
+        link.textContent = "parse error";
+      }
+    };
+    source.onerror = () => {
+      link.textContent = "reconnecting";
+      link.className = "off";
+      if (!fallbackTimer) fallbackTimer = setInterval(loadState, 2000);
+    };
+  }
+
+  window.addEventListener("resize", scheduleRender);
+  setInterval(render, RENDER_EVERY_MS);
+  loadState();
+  connectEvents();
+</script>
+</body>
+</html>

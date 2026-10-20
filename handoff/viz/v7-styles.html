@@ -1,0 +1,663 @@
+<title>Session Monitor Styles</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: four mock windows at popup size on a quiet page; every mock shares one message flow */
+:root {
+  --bg: #f3f2ef; --fg: #1b1b1b; --muted: #6b6b66; --rule: #dcdad4;
+  --win: #121212; --card: #1c1c1c; --card-edge: #2a2a2a; --win-fg: #ededed; --win-muted: #8a8a8a;
+  --blue-bg: #1b2f4a; --blue-fg: #7cb4ff; --grey-bg: #2a2a2a; --grey-fg: #cfcfcf;
+  --orange-bg: #3a2a12; --orange-fg: #ffb454; --green: #4ad17a; --purple: #a98bff; --teal: #3ed6a4; --red: #ff6b6b;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0c0c0c; --fg: #ececec; --muted: #9a9a94; --rule: #262626; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #0c0c0c; --fg: #ececec; --muted: #9a9a94; --rule: #262626; color-scheme: dark }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); padding-inline: 20px; padding-block: 28px 48px; line-height: 1.45 }
+.wrap { max-width: 1120px; margin: 0 auto }
+h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; text-wrap: balance }
+.lede { color: var(--muted); margin: 0 0 24px; max-width: 64ch }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 28px }
+@media (max-width: 420px) { .grid { grid-template-columns: 1fr } }
+.opt { min-width: 0; display: flex; flex-direction: column; gap: 10px }
+.opt h2 { font-size: 15px; font-weight: 600; margin: 0; display: flex; align-items: baseline; gap: 10px }
+.opt h2 .tag { font-family: var(--mono); font-size: 11px; color: var(--muted); font-weight: 400; letter-spacing: .04em; text-transform: uppercase }
+.opt p { margin: 0; color: var(--muted); font-size: 13px }
+.opt dl { margin: 0; font-size: 13px; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px }
+.opt dt { color: var(--muted) } .opt dd { margin: 0 }
+
+.win { background: var(--win); color: var(--win-fg); border-radius: 10px; border: 1px solid #2c2c2c; overflow: hidden; box-shadow: 0 8px 30px rgba(0,0,0,.25); width: 100%; max-width: 380px }
+.bar { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-bottom: 1px solid #222; font-size: 11px; color: var(--win-muted) }
+.bar i { width: 10px; height: 10px; border-radius: 50%; background: #3a3a3a; display: inline-block }
+.bar span { margin-left: 6px }
+.body { padding: 12px }
+
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 6px; font-size: 12px; font-weight: 500; line-height: 1.5 }
+.idle { background: var(--grey-bg); color: var(--grey-fg) } .work { background: var(--blue-bg); color: var(--blue-fg) } .inbox { background: var(--orange-bg); color: var(--orange-fg) }
+.ok { color: var(--green) } .pend { color: var(--win-muted) } .fail { color: var(--red) }
+.mono { font-family: var(--mono); font-size: 11px; color: var(--win-muted) }
+.name { font-weight: 600 }
+
+/* A. feed */
+.feed { display: flex; flex-direction: column; gap: 0 }
+.feed .row { display: grid; grid-template-columns: 44px 1fr auto; gap: 8px; padding: 7px 0; border-bottom: 1px solid #202020; font-size: 13px; align-items: baseline }
+.feed .row:last-child { border-bottom: 0 }
+.feed .t { font-family: var(--mono); font-size: 11px; color: var(--win-muted); font-variant-numeric: tabular-nums }
+.feed .who { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0 }
+.feed .arrow { color: var(--win-muted) }
+.feed .msg { color: var(--win-muted); font-size: 12px; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.feed .st { font-size: 12px; white-space: nowrap }
+.feed .new { background: #171a1f; margin: 0 -12px; padding-inline: 12px }
+
+/* B. pair */
+.pair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: stretch }
+.pcard { background: var(--card); border: 1px solid var(--card-edge); border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px; min-width: 0 }
+.pcard .hd { display: flex; align-items: center; gap: 6px; font-size: 14px }
+.pcard .last { color: var(--win-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.link { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 12px; text-align: center; min-width: 76px }
+.link .sum { color: var(--win-fg) } .link .ar { font-size: 18px; line-height: 1 }
+.cap { margin-top: 10px; display: flex; justify-content: space-between; gap: 10px; align-items: baseline }
+.others { display: flex; gap: 5px; margin-top: 10px; align-items: center; flex-wrap: wrap }
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--win-muted); padding: 2px 7px; border: 1px solid #262626; border-radius: 99px }
+
+/* C. lanes */
+.lanes { position: relative; display: grid; grid-template-columns: 112px 1fr; gap: 0; font-size: 12px }
+.lane { display: contents }
+.lane .lbl { display: flex; align-items: center; gap: 6px; height: 34px; border-bottom: 1px solid #1e1e1e; padding-right: 6px; min-width: 0 }
+.lane .lbl b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.lane .trk { position: relative; height: 34px; border-bottom: 1px solid #1e1e1e }
+.svgwrap { position: relative; grid-column: 2; grid-row: 1 / span 4; pointer-events: none }
+.lanes svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible }
+.lanes .ev { position: absolute; top: 50%; transform: translateY(-50%); font-size: 11px; white-space: nowrap; display: flex; gap: 6px; align-items: center }
+.lanes .ev .sum { color: var(--win-fg) }
+.lanes .ev .ck { font-size: 11px }
+.axis { grid-column: 2; display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10px; color: var(--win-muted); padding-top: 4px; font-variant-numeric: tabular-nums }
+
+/* D. strip + toast */
+.strip { display: flex; gap: 6px; flex-wrap: wrap }
+.schip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px 4px 7px; border-radius: 99px; border: 1px solid #262626; font-size: 12px; background: var(--card) }
+.schip .n { font-size: 11px; color: var(--orange-fg); background: var(--orange-bg); padding: 0 5px; border-radius: 5px; font-weight: 600 }
+.toast { margin-top: 12px; background: var(--card); border: 1px solid #2e2e2e; border-left: 3px solid var(--green); border-radius: 8px; padding: 9px 11px; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; font-size: 13px; align-items: baseline }
+.toast .from { display: flex; gap: 6px; align-items: center; flex-wrap: wrap }
+.toast .sum { grid-column: 1 / -1; color: var(--win-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.toast.second { border-left-color: #3a3a3a; opacity: .55; margin-top: 6px }
+
+/* E. combined strip + active pair + fading history */
+.combo { margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--rule) }
+.combo h2 { font-size: 17px; font-weight: 600; margin: 0 0 4px }
+.combo .lede { margin-bottom: 18px }
+.combo .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 28px }
+@media (max-width: 420px) { .combo .two { grid-template-columns: 1fr } }
+.combo .label { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; margin-bottom: 8px }
+.stripbar { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px; border-bottom: 1px solid #202020; background: #151515 }
+.schip.on { border-color: #2e4a6e }
+.schip.hot { border-color: #4a3618 }
+.quiet { color: var(--win-muted); font-size: 13px; text-align: center; padding: 22px 0 }
+.hist { margin-top: 10px; display: flex; flex-direction: column; gap: 5px }
+.hrow { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; font-size: 12px; padding: 6px 9px; border-radius: 6px; background: #171717; border: 1px solid #222; align-items: baseline }
+.hrow .from { display: flex; gap: 5px; align-items: center; flex-wrap: wrap }
+.hrow .sum { grid-column: 1 / -1; color: var(--win-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px }
+.hrow.f1 { opacity: .7 } .hrow.f2 { opacity: .4 }
+.steps { margin-top: 18px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px 24px; font-size: 13px }
+.steps div { display: flex; gap: 10px; align-items: baseline }
+.steps b { font-family: var(--mono); font-weight: 500; font-size: 11px; color: var(--muted); flex: none }
+
+/* F. combined, several messages in flight */
+.rows { display: flex; flex-direction: column; gap: 8px }
+.prow { display: grid; grid-template-columns: 1fr auto 1fr; gap: 6px; align-items: center; padding: 8px; border-radius: 8px; background: var(--card); border: 1px solid var(--card-edge) }
+.prow.top { border-color: #35506f; background: #171b22 }
+.mini { display: flex; flex-direction: column; gap: 4px; min-width: 0 }
+.mini .hd { display: flex; align-items: center; gap: 6px; font-size: 13px; min-width: 0 }
+.mini .hd .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.mini .row2 { display: flex; gap: 4px; align-items: center; flex-wrap: wrap }
+.mini .pill { font-size: 11px; padding: 0 6px }
+.mlink { display: flex; flex-direction: column; align-items: center; gap: 0; font-size: 11px; min-width: 68px; text-align: center }
+.mlink .sum { color: var(--win-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 90px }
+.mlink .ar { font-size: 16px; line-height: 1.1 }
+.more { font-size: 12px; color: var(--win-muted); text-align: center; padding: 4px 0 }
+.rules { margin-top: 18px; font-size: 13px; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 24px }
+.rules div { display: flex; gap: 10px; align-items: baseline }
+.rules b { font-family: var(--mono); font-weight: 500; font-size: 11px; color: var(--muted); flex: none }
+
+.also { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--win-muted); margin: 12px 0 6px }
+.pair.settled .link .ar, .pair.settled .link .sum { opacity: .8 }
+
+
+/* G. web */
+.graph { position: relative; width: 100%; max-width: 356px; margin: 0 auto }
+.graph svg { position: absolute; inset: 0; overflow: visible }
+.node { position: absolute; z-index: 1; background: var(--card); border: 1px solid var(--card-edge); border-radius: 8px; padding: 7px 9px; display: flex; flex-direction: column; gap: 4px; min-width: 0; box-sizing: border-box }
+.node .hd { display: flex; align-items: center; gap: 6px; font-size: 13px; min-width: 0 }
+.node .hd .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.node .row2 { display: flex; gap: 4px; flex-wrap: wrap }
+.node .pill { font-size: 11px; padding: 0 6px }
+.nlast { color: var(--win-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.elab { position: absolute; transform: translate(-50%, -50%); background: #121212; padding: 1px 5px; z-index: 2; border-radius: 5px; font-size: 10px; display: flex; flex-direction: column; align-items: center; line-height: 1.3; white-space: nowrap }
+.elab .esum { color: var(--win-fg) }
+.elab.bright { font-size: 11px; box-shadow: 0 0 0 1px #2a2a2a }
+
+
+.cnode { position: absolute; z-index: 1; display: flex; align-items: center; gap: 5px; padding: 0 7px; border-radius: 99px; background: var(--card); border: 1px solid var(--card-edge); font-size: 11px; box-sizing: border-box; white-space: nowrap; overflow: hidden }
+.cnode .name { overflow: hidden; text-overflow: ellipsis }
+.cnode .n { font-size: 10px; color: var(--orange-fg); background: var(--orange-bg); padding: 0 4px; border-radius: 4px; font-weight: 600 }
+
+.foot { margin-top: 32px; border-top: 1px solid var(--rule); padding-top: 14px; color: var(--muted); font-size: 13px; max-width: 72ch }
+</style>
+
+<div class="wrap">
+  <h1>Session Monitor Styles</h1>
+  <p class="lede">Four ways to show only the traffic between sessions in a window about 380 pixels wide. Every mock shows the same moment: the manager has just assigned V5 to the viz-builder, and the message was read. The dark card look you approved is kept throughout.</p>
+
+  <div class="grid">
+
+    <section class="opt">
+      <h2>Feed <span class="tag">A</span></h2>
+      <div class="win">
+        <div class="bar"><i></i><i></i><i></i><span>path_finder · 6 sessions · 1 working</span></div>
+        <div class="body feed">
+          <div class="row new">
+            <span class="t">12:04</span>
+            <div style="min-width:0">
+              <div class="who"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span><span class="arrow">→</span><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span></div>
+              <div class="msg">V5. User instruction for tonight: the live-round-trip check…</div>
+            </div>
+            <span class="st ok">✓✓ Read</span>
+          </div>
+          <div class="row">
+            <span class="t">12:04</span>
+            <div style="min-width:0">
+              <div class="who"><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span><span class="arrow">↺</span><span class="name">idle</span></div>
+              <div class="msg">idle notice to manager</div>
+            </div>
+            <span class="st pend">notice</span>
+          </div>
+          <div class="row">
+            <span class="t">11:58</span>
+            <div style="min-width:0">
+              <div class="who"><span class="dot" style="background:#ff9f43"></span><span class="name">validator</span><span class="arrow">→</span><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span></div>
+              <div class="msg">V4 review: PASS on the overnight acceptance</div>
+            </div>
+            <span class="st ok">✓✓ Read</span>
+          </div>
+          <div class="row">
+            <span class="t">11:41</span>
+            <div style="min-width:0">
+              <div class="who"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span><span class="arrow">→</span><span class="dot" style="background:#ff9f43"></span><span class="name">validator</span></div>
+              <div class="msg">V4 review: handoff/viz/ready.md</div>
+            </div>
+            <span class="st ok">✓✓ Read</span>
+          </div>
+        </div>
+      </div>
+      <p>A newest-first list of messages. One row per message: time, sender to receiver, the first line, and the stage. The top row is highlighted while it changes.</p>
+      <dl><dt>Best for</dt><dd>A popup you glance at. Scales to any number of sessions.</dd><dt>Loses</dt><dd>Who is idle or working, unless shown in the title bar.</dd></dl>
+    </section>
+
+    <section class="opt">
+      <h2>Active pair <span class="tag">B</span></h2>
+      <div class="win">
+        <div class="bar"><i></i><i></i><i></i><span>latest message · 12:04</span></div>
+        <div class="body">
+          <div class="pair">
+            <div class="pcard">
+              <div class="hd"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span></div>
+              <div><span class="pill idle">Idle</span></div>
+              <div class="last">👁 Watching viz-builder</div>
+            </div>
+            <div class="link"><span class="sum">V5</span><span class="ar">→</span><span class="ok">✓✓ Read</span></div>
+            <div class="pcard">
+              <div class="hd"><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span></div>
+              <div><span class="pill work">Working</span></div>
+              <div class="last">“V5. User instruction for tonight…”</div>
+            </div>
+          </div>
+          <div class="cap"><span class="mono">user · origin.kind = peer</span></div>
+          <div class="others">
+            <span class="chip"><span class="dot" style="background:#ff9f43"></span>validator</span>
+            <span class="chip"><span class="dot" style="background:#6ec1ff"></span>discovery-builder</span>
+            <span class="chip"><span class="dot" style="background:#aaa"></span>fake manager</span>
+            <span class="chip"><span class="dot" style="background:#aaa"></span>fake builder</span>
+          </div>
+        </div>
+      </div>
+      <p>Only the two sessions in the most recent message get cards, exactly as in your frames. Everyone else collapses to a chip row. When a new message flows elsewhere, the cards swap to that pair.</p>
+      <dl><dt>Best for</dt><dd>Keeping the look you approved in a quarter of the space.</dd><dt>Loses</dt><dd>History; only one message is visible at a time.</dd></dl>
+    </section>
+
+    <section class="opt">
+      <h2>Lanes <span class="tag">C</span></h2>
+      <div class="win">
+        <div class="bar"><i></i><i></i><i></i><span>last 30 minutes</span></div>
+        <div class="body">
+          <div class="lanes">
+            <div class="lane"><div class="lbl"><span class="dot" style="background:var(--purple)"></span><b>manager</b></div><div class="trk"></div></div>
+            <div class="lane"><div class="lbl"><span class="dot" style="background:var(--teal)"></span><b>viz-builder</b></div><div class="trk"></div></div>
+            <div class="lane"><div class="lbl"><span class="dot" style="background:#ff9f43"></span><b>validator</b></div><div class="trk"></div></div>
+            <div class="lane"><div class="lbl"><span class="dot" style="background:#6ec1ff"></span><b>discovery-b…</b></div><div class="trk"></div></div>
+            <div class="svgwrap">
+              <svg viewBox="0 0 240 136" preserveAspectRatio="none" aria-hidden="true">
+                <defs><marker id="ah" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#4ad17a"/></marker><marker id="ahm" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#8a8a8a"/></marker></defs>
+                <line x1="40" y1="17" x2="40" y2="85" stroke="#4ad17a" stroke-width="1.5" marker-end="url(#ah)"/>
+                <line x1="110" y1="85" x2="110" y2="17" stroke="#4ad17a" stroke-width="1.5" marker-end="url(#ah)"/>
+                <line x1="175" y1="17" x2="175" y2="51" stroke="#4ad17a" stroke-width="1.5" marker-end="url(#ah)"/>
+                <line x1="215" y1="51" x2="215" y2="17" stroke="#8a8a8a" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#ahm)"/>
+              </svg>
+              <div class="ev" style="left:46px; top:60px"><span class="sum">V4 review</span></div>
+              <div class="ev" style="left:116px; top:60px"><span class="sum">PASS</span></div>
+              <div class="ev" style="left:181px; top:34px"><span class="sum">V5</span><span class="ck ok">✓✓</span></div>
+              <div class="ev" style="left:221px; top:34px"><span class="pend">idle</span></div>
+            </div>
+          </div>
+          <div class="axis"><span>11:36</span><span>11:50</span><span>12:04</span></div>
+        </div>
+      </div>
+      <p>One thin row per session, time running left to right, an arrow per message between rows. A dashed arrow is an idle notice. It reads like a sequence diagram of the last half hour.</p>
+      <dl><dt>Best for</dt><dd>Seeing who talks to whom over time, in one glance.</dd><dt>Loses</dt><dd>Message text; summaries must stay very short.</dd></dl>
+    </section>
+
+    <section class="opt">
+      <h2>Strip and toast <span class="tag">D</span></h2>
+      <div class="win">
+        <div class="bar"><i></i><i></i><i></i><span>path_finder</span></div>
+        <div class="body">
+          <div class="strip">
+            <span class="schip"><span class="dot" style="background:var(--purple)"></span>manager</span>
+            <span class="schip"><span class="dot" style="background:var(--teal); box-shadow:0 0 0 3px #1b2f4a"></span>viz-builder</span>
+            <span class="schip"><span class="dot" style="background:#ff9f43"></span>validator <span class="n">1</span></span>
+            <span class="schip"><span class="dot" style="background:#6ec1ff"></span>discovery-builder</span>
+          </div>
+          <div class="toast">
+            <div class="from"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span><span class="pend">→</span><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span></div>
+            <span class="ok" style="font-size:12px">✓✓ Read</span>
+            <div class="sum">V5. User instruction for tonight: the live-round-trip check is deferred…</div>
+          </div>
+          <div class="toast second">
+            <div class="from"><span class="dot" style="background:#ff9f43"></span><span class="name">validator</span><span class="pend">→</span><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span></div>
+            <span class="ok" style="font-size:12px">✓✓ Read</span>
+            <div class="sum">V4 review: PASS on the overnight acceptance</div>
+          </div>
+        </div>
+      </div>
+      <p>A one-line strip of session chips (a ring on the dot means working, an orange count means inbox), and a toast for each message that fades after it is read. The window can shrink to the strip alone when nothing is in flight.</p>
+      <dl><dt>Best for</dt><dd>The smallest footprint, like a menu-bar or corner widget.</dd><dt>Loses</dt><dd>Anything older than the last two or three messages.</dd></dl>
+    </section>
+
+  </div>
+
+  <section class="combo">
+    <h2>Combined: strip, active pair, fading history</h2>
+    <p class="lede">D's strip stays at the top as the always-on status line. B's two cards take the middle whenever a message is in flight, and swap to whichever pair is talking. Under them, D's toasts become a short history that fades out, newest first. When nothing moves, the pod stays up showing the last message, with its age in the caption; only the history fades.</p>
+    <div class="two">
+
+      <div>
+        <div class="label">Message in flight</div>
+        <div class="win">
+          <div class="bar"><i></i><i></i><i></i><span>path_finder · 12:04</span></div>
+          <div class="stripbar">
+            <span class="schip"><span class="dot" style="background:var(--purple)"></span>manager</span>
+            <span class="schip on"><span class="dot" style="background:var(--teal); box-shadow:0 0 0 3px #1b2f4a"></span>viz-builder</span>
+            <span class="schip hot"><span class="dot" style="background:#ff9f43"></span>validator <span class="n">1</span></span>
+            <span class="schip"><span class="dot" style="background:#6ec1ff"></span>discovery-builder</span>
+          </div>
+          <div class="body">
+            <div class="pair">
+              <div class="pcard">
+                <div class="hd"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span></div>
+                <div><span class="pill idle">Idle</span></div>
+                <div class="last">👁 Watching viz-builder</div>
+              </div>
+              <div class="link"><span class="sum">V5</span><span class="ar">→</span><span class="ok">✓✓ Read</span></div>
+              <div class="pcard">
+                <div class="hd"><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span></div>
+                <div><span class="pill work">Working</span></div>
+                <div class="last">“V5. User instruction for tonight…”</div>
+              </div>
+            </div>
+            <div class="cap"><span class="mono">user · origin.kind = peer</span></div>
+            <div class="hist">
+              <div class="hrow f1">
+                <div class="from"><span class="dot" style="background:#ff9f43"></span><span class="name">validator</span><span class="pend">→</span><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span></div>
+                <span class="ok">✓✓ Read</span>
+                <div class="sum">V4 review: PASS on the overnight acceptance</div>
+              </div>
+              <div class="hrow f2">
+                <div class="from"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span><span class="pend">→</span><span class="dot" style="background:#ff9f43"></span><span class="name">validator</span></div>
+                <span class="ok">✓✓ Read</span>
+                <div class="sum">V4 review: handoff/viz/ready.md</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="label">Quiet: the pod stays, showing the last message</div>
+        <div class="win">
+          <div class="bar"><i></i><i></i><i></i><span>path_finder · 12:09</span></div>
+          <div class="stripbar">
+            <span class="schip"><span class="dot" style="background:var(--purple)"></span>manager</span>
+            <span class="schip"><span class="dot" style="background:var(--teal)"></span>viz-builder</span>
+            <span class="schip"><span class="dot" style="background:#ff9f43"></span>validator</span>
+            <span class="schip"><span class="dot" style="background:#6ec1ff"></span>discovery-builder</span>
+          </div>
+          <div class="body">
+            <div class="pair settled">
+              <div class="pcard">
+                <div class="hd"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span></div>
+                <div><span class="pill idle">Idle</span></div>
+                <div class="last">👁 Watching viz-builder</div>
+              </div>
+              <div class="link"><span class="sum">V5</span><span class="ar">→</span><span class="ok">✓✓ Read</span></div>
+              <div class="pcard">
+                <div class="hd"><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span></div>
+                <div><span class="pill work">Working</span></div>
+                <div class="last">“V5. User instruction for tonight…”</div>
+              </div>
+            </div>
+            <div class="cap"><span class="mono">user · origin.kind = peer</span><span class="mono">5 min ago</span></div>
+            <div class="hist">
+              <div class="hrow f2">
+                <div class="from"><span class="dot" style="background:#ff9f43"></span><span class="name">validator</span><span class="pend">→</span><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span></div>
+                <span class="ok">✓✓ Read</span>
+                <div class="sum">V4 review: PASS on the overnight acceptance</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="steps">
+      <div><b>strip</b><span>Every session, always. Ring on the dot while working, orange count while mail waits.</span></div>
+      <div><b>pod</b><span>Always visible. Shows the newest message: it follows that message through Pending, In inbox, Read, and keeps showing it until the next send replaces it.</span></div>
+      <div><b>history</b><span>When a new send takes the pod, the previous message drops into the list below at full brightness and fades over the next two, then is gone.</span></div>
+      <div><b>caption</b><span>The monospace line under the cards names the transcript entry that caused the latest change, as on the full page.</span></div>
+    </div>
+  </section>
+
+  <section class="combo">
+    <h2>Combined, with several messages in flight</h2>
+    <p class="lede">The pod always shows the newest message with the two full cards. Every other message in flight gets a compact row under it, newest first, capped at two, then a count. A session talking to two others appears in the pod and in a row with the same status. When a compact row's message is read, it drops into the fading history.</p>
+    <div class="two">
+
+      <div>
+        <div class="label">Three in flight: pod shows the newest</div>
+        <div class="win">
+          <div class="bar"><i></i><i></i><i></i><span>path_finder · 12:04 · 3 in flight</span></div>
+          <div class="stripbar">
+            <span class="schip on"><span class="dot" style="background:var(--purple); box-shadow:0 0 0 3px #1b2f4a"></span>manager</span>
+            <span class="schip on"><span class="dot" style="background:var(--teal); box-shadow:0 0 0 3px #1b2f4a"></span>viz-builder</span>
+            <span class="schip hot"><span class="dot" style="background:#ff9f43"></span>validator <span class="n">1</span></span>
+            <span class="schip hot"><span class="dot" style="background:#6ec1ff"></span>discovery-builder <span class="n">1</span></span>
+          </div>
+          <div class="body">
+            <div class="pair">
+              <div class="pcard">
+                <div class="hd"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span></div>
+                <div><span class="pill work">Working</span></div>
+                <div class="last">👁 Watching viz-builder, validator</div>
+              </div>
+              <div class="link"><span class="sum">D4</span><span class="ar">→</span><span class="pend">Pending</span></div>
+              <div class="pcard">
+                <div class="hd"><span class="dot" style="background:#6ec1ff"></span><span class="name">discovery-builder</span></div>
+                <div><span class="pill idle">Idle</span> <span class="pill inbox">Inbox 1</span></div>
+                <div class="last">“D3 review: PASS. See handoff…”</div>
+              </div>
+            </div>
+            <div class="cap"><span class="mono">assistant → tool_use SendMessage</span></div>
+            <div class="also">Also in flight</div>
+            <div class="rows">
+              <div class="prow">
+                <div class="mini">
+                  <div class="hd"><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span></div>
+                  <div class="row2"><span class="pill work">Working</span></div>
+                </div>
+                <div class="mlink"><span class="sum">V5 ready</span><span class="ar">→</span><span class="ok">✓ In inbox</span></div>
+                <div class="mini">
+                  <div class="hd"><span class="dot" style="background:#ff9f43"></span><span class="name">validator</span></div>
+                  <div class="row2"><span class="pill idle">Idle</span><span class="pill inbox">Inbox 1</span></div>
+                </div>
+              </div>
+              <div class="prow">
+                <div class="mini">
+                  <div class="hd"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span></div>
+                  <div class="row2"><span class="pill work">Working</span></div>
+                </div>
+                <div class="mlink"><span class="sum">V5</span><span class="ar">→</span><span class="ok">✓✓ Read</span></div>
+                <div class="mini">
+                  <div class="hd"><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span></div>
+                  <div class="row2"><span class="pill work">Working</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="hist">
+              <div class="hrow f1">
+                <div class="from"><span class="dot" style="background:#ff9f43"></span><span class="name">validator</span><span class="pend">→</span><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span></div>
+                <span class="ok">✓✓ Read</span>
+                <div class="sum">V4 review: PASS on the overnight acceptance</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="label">Five in flight: pod plus two rows, then a count</div>
+        <div class="win">
+          <div class="bar"><i></i><i></i><i></i><span>path_finder · 12:05 · 5 in flight</span></div>
+          <div class="stripbar">
+            <span class="schip on"><span class="dot" style="background:var(--purple); box-shadow:0 0 0 3px #1b2f4a"></span>manager</span>
+            <span class="schip on"><span class="dot" style="background:var(--teal); box-shadow:0 0 0 3px #1b2f4a"></span>viz-builder</span>
+            <span class="schip hot"><span class="dot" style="background:#ff9f43"></span>validator <span class="n">2</span></span>
+            <span class="schip on"><span class="dot" style="background:#6ec1ff; box-shadow:0 0 0 3px #1b2f4a"></span>discovery-builder</span>
+            <span class="schip hot"><span class="dot" style="background:#aaa"></span>fake manager <span class="n">1</span></span>
+            <span class="schip"><span class="dot" style="background:#aaa"></span>fake builder</span>
+          </div>
+          <div class="body">
+            <div class="pair">
+              <div class="pcard">
+                <div class="hd"><span class="dot" style="background:#aaa"></span><span class="name">fake builder</span></div>
+                <div><span class="pill idle">Idle</span></div>
+                <div class="last">“second hi back”</div>
+              </div>
+              <div class="link"><span class="sum">second hi back</span><span class="ar">→</span><span class="ok">✓ In inbox</span></div>
+              <div class="pcard">
+                <div class="hd"><span class="dot" style="background:#aaa"></span><span class="name">fake manager</span></div>
+                <div><span class="pill idle">Idle</span> <span class="pill inbox">Inbox 1</span></div>
+                <div class="last">👁 Watching fake builder</div>
+              </div>
+            </div>
+            <div class="cap"><span class="mono">queue-operation · enqueue</span></div>
+            <div class="also">Also in flight</div>
+            <div class="rows">
+              <div class="prow">
+                <div class="mini">
+                  <div class="hd"><span class="dot" style="background:#6ec1ff"></span><span class="name">discovery-builder</span></div>
+                  <div class="row2"><span class="pill work">Working</span></div>
+                </div>
+                <div class="mlink"><span class="sum">D4 ready</span><span class="ar">→</span><span class="pend">Pending</span></div>
+                <div class="mini">
+                  <div class="hd"><span class="dot" style="background:#ff9f43"></span><span class="name">validator</span></div>
+                  <div class="row2"><span class="pill idle">Idle</span><span class="pill inbox">Inbox 2</span></div>
+                </div>
+              </div>
+              <div class="prow">
+                <div class="mini">
+                  <div class="hd"><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span></div>
+                  <div class="row2"><span class="pill work">Working</span></div>
+                </div>
+                <div class="mlink"><span class="sum">V5 ready</span><span class="ar">→</span><span class="ok">✓ In inbox</span></div>
+                <div class="mini">
+                  <div class="hd"><span class="dot" style="background:#ff9f43"></span><span class="name">validator</span></div>
+                  <div class="row2"><span class="pill idle">Idle</span><span class="pill inbox">Inbox 2</span></div>
+                </div>
+              </div>
+              <div class="more">+2 more in flight · manager → discovery-builder, manager → viz-builder</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="rules">
+      <div><b>pod</b><span>Always the newest send, full size, with the watching line and the quoted last message. It stays until the next send replaces it.</span></div>
+      <div><b>rows</b><span>Other messages in flight, newest first, two at most, then one line counting the rest with their pairs. Click it to expand in place.</span></div>
+      <div><b>same session twice</b><span>validator appears in both compact rows above; both show the same Inbox 2, since the badge is per session, not per message.</span></div>
+      <div><b>strip</b><span>Still the single source of who is busy and who has mail, however many rows are open.</span></div>
+      <div><b>leaving</b><span>A compact row leaves four seconds after Read and drops into the fading history; the history holds at most three.</span></div>
+      <div><b>height</b><span>Strip, pod, two rows, and history is about 460 pixels tall at 380 wide, which still fits a small popup.</span></div>
+    </div>
+  </section>
+
+
+  <section class="combo">
+    <h2>Web: every session a node, every message an arrow</h2>
+    <p class="lede">All sessions are laid out in a ring, each as the card from your frames. A message is an arrow from sender to receiver with its summary and stage at the midpoint. Only messages in flight are arrows: Pending grey, In inbox green, Failed red. A Read message flashes its double check for three seconds and leaves; the newest one is shown mid-flash here. Idle notices are not arrows; they pulse the eye glyph on the watching node. With two sessions the same layout is just the pod.</p>
+    <div class="two">
+      <div>
+        <div class="label">Five sessions, six messages</div>
+        <div class="win">
+          <div class="bar"><i></i><i></i><i></i><span>path_finder · 12:05 · 5 sessions · 2 working</span></div>
+          <div class="body"><div class="graph" style="height:400px"><svg viewBox="0 0 356 400" width="356" height="400"><defs><marker id="g" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#4ad17a"/></marker><marker id="m" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#8a8a8a"/></marker></defs><path d="M213,94 Q242,122 261,132" fill="none" stroke="#4ad17a" stroke-width="2" marker-end="url(#g)"/><path d="M288,198 Q253,234 261,294" fill="none" stroke="#4ad17a" stroke-width="1.4" marker-end="url(#g)"/><path d="M173,95 Q156,203 109,295" fill="none" stroke="#8a8a8a" stroke-width="1.4" marker-end="url(#m)"/></svg><div class="node" style="left:124px; top:29px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span></div><div class="row2"><span class="pill work">Working</span></div><div class="nlast">👁 Watching viz-builder</div></div><div class="node" style="left:267px; top:133px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span></div><div class="row2"><span class="pill work">Working</span></div><div class="nlast">“V5. User instruction…”</div></div><div class="node" style="left:212px; top:300px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:#ff9f43"></span><span class="name">validator</span></div><div class="row2"><span class="pill idle">Idle</span> <span class="pill inbox">Inbox 1</span></div></div><div class="node" style="left:36px; top:300px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:#6ec1ff"></span><span class="name">discovery-builder</span></div><div class="row2"><span class="pill idle">Idle</span> <span class="pill inbox">Inbox 1</span></div></div><div class="node" style="left:-19px; top:133px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:#aaa"></span><span class="name">fake manager</span></div><div class="row2"><span class="pill idle">Idle</span></div></div><div class="elab bright" style="left:240px; top:117px"><span class="esum">V5</span><span class="ok">✓✓ Read</span></div><div class="elab" style="left:264px; top:240px"><span class="esum">V5 ready</span><span class="ok">✓ In inbox</span></div><div class="elab" style="left:154px; top:179px"><span class="esum">D4</span><span class="pend">Pending</span></div></div>
+            <div class="cap"><span class="mono">user · origin.kind = peer</span><span class="mono">manager → viz-builder</span></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="label">Two sessions: the same view is the pod</div>
+        <div class="win">
+          <div class="bar"><i></i><i></i><i></i><span>path_finder · 12:04 · 2 sessions · 1 working</span></div>
+          <div class="body"><div class="graph" style="height:110px"><svg viewBox="0 0 356 110" width="356" height="110"><defs><marker id="g" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#4ad17a"/></marker><marker id="m" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#8a8a8a"/></marker></defs><path d="M132,55 Q178,55 222,55" fill="none" stroke="#4ad17a" stroke-width="2" marker-end="url(#g)"/></svg><div class="node" style="left:24px; top:28px; width:104px; height:54px"><div class="hd"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span></div><div class="row2"><span class="pill idle">Idle</span></div><div class="nlast">👁 Watching viz-builder</div></div><div class="node" style="left:228px; top:28px; width:104px; height:54px"><div class="hd"><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span></div><div class="row2"><span class="pill work">Working</span></div><div class="nlast">“V5. User instruction…”</div></div><div class="elab bright" style="left:178px; top:55px"><span class="esum">V5</span><span class="ok">✓✓ Read</span></div></div>
+            <div class="cap"><span class="mono">user · origin.kind = peer</span><span class="mono">2 min ago</span></div>
+          </div>
+        </div>
+        <div class="rules" style="margin-top:22px">
+          <div><b>nodes</b><span>One card per session, in a ring, same look as the pod: dot, name, status pill, inbox pill, watching or last line.</span></div>
+          <div><b>arrows</b><span>One per message, sender to receiver, label at the midpoint: summary and stage. Two sessions talking both ways get two parallel arrows.</span></div>
+          <div><b>emphasis</b><span>Newest message is bright and thicker. Read arrows leave after a three-second flash; pending stays grey until it lands; failed stays red until someone acts.</span></div>
+          <div><b>notice</b><span>An idle notice is not an arrow. The eye glyph on the watching node pulses once and the toast list gets a muted line.</span></div>
+          <div><b>many sessions</b><span>Ring grows with the count; past eight, cards shrink to dot and name, with the full card on hover.</span></div>
+          <div><b>caption</b><span>Still the transcript entry behind the latest change, plus the pair it belongs to.</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <section class="combo">
+    <h2>Web with the strip and toasts beneath</h2>
+    <p class="lede">The web stays the main view. Under it, D's strip gives a one-line roll call of every session with its state, and the toasts list the messages in flight newest first, so you can read what the arrows say without hunting for labels. A toast fades once its message is read.</p>
+    <div class="two">
+      <div>
+        <div class="label">Five sessions, three in flight</div>
+        <div class="win">
+          <div class="bar"><i></i><i></i><i></i><span>path_finder · 12:05 · 5 sessions · 2 working · 3 in flight</span></div>
+          <div class="body"><div class="graph" style="height:400px"><svg viewBox="0 0 356 400" width="356" height="400"><defs><marker id="g" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#4ad17a"/></marker><marker id="m" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#8a8a8a"/></marker></defs><path d="M213,94 Q242,122 261,132" fill="none" stroke="#4ad17a" stroke-width="2" marker-end="url(#g)"/><path d="M288,198 Q253,234 261,294" fill="none" stroke="#4ad17a" stroke-width="1.4" marker-end="url(#g)"/><path d="M173,95 Q156,203 109,295" fill="none" stroke="#8a8a8a" stroke-width="1.4" marker-end="url(#m)"/></svg><div class="node" style="left:124px; top:29px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span></div><div class="row2"><span class="pill work">Working</span></div><div class="nlast">👁 Watching viz-builder</div></div><div class="node" style="left:267px; top:133px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span></div><div class="row2"><span class="pill work">Working</span></div><div class="nlast">“V5. User instruction…”</div></div><div class="node" style="left:212px; top:300px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:#ff9f43"></span><span class="name">validator</span></div><div class="row2"><span class="pill idle">Idle</span> <span class="pill inbox">Inbox 1</span></div></div><div class="node" style="left:36px; top:300px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:#6ec1ff"></span><span class="name">discovery-builder</span></div><div class="row2"><span class="pill idle">Idle</span> <span class="pill inbox">Inbox 1</span></div></div><div class="node" style="left:-19px; top:133px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:#aaa"></span><span class="name">fake manager</span></div><div class="row2"><span class="pill idle">Idle</span></div></div><div class="elab bright" style="left:240px; top:117px"><span class="esum">V5</span><span class="ok">✓✓ Read</span></div><div class="elab" style="left:264px; top:240px"><span class="esum">V5 ready</span><span class="ok">✓ In inbox</span></div><div class="elab" style="left:154px; top:179px"><span class="esum">D4</span><span class="pend">Pending</span></div></div>
+            <div class="cap"><span class="mono">user · origin.kind = peer</span><span class="mono">manager → viz-builder</span></div>
+          </div>
+          <div class="stripbar" style="border-top:1px solid #202020; border-bottom:0">
+            <span class="schip on"><span class="dot" style="background:var(--purple); box-shadow:0 0 0 3px #1b2f4a"></span>manager</span>
+            <span class="schip on"><span class="dot" style="background:var(--teal); box-shadow:0 0 0 3px #1b2f4a"></span>viz-builder</span>
+            <span class="schip hot"><span class="dot" style="background:#ff9f43"></span>validator <span class="n">1</span></span>
+            <span class="schip hot"><span class="dot" style="background:#6ec1ff"></span>discovery-builder <span class="n">1</span></span>
+            <span class="schip"><span class="dot" style="background:#aaa"></span>fake manager</span>
+          </div>
+          <div class="body" style="padding-top:4px">
+            <div class="toast" style="margin-top:0">
+              <div class="from"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span><span class="pend">→</span><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span></div>
+              <span class="ok" style="font-size:12px">✓✓ Read</span>
+              <div class="sum">V5. User instruction for tonight: the live-round-trip check is deferred…</div>
+            </div>
+            <div class="toast" style="margin-top:6px; border-left-color:#4ad17a">
+              <div class="from"><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span><span class="pend">→</span><span class="dot" style="background:#ff9f43"></span><span class="name">validator</span></div>
+              <span class="ok" style="font-size:12px">✓ In inbox</span>
+              <div class="sum">V5 ready: connectors with stages, the dotted watching link…</div>
+            </div>
+            <div class="toast" style="margin-top:6px; border-left-color:#8a8a8a">
+              <div class="from"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span><span class="pend">→</span><span class="dot" style="background:#6ec1ff"></span><span class="name">discovery-builder</span></div>
+              <span class="pend" style="font-size:12px">Pending</span>
+              <div class="sum">D4</div>
+            </div>
+            <div class="toast second">
+              <div class="from"><span class="dot" style="background:#ff9f43"></span><span class="name">validator</span><span class="pend">→</span><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span></div>
+              <span class="ok" style="font-size:12px">✓✓ Read</span>
+              <div class="sum">V4 review: PASS on the overnight acceptance</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="rules" style="margin-top:0">
+          <div><b>web</b><span>Ring of cards; arrows only for Pending, In inbox, and Failed, plus a three-second Read flash. One arrow per pair, with a count when several are in flight.</span></div>
+          <div><b>strip</b><span>One chip per session. Ring on the dot while working, orange count while mail waits. Clicking a chip highlights that session's arrows in the web.</span></div>
+          <div><b>toasts</b><span>One per message in flight, newest first, with the full first line of the message. The left edge is green for In inbox and Read, grey for Pending, red for Failed.</span></div>
+          <div><b>fading</b><span>A toast dims when its message is read and leaves after about eight seconds, so the list is usually two or three deep.</span></div>
+          <div><b>hover</b><span>Hovering a toast lights up its arrow; hovering an arrow lifts its toast. Same message, two handles.</span></div>
+          <div><b>height</b><span>Web 400, strip 40, three toasts about 170: roughly 640 pixels tall at 380 wide. The toast list is the part that scrolls if it ever grows.</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <section class="combo">
+    <h2>Ten sessions</h2>
+    <p class="lede">Past eight sessions the small window switches to compact nodes: dot, name, inbox count, and the working ring, with the full card on hover. Labels show on hover; the toasts carry the text. Widen the window and the full cards come back.</p>
+    <div class="two" style="grid-template-columns: minmax(380px, 400px) minmax(380px, 1fr)">
+      <div>
+        <div class="label">Small window, compact nodes</div>
+        <div class="win">
+          <div class="bar"><i></i><i></i><i></i><span>all folders · 12:05 · 10 sessions · 4 working · 4 in flight</span></div>
+          <div class="body"><div class="graph" style="height:380px; max-width:356px"><svg viewBox="0 0 356 380" width="356" height="380"><defs><marker id="g" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#4ad17a"/></marker><marker id="m" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#8a8a8a"/></marker></defs><path d="M198,60 Q218,74 212,74" fill="none" stroke="#4ad17a" stroke-width="2" marker-end="url(#g)"/><path d="M263,90 Q253,141 267,143" fill="none" stroke="#4ad17a" stroke-width="1.4" marker-end="url(#g)"/><path d="M184,61 Q224,162 302,227" fill="none" stroke="#8a8a8a" stroke-width="1.4" marker-end="url(#m)"/><path d="M93,302 Q103,251 89,249" fill="none" stroke="#4ad17a" stroke-width="1.4" marker-end="url(#g)"/><path d="M92,90 Q103,172 51,226" fill="none" stroke="#4ad17a" stroke-width="1.4" marker-end="url(#g)"/></svg><div class="cnode" style="left:130px; top:34px; width:96px; height:24px"><span class="dot" style="background:var(--purple); box-shadow:0 0 0 3px #1b2f4a;"></span><span class="name">manager</span></div><div class="cnode" style="left:218px; top:63px; width:96px; height:24px"><span class="dot" style="background:var(--teal); box-shadow:0 0 0 3px #1b2f4a;"></span><span class="name">viz-builder</span></div><div class="cnode" style="left:273px; top:138px; width:96px; height:24px"><span class="dot" style="background:#ff9f43;"></span><span class="name">validator</span> <span class="n">1</span></div><div class="cnode" style="left:273px; top:230px; width:96px; height:24px"><span class="dot" style="background:#6ec1ff;"></span><span class="name">discovery-builder</span> <span class="n">1</span></div><div class="cnode" style="left:218px; top:305px; width:96px; height:24px"><span class="dot" style="background:#aaa;"></span><span class="name">fake manager</span></div><div class="cnode" style="left:130px; top:334px; width:96px; height:24px"><span class="dot" style="background:#aaa;"></span><span class="name">fake builder</span></div><div class="cnode" style="left:42px; top:305px; width:96px; height:24px"><span class="dot" style="background:#f06292; box-shadow:0 0 0 3px #1b2f4a;"></span><span class="name">listings-e6</span></div><div class="cnode" style="left:-13px; top:230px; width:96px; height:24px"><span class="dot" style="background:#ba68c8;"></span><span class="name">listings-bc</span> <span class="n">2</span></div><div class="cnode" style="left:-13px; top:138px; width:96px; height:24px"><span class="dot" style="background:#ffd54f;"></span><span class="name">tag-analyzer</span></div><div class="cnode" style="left:42px; top:63px; width:96px; height:24px"><span class="dot" style="background:#4db6ac; box-shadow:0 0 0 3px #1b2f4a;"></span><span class="name">semantic-scores</span></div><div class="elab bright" style="left:211px; top:70px"><span class="esum">V5</span><span class="ok">✓✓ Read</span></div></div>
+            <div class="cap"><span class="mono">user · origin.kind = peer</span><span class="mono">manager → viz-builder</span></div>
+          </div>
+          <div class="stripbar" style="border-top:1px solid #202020; border-bottom:0">
+            <span class="schip on"><span class="dot" style="background:var(--purple); box-shadow:0 0 0 3px #1b2f4a"></span>manager</span>
+            <span class="schip on"><span class="dot" style="background:var(--teal); box-shadow:0 0 0 3px #1b2f4a"></span>viz-builder</span>
+            <span class="schip hot"><span class="dot" style="background:#ff9f43"></span>validator <span class="n">1</span></span>
+            <span class="schip hot"><span class="dot" style="background:#6ec1ff"></span>discovery-builder <span class="n">1</span></span>
+            <span class="schip on"><span class="dot" style="background:#f06292; box-shadow:0 0 0 3px #1b2f4a"></span>listings-e6</span>
+            <span class="schip hot"><span class="dot" style="background:#ba68c8"></span>listings-bc <span class="n">2</span></span>
+            <span class="schip"><span class="dot" style="background:#ffd54f"></span>tag-analyzer</span>
+            <span class="schip on"><span class="dot" style="background:#4db6ac; box-shadow:0 0 0 3px #1b2f4a"></span>semantic-scores</span>
+            <span class="schip"><span class="dot" style="background:#aaa"></span>fake manager</span>
+            <span class="schip"><span class="dot" style="background:#aaa"></span>fake builder</span>
+          </div>
+          <div class="body" style="padding-top:4px">
+            <div class="toast" style="margin-top:0">
+              <div class="from"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span><span class="pend">→</span><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span></div>
+              <span class="ok" style="font-size:12px">✓✓ Read</span>
+              <div class="sum">V5. User instruction for tonight: the live-round-trip check is deferred…</div>
+            </div>
+            <div class="toast" style="margin-top:6px">
+              <div class="from"><span class="dot" style="background:#4db6ac"></span><span class="name">semantic-scores</span><span class="pend">→</span><span class="dot" style="background:#ba68c8"></span><span class="name">listings-bc</span></div>
+              <span class="ok" style="font-size:12px">✓ In inbox</span>
+              <div class="sum">batch 3 of similarity scores is written to the listings table</div>
+            </div>
+            <div class="more">+3 more in flight</div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="label">Widened to 680, full cards return</div>
+        <div class="win" style="max-width:680px">
+          <div class="bar"><i></i><i></i><i></i><span>all folders · 12:05 · 10 sessions · 4 working · 4 in flight</span></div>
+          <div class="body"><div class="graph" style="height:560px; max-width:656px"><svg viewBox="0 0 656 560" width="656" height="560"><defs><marker id="g" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#4ad17a"/></marker><marker id="m" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#8a8a8a"/></marker></defs><path d="M375,83 Q390,94 407,94" fill="none" stroke="#4ad17a" stroke-width="2" marker-end="url(#g)"/><path d="M460,129 Q446,200 492,206" fill="none" stroke="#4ad17a" stroke-width="1.4" marker-end="url(#g)"/><path d="M341,84 Q401,233 511,324" fill="none" stroke="#8a8a8a" stroke-width="1.4" marker-end="url(#m)"/><path d="M196,443 Q210,372 164,366" fill="none" stroke="#4ad17a" stroke-width="1.4" marker-end="url(#g)"/><path d="M194,129 Q210,248 137,324" fill="none" stroke="#4ad17a" stroke-width="1.4" marker-end="url(#g)"/></svg><div class="node" style="left:274px; top:19px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:var(--purple)"></span><span class="name">manager</span></div><div class="row2"><span class="pill work">Working</span></div><div class="nlast">👁 Watching viz-builder</div></div><div class="node" style="left:413px; top:64px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:var(--teal)"></span><span class="name">viz-builder</span></div><div class="row2"><span class="pill work">Working</span></div><div class="nlast">“V5. User instruction…”</div></div><div class="node" style="left:498px; top:182px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:#ff9f43"></span><span class="name">validator</span></div><div class="row2"><span class="pill idle">Idle</span> <span class="pill inbox">Inbox 1</span></div></div><div class="node" style="left:498px; top:328px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:#6ec1ff"></span><span class="name">discovery-builder</span></div><div class="row2"><span class="pill idle">Idle</span> <span class="pill inbox">Inbox 1</span></div></div><div class="node" style="left:413px; top:446px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:#aaa"></span><span class="name">fake manager</span></div><div class="row2"><span class="pill idle">Idle</span></div></div><div class="node" style="left:274px; top:491px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:#aaa"></span><span class="name">fake builder</span></div><div class="row2"><span class="pill idle">Idle</span></div></div><div class="node" style="left:135px; top:446px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:#f06292"></span><span class="name">listings-e6</span></div><div class="row2"><span class="pill work">Working</span></div><div class="nlast">“rerun scores for…”</div></div><div class="node" style="left:50px; top:328px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:#ba68c8"></span><span class="name">listings-bc</span></div><div class="row2"><span class="pill idle">Idle</span> <span class="pill inbox">Inbox 2</span></div></div><div class="node" style="left:50px; top:182px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:#ffd54f"></span><span class="name">tag-analyzer</span></div><div class="row2"><span class="pill idle">Idle</span></div></div><div class="node" style="left:135px; top:64px; width:108px; min-height:62px"><div class="hd"><span class="dot" style="background:#4db6ac"></span><span class="name">semantic-scores</span></div><div class="row2"><span class="pill work">Working</span></div></div><div class="elab bright" style="left:391px; top:91px"><span class="esum">V5</span><span class="ok">✓✓ Read</span></div><div class="elab" style="left:461px; top:184px"><span class="esum">V5 ready</span><span class="ok">✓ In inbox</span></div><div class="elab" style="left:413px; top:218px"><span class="esum">D4</span><span class="pend">Pending</span></div><div class="elab" style="left:195px; top:388px"><span class="esum">scores</span><span class="ok">✓ In inbox</span></div><div class="elab" style="left:188px; top:237px"><span class="esum">batch 3</span><span class="ok">✓ In inbox</span></div></div>
+            <div class="cap"><span class="mono">user · origin.kind = peer</span><span class="mono">manager → viz-builder</span></div>
+          </div>
+        </div>
+        <div class="rules" style="margin-top:18px">
+          <div><b>threshold</b><span>Compact nodes when the ring cannot hold full cards without overlap: more than eight sessions at 380 wide, more than fourteen at 680.</span></div>
+          <div><b>labels</b><span>Compact mode labels only the newest arrow. Hovering any arrow or toast shows its label; the toasts carry the text anyway.</span></div>
+          <div><b>folders</b><span>By default the window shows one folder, as the --root flag does now. "All folders" is a switch in the title bar; sessions from other folders get a muted dot ring.</span></div>
+          <div><b>unrelated traffic</b><span>Sessions with no messages in the last ten minutes sink to the strip only and leave the ring, so the web stays about the sessions that talk.</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <p class="foot">All of these read the same /state and /events feed the current page uses, so any of them is a new page under viz/ rather than a watcher change. For a real popup window later, the same page can be opened with a fixed small size by the browser, or wrapped in a small native shell; the data path does not change.</p>
+</div>

@@ -1,0 +1,355 @@
+<title>Session Web Animation</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one popup-sized window centred on a quiet page, transport controls beneath it */
+:root {
+  --bg: #0c0c0c; --fg: #ececec; --muted: #9a9a94; --rule: #262626;
+  --win: #121212; --card: #1c1c1c; --card-edge: #2a2a2a; --win-fg: #ededed; --win-muted: #8a8a8a;
+  --blue-bg: #1b2f4a; --blue-fg: #7cb4ff; --grey-bg: #2a2a2a; --grey-fg: #cfcfcf;
+  --orange-bg: #3a2a12; --orange-fg: #ffb454; --green: #4ad17a; --red: #ff6b6b; --pend: #8a8a8a;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg: #f3f2ef; --fg: #1b1b1b; --muted: #6b6b66; --rule: #dcdad4; color-scheme: light } }
+:root[data-theme="light"] { --bg: #f3f2ef; --fg: #1b1b1b; --muted: #6b6b66; --rule: #dcdad4; color-scheme: light }
+
+body { background: var(--bg); color: var(--fg); font-family: var(--sans); padding-inline: 20px; padding-block: 24px 48px; line-height: 1.45 }
+.wrap { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: minmax(300px, 400px) minmax(260px, 1fr); gap: 28px; align-items: start }
+@media (max-width: 760px) { .wrap { grid-template-columns: 1fr } }
+h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px }
+.lede { color: var(--muted); margin: 0 0 18px; font-size: 14px; max-width: 60ch }
+
+.win { background: var(--win); color: var(--win-fg); border-radius: 10px; border: 1px solid #2c2c2c; overflow: hidden; box-shadow: 0 8px 30px rgba(0,0,0,.35); width: 100%; max-width: 400px }
+.bar { display: flex; align-items: center; gap: 6px; padding: 7px 10px; border-bottom: 1px solid #222; font-size: 11px; color: var(--win-muted) }
+.bar i { width: 10px; height: 10px; border-radius: 50%; background: #3a3a3a; display: inline-block }
+.bar span { margin-left: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.body { padding: 12px }
+
+.graph { position: relative; width: 100%; height: 380px }
+.graph svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible }
+.graph path { transition: opacity .4s, stroke-width .3s }
+.node { position: absolute; z-index: 1; background: var(--card); border: 1px solid var(--card-edge); border-radius: 8px; padding: 7px 9px; display: flex; flex-direction: column; gap: 4px; box-sizing: border-box; transition: border-color .3s, box-shadow .3s }
+.node.hot { border-color: #35506f }
+.node .hd { display: flex; align-items: center; gap: 6px; font-size: 13px; min-width: 0 }
+.node .hd .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.node .row2 { display: flex; gap: 4px; flex-wrap: wrap; min-height: 18px }
+.node .last { color: var(--win-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 15px }
+.node.compact { flex-direction: row; align-items: center; gap: 5px; padding: 0 7px; border-radius: 99px; font-size: 11px; white-space: nowrap }
+.node.compact .hd .name { font-weight: 500 }
+.node.compact .row2, .node.compact .last { display: none }
+.node.compact .n { font-size: 10px; color: var(--orange-fg); background: var(--orange-bg); padding: 0 4px; border-radius: 4px; font-weight: 600 }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; transition: box-shadow .3s }
+.dot.work { box-shadow: 0 0 0 3px var(--blue-bg) }
+.pill { display: inline-block; padding: 0 6px; border-radius: 6px; font-size: 11px; font-weight: 500; line-height: 1.6 }
+.idle { background: var(--grey-bg); color: var(--grey-fg) } .work { background: var(--blue-bg); color: var(--blue-fg) } .inbox { background: var(--orange-bg); color: var(--orange-fg) }
+.eye { display: inline-block; transition: transform .2s, color .2s } .eye.pulse { color: var(--blue-fg); transform: scale(1.35) }
+.elab { position: absolute; z-index: 2; transform: translate(-50%, -50%); background: #121212; padding: 1px 6px; border-radius: 5px; font-size: 11px; display: flex; flex-direction: column; align-items: center; line-height: 1.3; white-space: nowrap; box-shadow: 0 0 0 1px #2a2a2a; pointer-events: none; transition: opacity .3s }
+.elab .esum { color: var(--win-fg) }
+.ok { color: var(--green) } .pend { color: var(--pend) } .fail { color: var(--red) }
+.cap { margin-top: 8px; display: flex; justify-content: space-between; gap: 10px; font-family: var(--mono); font-size: 11px; color: var(--win-muted); min-height: 16px }
+.cap span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+
+.strip { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px; border-top: 1px solid #202020; background: #151515 }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; border-radius: 99px; border: 1px solid #262626; font-size: 12px; background: var(--card); transition: border-color .3s }
+.chip.on { border-color: #2e4a6e } .chip.hot { border-color: #4a3618 }
+.chip .n { font-size: 11px; color: var(--orange-fg); background: var(--orange-bg); padding: 0 5px; border-radius: 5px; font-weight: 600 }
+
+.toasts { padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 6px; min-height: 60px }
+.toast { background: var(--card); border: 1px solid #2e2e2e; border-left: 3px solid var(--green); border-radius: 8px; padding: 8px 11px; display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; font-size: 13px; align-items: baseline; transition: opacity .6s, transform .3s }
+.toast.pend { border-left-color: var(--pend) } .toast.fail { border-left-color: var(--red) } .toast.notice { border-left-color: #3a3a3a; opacity: .6 }
+.toast.gone { opacity: .35 }
+.toast .from { display: flex; gap: 6px; align-items: center; flex-wrap: wrap } .toast .from b { font-weight: 600 }
+.toast .sum { grid-column: 1 / -1; color: var(--win-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.toast .st { font-size: 12px; white-space: nowrap }
+.more { font-size: 12px; color: var(--win-muted); text-align: center }
+.quiet { color: var(--win-muted); font-size: 12px; text-align: center; padding: 10px 0 }
+
+.ctl { display: flex; flex-direction: column; gap: 14px }
+.ctl .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center }
+button { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 7px; border: 1px solid var(--rule); background: transparent; color: var(--fg); cursor: pointer }
+button:hover { border-color: var(--muted) } button:focus-visible { outline: 2px solid var(--blue-fg); outline-offset: 2px }
+button[aria-pressed="true"] { background: var(--blue-bg); color: var(--blue-fg); border-color: #2e4a6e }
+.time { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 9ch }
+input[type=range] { width: 100%; accent-color: #7cb4ff }
+.script { font-size: 13px; display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--rule); max-height: 420px; overflow: auto }
+.script div { display: grid; grid-template-columns: 5ch 1fr; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--rule); color: var(--muted) }
+.script div.now { color: var(--fg) } .script div.past { opacity: .55 }
+.script b { font-family: var(--mono); font-weight: 500; font-size: 11px; font-variant-numeric: tabular-nums }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted) }
+.legend i { display: inline-block; width: 18px; height: 2px; vertical-align: middle; margin-right: 5px }
+@media (prefers-reduced-motion: reduce) { .graph path, .node, .toast, .elab, .dot, .eye { transition: none } }
+</style>
+
+<div class="wrap">
+  <div>
+    <h1>Session Web Animation</h1>
+    <p class="lede">A scripted round of traffic between the sessions, played through the small window: web on top, strip, then toasts. Arrows exist only while a message is in flight.</p>
+    <div class="win">
+      <div class="bar"><i></i><i></i><i></i><span id="title">path_finder</span></div>
+      <div class="body">
+        <div class="graph" id="graph"><svg id="svg" viewBox="0 0 376 380" preserveAspectRatio="none"><defs>
+          <marker id="mg" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#4ad17a"/></marker>
+          <marker id="mp" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#8a8a8a"/></marker>
+          <marker id="mr" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#ff6b6b"/></marker>
+        </defs><g id="arrows"></g></svg></div>
+        <div class="cap"><span id="cap-entry">registry</span><span id="cap-pair"></span></div>
+      </div>
+      <div class="strip" id="strip"></div>
+      <div class="toasts" id="toasts"></div>
+    </div>
+  </div>
+
+  <div class="ctl">
+    <div class="row">
+      <button id="play" aria-pressed="true">Pause</button>
+      <button id="restart">Restart</button>
+      <span class="time" id="clock">0.0 s</span>
+    </div>
+    <div class="row" role="group" aria-label="Speed">
+      <span style="font-size:13px; color:var(--muted)">Speed</span>
+      <button data-speed="0.5">0.5×</button><button data-speed="1" aria-pressed="true">1×</button><button data-speed="2">2×</button>
+    </div>
+    <div class="row" role="group" aria-label="Sessions">
+      <span style="font-size:13px; color:var(--muted)">Sessions</span>
+      <button data-scn="five" aria-pressed="true">Five</button><button data-scn="ten">Ten</button>
+    </div>
+    <input type="range" id="scrub" min="0" max="1000" value="0" aria-label="Scrub timeline">
+    <div class="legend"><span><i style="background:#8a8a8a"></i>Pending</span><span><i style="background:#4ad17a"></i>In inbox</span><span><i style="background:#4ad17a; height:3px"></i>Read, 3 s flash</span><span><i style="background:#ff6b6b"></i>Failed, stays</span><span>👁 pulse = idle notice</span></div>
+    <div class="script" id="script"></div>
+  </div>
+</div>
+
+<script>
+const SESSIONS = {
+  five: [
+    { id: 'manager', color: '#a98bff' }, { id: 'viz-builder', color: '#3ed6a4' }, { id: 'validator', color: '#ff9f43' },
+    { id: 'discovery-builder', color: '#6ec1ff' }, { id: 'fake manager', color: '#aaaaaa' } ],
+  ten: [
+    { id: 'manager', color: '#a98bff' }, { id: 'viz-builder', color: '#3ed6a4' }, { id: 'validator', color: '#ff9f43' },
+    { id: 'discovery-builder', color: '#6ec1ff' }, { id: 'fake manager', color: '#aaaaaa' }, { id: 'fake builder', color: '#aaaaaa' },
+    { id: 'listings-e6', color: '#f06292' }, { id: 'listings-bc', color: '#ba68c8' }, { id: 'tag-analyzer', color: '#ffd54f' }, { id: 'semantic-scores', color: '#4db6ac' } ]
+};
+
+const base = [
+  [0.0, 'status', 'manager', 'Working', 'assistant · text'],
+  [0.8, 'send', 'm1', 'manager', 'viz-builder', 'V5', 'assistant → tool_use SendMessage'],
+  [0.8, 'watch', 'manager', 'viz-builder', ''],
+  [1.4, 'inbox', 'm1', 'queue-operation · enqueue'],
+  [2.0, 'status', 'viz-builder', 'Working', 'user · origin.kind = peer'],
+  [2.0, 'read', 'm1', 'user · origin.kind = peer'],
+  [3.0, 'status', 'manager', 'Idle', 'system · turn_duration'],
+  [6.5, 'send', 'm2', 'viz-builder', 'validator', 'V5 ready', 'assistant → tool_use SendMessage'],
+  [7.1, 'inbox', 'm2', 'queue-operation · enqueue'],
+  [7.4, 'send', 'm3', 'viz-builder', 'manager', 'V5 ready, handoff written', 'assistant → tool_use SendMessage'],
+  [8.0, 'inbox', 'm3', 'queue-operation · enqueue'],
+  [8.6, 'status', 'validator', 'Working', 'user · origin.kind = peer'],
+  [8.6, 'read', 'm2', 'user · origin.kind = peer'],
+  [9.0, 'status', 'manager', 'Working', 'user · origin.kind = peer'],
+  [9.0, 'read', 'm3', 'user · origin.kind = peer'],
+  [9.6, 'status', 'viz-builder', 'Idle', 'system · turn_duration'],
+  [9.6, 'notice', 'viz-builder', 'manager', 'user · [Cross-session idle notice]'],
+  [11.5, 'send', 'm4', 'manager', 'discovery-builder', 'D4', 'assistant → tool_use SendMessage'],
+  [12.1, 'inbox', 'm4', 'queue-operation · enqueue'],
+  [12.6, 'status', 'manager', 'Idle', 'system · turn_duration'],
+  [14.0, 'send', 'm5', 'validator', 'viz-builder', 'V5 review: PASS', 'assistant → tool_use SendMessage'],
+  [14.6, 'inbox', 'm5', 'queue-operation · enqueue'],
+  [15.0, 'send', 'm6', 'validator', 'manager', 'V5 review: PASS', 'assistant → tool_use SendMessage'],
+  [15.4, 'fail', 'm6', 'tool_result · success false (relay-loop cut)'],
+  [16.0, 'status', 'validator', 'Idle', 'system · turn_duration'],
+  [16.4, 'status', 'viz-builder', 'Working', 'user · origin.kind = peer'],
+  [16.4, 'read', 'm5', 'user · origin.kind = peer'],
+  [18.5, 'status', 'discovery-builder', 'Working', 'user · origin.kind = peer'],
+  [18.5, 'read', 'm4', 'user · origin.kind = peer'],
+  [19.5, 'status', 'viz-builder', 'Idle', 'system · turn_duration'],
+  [20.5, 'send', 'm7', 'validator', 'manager', 'V5 review: PASS (resend)', 'assistant → tool_use SendMessage'],
+  [21.0, 'inbox', 'm7', 'queue-operation · enqueue'],
+  [21.6, 'status', 'manager', 'Working', 'user · origin.kind = peer'],
+  [21.6, 'read', 'm7', 'user · origin.kind = peer'],
+  [22.0, 'resolve', 'm6', ''],
+  [23.5, 'status', 'manager', 'Idle', 'system · turn_duration'],
+  [26.0, 'end']
+];
+const extra = [
+  [4.0, 'status', 'listings-e6', 'Working', 'assistant · text'],
+  [4.8, 'send', 'x1', 'listings-e6', 'listings-bc', 'rerun scores', 'assistant → tool_use SendMessage'],
+  [5.4, 'inbox', 'x1', 'queue-operation · enqueue'],
+  [10.2, 'send', 'x2', 'semantic-scores', 'listings-bc', 'batch 3 written', 'assistant → tool_use SendMessage'],
+  [10.8, 'inbox', 'x2', 'queue-operation · enqueue'],
+  [13.0, 'status', 'listings-bc', 'Working', 'user · origin.kind = peer'],
+  [13.0, 'read', 'x1', 'user · origin.kind = peer'],
+  [13.3, 'read', 'x2', 'user · origin.kind = peer'],
+  [17.0, 'send', 'x3', 'tag-analyzer', 'listings-e6', 'tags done', 'assistant → tool_use SendMessage'],
+  [17.6, 'inbox', 'x3', 'queue-operation · enqueue'],
+  [19.0, 'read', 'x3', 'user · origin.kind = peer'],
+  [19.0, 'status', 'listings-bc', 'Idle', 'system · turn_duration'],
+  [22.5, 'status', 'listings-e6', 'Idle', 'system · turn_duration']
+];
+
+const READ_FLASH = 3, TOAST_LINGER = 8, PULSE = 1.2, MAX_TOASTS = 3;
+let scenario = 'five', speed = 1, playing = true, clock = 0, last = performance.now();
+let timeline = [], sessions = [], messages = {}, notices = [], capEntry = 'registry', capPair = '';
+
+function reset() {
+  sessions = SESSIONS[scenario].map(s => ({ ...s, status: 'Idle', inbox: 0, watching: null, last: '', pulseUntil: -1 }));
+  messages = {}; notices = []; capEntry = 'registry'; capPair = ''; clock = 0;
+  timeline = (scenario === 'ten' ? base.concat(extra) : base).slice().sort((a, b) => a[0] - b[0]);
+  timeline.forEach(e => e.done = false);
+  buildScript(); layoutNodes(); render();
+}
+const byId = id => sessions.find(s => s.id === id);
+function apply(e) {
+  const [t, kind] = e;
+  if (kind === 'status') { byId(e[2]).status = e[3]; capEntry = e[4]; capPair = e[2]; }
+  if (kind === 'watch') { byId(e[2]).watching = e[3]; }
+  if (kind === 'send') { messages[e[2]] = { id: e[2], from: e[3], to: e[4], summary: e[5], stage: 'PENDING', sentAt: t }; byId(e[3]).last = e[5]; capEntry = e[6]; capPair = e[3] + ' → ' + e[4]; }
+  if (kind === 'inbox') { const m = messages[e[2]]; if (m.stage === 'PENDING') { m.stage = 'IN_INBOX'; byId(m.to).inbox++; } capEntry = e[3]; capPair = m.from + ' → ' + m.to; }
+  if (kind === 'read') { const m = messages[e[2]]; if (m.stage === 'IN_INBOX') byId(m.to).inbox = Math.max(0, byId(m.to).inbox - 1); m.stage = 'READ'; m.readAt = t; byId(m.to).last = '“' + m.summary + '”'; capEntry = e[3]; capPair = m.from + ' → ' + m.to; }
+  if (kind === 'fail') { const m = messages[e[2]]; m.stage = 'FAILED'; m.failedAt = t; capEntry = e[3]; capPair = m.from + ' → ' + m.to; }
+  if (kind === 'resolve') { const m = messages[e[2]]; m.stage = 'READ'; m.readAt = t; }
+  if (kind === 'notice') { const w = byId(e[3]); w.pulseUntil = t + PULSE; w.watching = null; notices.push({ from: e[2], to: e[3], at: t }); capEntry = e[4]; capPair = e[2] + ' → ' + e[3]; }
+}
+function stepTo(target) {
+  if (target < clock) { const s = scenario; scenario = s; reset(); }
+  for (const e of timeline) { if (!e.done && e[0] <= target) { apply(e); e.done = true; } }
+  clock = target;
+  if (timeline.length && target >= timeline[timeline.length - 1][0] + 2) { reset(); }
+}
+
+const W = 376, H = 380;
+let pos = {}, compact = false, CW = 108, CH = 62;
+function layoutNodes() {
+  compact = sessions.length > 8;
+  CW = compact ? 100 : 108; CH = compact ? 24 : 62;
+  const r = compact ? 150 : (sessions.length <= 2 ? 0 : 140);
+  const cx = W / 2, cy = H / 2 + 8;
+  pos = {};
+  sessions.forEach((s, i) => {
+    if (sessions.length === 2) pos[s.id] = [i === 0 ? CW / 2 + 20 : W - CW / 2 - 20, cy];
+    else { const a = -Math.PI / 2 + i * 2 * Math.PI / sessions.length; pos[s.id] = [cx + r * Math.cos(a), cy + r * Math.sin(a)]; }
+  });
+}
+function exitPt(c, toward, gap) {
+  const dx = toward[0] - c[0], dy = toward[1] - c[1], L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+  const t = Math.min(ux ? CW / 2 / Math.abs(ux) : 1e9, uy ? CH / 2 / Math.abs(uy) : 1e9) + gap;
+  return [c[0] + ux * t, c[1] + uy * t];
+}
+
+const graph = document.getElementById('graph'), arrows = document.getElementById('arrows');
+const nodeEls = {}, labelEls = {};
+function render() {
+  const now = clock;
+  document.getElementById('title').textContent = `${scenario === 'ten' ? 'all folders' : 'path_finder'} · ${sessions.length} sessions · ${sessions.filter(s => s.status === 'Working').length} working · ${Object.values(messages).filter(m => m.stage === 'PENDING' || m.stage === 'IN_INBOX' || m.stage === 'FAILED').length} in flight`;
+  for (const id in nodeEls) if (!byId(id)) { nodeEls[id].remove(); delete nodeEls[id]; }
+  sessions.forEach(s => {
+    let el = nodeEls[s.id];
+    if (!el) { el = document.createElement('div'); el.className = 'node'; graph.appendChild(el); nodeEls[s.id] = el; }
+    el.classList.toggle('compact', compact);
+    const [x, y] = pos[s.id];
+    el.style.left = (x - CW / 2) + 'px'; el.style.top = (y - CH / 2) + 'px'; el.style.width = CW + 'px'; el.style.minHeight = CH + 'px'; el.style.height = compact ? CH + 'px' : 'auto';
+    const pulse = now < s.pulseUntil;
+    const pills = `<span class="pill ${s.status === 'Working' ? 'work' : 'idle'}">${s.status}</span>${s.inbox ? ` <span class="pill inbox">Inbox ${s.inbox}</span>` : ''}`;
+    const lastLine = s.watching ? `<span class="eye${pulse ? ' pulse' : ''}">👁</span> Watching ${s.watching}` : (pulse ? `<span class="eye pulse">👁</span> idle notice` : s.last);
+    el.innerHTML = `<div class="hd"><span class="dot${s.status === 'Working' && compact ? ' work' : ''}" style="background:${s.color}"></span><span class="name">${s.id}</span>${compact && s.inbox ? `<span class="n">${s.inbox}</span>` : ''}${compact && pulse ? '<span class="eye pulse">👁</span>' : ''}</div><div class="row2">${pills}</div><div class="last">${lastLine}</div>`;
+    const hot = Object.values(messages).some(m => (m.stage === 'PENDING' || m.stage === 'IN_INBOX') && (m.from === s.id || m.to === s.id));
+    el.classList.toggle('hot', hot);
+  });
+
+  const visible = Object.values(messages).filter(m => m.stage === 'PENDING' || m.stage === 'IN_INBOX' || m.stage === 'FAILED' || (m.stage === 'READ' && now - m.readAt < READ_FLASH));
+  const byPair = {};
+  visible.forEach(m => { const k = m.from + '>' + m.to; (byPair[k] = byPair[k] || []).push(m); });
+  const newest = visible.reduce((a, m) => (!a || m.sentAt > a.sentAt) ? m : a, null);
+  const keep = new Set();
+  const cx = W / 2, cy = H / 2 + 8;
+  Object.entries(byPair).forEach(([k, ms]) => {
+    const m = ms.reduce((a, x) => (!a || x.sentAt > a.sentAt) ? x : a, null);
+    const A = pos[m.from], B = pos[m.to];
+    const reverse = byPair[m.to + '>' + m.from];
+    const mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
+    const pull = sessions.length === 2 ? 0 : (reverse ? (k < (m.to + '>' + m.from) ? 0.15 : 0.55) : 0.35);
+    const C = [mx + (cx - mx) * pull, my + (cy - my) * pull - (sessions.length === 2 ? 34 : 0)];
+    const S = exitPt(A, C, 3), E = exitPt(B, C, 6);
+    const P = [0.25 * S[0] + 0.5 * C[0] + 0.25 * E[0], 0.25 * S[1] + 0.5 * C[1] + 0.25 * E[1]];
+    const col = m.stage === 'FAILED' ? '#ff6b6b' : (m.stage === 'PENDING' ? '#8a8a8a' : '#4ad17a');
+    const marker = m.stage === 'FAILED' ? 'mr' : (m.stage === 'PENDING' ? 'mp' : 'mg');
+    let path = arrows.querySelector(`[data-k="${k}"]`);
+    if (!path) { path = document.createElementNS('http://www.w3.org/2000/svg', 'path'); path.setAttribute('data-k', k); path.setAttribute('fill', 'none'); arrows.appendChild(path); }
+    path.setAttribute('d', `M${S[0].toFixed(1)},${S[1].toFixed(1)} Q${C[0].toFixed(1)},${C[1].toFixed(1)} ${E[0].toFixed(1)},${E[1].toFixed(1)}`);
+    path.setAttribute('stroke', col); path.setAttribute('marker-end', `url(#${marker})`);
+    const flash = m.stage === 'READ';
+    path.setAttribute('stroke-width', m === newest || flash ? 2.4 : 1.5);
+    path.style.opacity = flash ? String(1 - (now - m.readAt) / READ_FLASH) : '1';
+    keep.add(k);
+    let lab = labelEls[k];
+    if (!lab) { lab = document.createElement('div'); lab.className = 'elab'; graph.appendChild(lab); labelEls[k] = lab; }
+    const stage = { PENDING: '<span class="pend">Pending</span>', IN_INBOX: '<span class="ok">✓ In inbox</span>', READ: '<span class="ok">✓✓ Read</span>', FAILED: '<span class="fail">✗ Failed</span>' }[m.stage];
+    lab.innerHTML = `<span class="esum">${m.summary}${ms.length > 1 ? ` <span class="pend">+${ms.length - 1}</span>` : ''}</span>${stage}`;
+    lab.style.left = P[0] + 'px'; lab.style.top = P[1] + 'px';
+    lab.style.opacity = (compact && m !== newest) ? '0' : (flash ? String(1 - (now - m.readAt) / READ_FLASH) : '1');
+  });
+  arrows.querySelectorAll('path').forEach(p => { if (!keep.has(p.getAttribute('data-k'))) p.remove(); });
+  for (const k in labelEls) if (!keep.has(k)) { labelEls[k].remove(); delete labelEls[k]; }
+
+  document.getElementById('cap-entry').textContent = capEntry; document.getElementById('cap-pair').textContent = capPair;
+
+  document.getElementById('strip').innerHTML = sessions.map(s => `<span class="chip${s.status === 'Working' ? ' on' : ''}${s.inbox ? ' hot' : ''}"><span class="dot${s.status === 'Working' ? ' work' : ''}" style="background:${s.color}"></span>${s.id}${s.inbox ? `<span class="n">${s.inbox}</span>` : ''}</span>`).join('');
+
+  const items = Object.values(messages).filter(m => m.stage !== 'READ' || now - m.readAt < TOAST_LINGER).map(m => ({ kind: 'msg', m, t: m.sentAt }))
+    .concat(notices.filter(n => now - n.at < TOAST_LINGER).map(n => ({ kind: 'notice', n, t: n.at })))
+    .sort((a, b) => b.t - a.t);
+  const shown = items.slice(0, MAX_TOASTS);
+  const col = s => (byId(s) || {}).color || '#aaa';
+  document.getElementById('toasts').innerHTML = (shown.length ? shown.map(it => {
+    if (it.kind === 'notice') return `<div class="toast notice"><div class="from"><span class="dot" style="background:${col(it.n.from)}"></span><b>${it.n.from}</b><span class="pend">idle notice to</span><span class="dot" style="background:${col(it.n.to)}"></span><b>${it.n.to}</b></div><span class="st pend">👁</span></div>`;
+    const m = it.m;
+    const cls = m.stage === 'PENDING' ? 'pend' : (m.stage === 'FAILED' ? 'fail' : (m.stage === 'READ' && now - m.readAt > READ_FLASH ? 'gone' : ''));
+    const st = { PENDING: '<span class="st pend">Pending</span>', IN_INBOX: '<span class="st ok">✓ In inbox</span>', READ: '<span class="st ok">✓✓ Read</span>', FAILED: '<span class="st fail">✗ Failed</span>' }[m.stage];
+    return `<div class="toast ${cls}"><div class="from"><span class="dot" style="background:${col(m.from)}"></span><b>${m.from}</b><span class="pend">→</span><span class="dot" style="background:${col(m.to)}"></span><b>${m.to}</b></div>${st}<div class="sum">${m.summary}</div></div>`;
+  }).join('') + (items.length > MAX_TOASTS ? `<div class="more">+${items.length - MAX_TOASTS} more</div>` : '') : '<div class="quiet">No traffic</div>');
+
+  document.getElementById('clock').textContent = clock.toFixed(1) + ' s';
+  const end = timeline[timeline.length - 1][0];
+  document.getElementById('scrub').value = Math.round(1000 * clock / end);
+  const rows = document.querySelectorAll('#script div');
+  let nowIdx = -1; timeline.forEach((e, i) => { if (e[0] <= clock) nowIdx = i; });
+  rows.forEach((r, i) => { r.classList.toggle('past', i < nowIdx); r.classList.toggle('now', i === nowIdx); });
+  if (nowIdx >= 0 && playing) rows[nowIdx].scrollIntoView({ block: 'nearest' });
+}
+
+let summaries = {};
+function describe(e) {
+  const k = e[1];
+  const sm = id => summaries[id] || id;
+  if (k === 'status') return `${e[2]} is ${e[3]}`;
+  if (k === 'watch') return `${e[2]} watches ${e[3]} (notify_when_idle)`;
+  if (k === 'send') return `${e[3]} → ${e[4]}: “${e[5]}” sent, Pending`;
+  if (k === 'inbox') return `“${sm(e[2])}” lands In inbox`;
+  if (k === 'read') return `“${sm(e[2])}” Read; arrow flashes 3 s and leaves`;
+  if (k === 'fail') return `“${sm(e[2])}” Failed; red arrow stays`;
+  if (k === 'resolve') return `failed message resolved by the resend; red arrow leaves`;
+  if (k === 'notice') return `${e[2]} idle notice to ${e[3]}: eye pulses, no arrow`;
+  if (k === 'end') return 'round ends, loops in 2 s';
+  return k;
+}
+function buildScript() {
+  summaries = {};
+  timeline.forEach(e => { if (e[1] === 'send') summaries[e[2]] = e[5]; });
+  document.getElementById('script').innerHTML = timeline.map(e => `<div><b>${e[0].toFixed(1)}</b><span>${describe(e)}</span></div>`).join('');
+}
+
+function tick(ts) {
+  const dt = (ts - last) / 1000; last = ts;
+  if (playing) stepTo(clock + dt * speed);
+  render();
+  requestAnimationFrame(tick);
+}
+
+document.getElementById('play').addEventListener('click', e => { playing = !playing; e.target.textContent = playing ? 'Pause' : 'Play'; e.target.setAttribute('aria-pressed', String(playing)); });
+document.getElementById('restart').addEventListener('click', () => { reset(); });
+document.querySelectorAll('[data-speed]').forEach(b => b.addEventListener('click', () => { speed = parseFloat(b.dataset.speed); document.querySelectorAll('[data-speed]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); }));
+document.querySelectorAll('[data-scn]').forEach(b => b.addEventListener('click', () => { scenario = b.dataset.scn; document.querySelectorAll('[data-scn]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); reset(); }));
+document.getElementById('scrub').addEventListener('input', e => { const end = timeline[timeline.length - 1][0]; const target = end * e.target.value / 1000; if (target < clock) { reset(); } stepTo(target); render(); });
+
+reset();
+requestAnimationFrame(ts => { last = ts; tick(ts); });
+</script>
