@@ -9,7 +9,7 @@
   :root {
     --bg: #0c0c0c; --win: #121212; --card: #1c1c1c; --card-edge: #2a2a2a; --win-fg: #ededed; --win-muted: #8a8a8a;
     --blue-bg: #1b2f4a; --blue-fg: #7cb4ff; --grey-bg: #2a2a2a; --grey-fg: #cfcfcf;
-    --orange-bg: #3a2a12; --orange-fg: #ffb454; --green: #4ad17a; --red: #ff6b6b; --pend: #8a8a8a;
+    --orange-bg: #3a2a12; --orange-fg: #ffb454; --green: #4ad17a; --red: #ff6b6b; --pend: #8a8a8a; --yellow: #f0e45a;
     --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
     --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
     color-scheme: dark;
@@ -65,11 +65,12 @@
   .graph svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
   .graph path { transition: opacity .4s, stroke-width .3s; pointer-events: stroke; cursor: pointer; }
   .graph path.dim { opacity: .25 !important; }
-  .graph #tethers path { stroke: #9a9a9a; stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; pointer-events: none; cursor: default; }
-  .tglyph { position: absolute; z-index: 2; transform: translate(-50%, -50%); font-size: 12px; line-height: 1; color: var(--win-muted); background: var(--win); border-radius: 9px; padding: 1px 3px; white-space: nowrap; display: flex; align-items: center; gap: 3px; cursor: default; transition: opacity .3s, left .3s, top .3s; }
-  .tglyph .eye { margin-right: 0; }
+  .graph #tethers path { stroke: var(--yellow); stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; pointer-events: none; cursor: default; }
+  .tglyph { position: absolute; z-index: 2; transform: translate(-50%, -50%); font-size: 12px; line-height: 1; color: var(--yellow); background: var(--win); border-radius: 9px; padding: 1px 3px; white-space: nowrap; display: flex; align-items: center; gap: 3px; cursor: default; transition: opacity .3s, left .3s, top .3s; }
+  .tglyph .eye { margin-right: 0; display: inline-flex; width: 13px; height: 13px; }
+  .tglyph .eye svg { position: static; width: 100%; height: 100%; overflow: visible; }
   .tglyph .ttext { display: none; font-size: 11px; }
-  .tglyph:hover { z-index: 4; color: var(--win-fg); box-shadow: 0 0 0 1px #2a2a2a; }
+  .tglyph:hover { z-index: 4; box-shadow: 0 0 0 1px #2a2a2a; }
   .tglyph:hover .ttext { display: inline; }
   .tglyph[data-clear="0"] { pointer-events: none; }
   .graph.dragging .tglyph { transition: none; }
@@ -131,7 +132,7 @@
       <marker id="mg" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#4ad17a"></path></marker>
       <marker id="mp" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#8a8a8a"></path></marker>
       <marker id="mr" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#ff6b6b"></path></marker>
-      <marker id="mc" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="7" markerHeight="7" orient="auto"><circle cx="4" cy="4" r="2.6" fill="#141414" stroke="#8a8a8a" stroke-width="1.2"></circle></marker>
+      <marker id="mc" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="7" markerHeight="7" orient="auto"><circle cx="4" cy="4" r="2.6" fill="#141414" stroke="#f0e45a" stroke-width="1.2"></circle></marker>
     </defs><g id="tethers"></g><g id="arrows"></g></svg></div>
     <div class="cap"><span id="cap-entry"></span><span id="cap-pair"></span><button id="reset-layout" type="button" title="clear every pinned node and return to the ring" hidden>Reset layout</button></div>
   </div>
@@ -637,6 +638,20 @@
     return el("span", "eye" + (pulse ? " pulse" : ""), "👁");
   }
 
+  function svgEl(name, attrs) {
+    const node = document.createElementNS(SVG_NS, name);
+    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+    return node;
+  }
+
+  function tetherEyeEl() {
+    const eye = el("span", "eye");
+    const picture = svgEl("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2.4", "stroke-linecap": "round", "stroke-linejoin": "round" });
+    picture.append(svgEl("path", { d: "M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" }), svgEl("circle", { cx: "12", cy: "12", r: "3.2", fill: "currentColor" }));
+    eye.append(picture);
+    return eye;
+  }
+
   function mailEl(count) {
     const mail = el("span", "mail", `✉ ${count}`);
     mail.title = `${count} queued message${count === 1 ? "" : "s"}`;
@@ -1126,7 +1141,7 @@
       if (!glyphEl) {
         glyphEl = el("div", "tglyph");
         glyphEl.dataset.key = key;
-        glyphEl.append(eyeEl(false), el("span", "ttext", "waiting"));
+        glyphEl.append(tetherEyeEl(), el("span", "ttext", "waiting"));
         graph.append(glyphEl);
         glyphEls.set(key, glyphEl);
       }
