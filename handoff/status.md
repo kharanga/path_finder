@@ -144,3 +144,8 @@ All edits below are applied. CLAUDE.md, SPEC.md, .claude/roles/, docs/ remain un
 - 2026-10-20T22:02Z Committed d145aeb and pushed. Assigned V15 to viz-builder. Live: http://127.0.0.1:4780/web.
 - 2026-10-20T22:20Z V15 ready received from viz-builder (handoff/viz/ready.md, viz/web.html only, no restart needed); builder pointed the validator at it. Waiting on the V15 review.
 - 2026-10-20T22:40Z V15 review PASS; 361 tests pass. Marked V15 done in SPEC.md; plan §6 records the drag pins and Reset layout. Committing and pushing. All tasks D1 to V15 done; no open assignments. Manager idle.
+- 2026-10-20T23:00Z User chose the dashed waiting tether with the eye glyph (option A plus B). Added V16 to SPEC.md, marked [~], assigned to viz-builder.
+- 2026-10-20T23:10Z User asked the task hover to show only the rest of the title, not the SPEC text. Added V17 to SPEC.md as [ ], queued behind V16.
+- 2026-10-20T23:30Z User approved the deployment plan: P1 (pipx-installable path-finder CLI with a window command) and P2 (Claude Code plugin with identify and mesh skills, no hooks). Added both to SPEC.md, gave the discovery-builder the P-series and the root packaging files in its role file, added P as Packaging to V17. Marked P1 [~], assigning to discovery-builder; V16 stays with viz-builder. User asleep; manager on autopilot: commit and push each PASS.
+- 2026-10-20T23:50Z V16 ready received from viz-builder (handoff/viz/ready.md, viz/web.html only, no restart needed); builder pointed the validator at it. Waiting on the V16 review.
+- 2026-10-21T00:10Z V16 review PASS; 369 tests pass. Marked V16 done and V17 in progress in SPEC.md; plan §6 records the tether. Committing V16 (P1 files left unstaged for the discovery-builder) and pushing, assigning V17.

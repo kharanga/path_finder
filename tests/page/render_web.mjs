@@ -41,7 +41,7 @@ function makeElement(tag) {
 }
 
 const fixed = {};
-for (const id of ["graph", "svg", "arrows", "title", "link", "cap-entry", "cap-pair", "strip", "rows", "panel", "ptab", "plist", "reset-layout"]) fixed[id] = makeElement("div");
+for (const id of ["graph", "svg", "arrows", "tethers", "title", "link", "cap-entry", "cap-pair", "strip", "rows", "panel", "ptab", "plist", "reset-layout"]) fixed[id] = makeElement("div");
 fixed["reset-layout"].hidden = true;
 const WINDOW_HEIGHT = input.windowHeight || 1000;
 const document = { getElementById: (id) => fixed[id], createElement: makeElement, createElementNS: (_ns, name) => makeElement(name), createTextNode: (text) => ({ text: String(text), parent: null, remove() {} }) };
@@ -114,6 +114,15 @@ function pathView(path) {
   return { key: path.attrs["data-key"], stage: path.attrs["data-stage"], stroke: path.attrs.stroke, marker: path.attrs["marker-end"], width: path.attrs["stroke-width"], opacity: path.style.opacity, className: path.className, d: path.attrs.d, hoverable: Boolean(path.listeners.mouseenter) };
 }
 
+function tetherView(path) {
+  return { key: path.attrs["data-key"], d: path.attrs.d, opacity: path.style.opacity, marker: path.attrs["marker-end"], className: path.className };
+}
+
+function glyphView(glyph) {
+  const eye = findByClass(glyph, "eye"), text = findByClass(glyph, "ttext");
+  return { key: glyph.dataset.key, clear: glyph.dataset.clear, opacity: glyph.style.opacity, left: parseFloat(glyph.style.left), top: parseFloat(glyph.style.top), title: glyph.title, zIndex: glyph.style.zIndex, eye: eye ? eye.className : null, text: text ? textOf(text) : null };
+}
+
 function chipView(chip) {
   const count = findByClass(chip, "n");
   return { pid: Number(chip.dataset.pid), className: chip.className, dotClass: findByClass(chip, "dot").className, text: textOf(chip), count: count ? textOf(count) : null, title: chip.title, clickable: Boolean(chip.listeners.click) };
@@ -162,7 +171,8 @@ function view() {
   return { panel: panelView(), graphHeight: fixed.graph.style.height, graphClass: fixed.graph.className, resetHidden: fixed["reset-layout"].hidden, storage: { ...storage }, title: fixed.title.textContent, link: fixed.link.textContent, linkClass: fixed.link.className, eventsUrl: source.url, intervals: intervals.map((i) => i.delay),
     caption: [fixed["cap-entry"].textContent, fixed["cap-pair"].textContent], pod: fixed.graph.classList.contains("pod"), viewBox: fixed.svg.attrs.viewBox, quiet: quiet ? textOf(quiet) : null,
     nodes: fixed.graph.children.filter((c) => c.className.startsWith("node")).map(nodeView), labels: fixed.graph.children.filter((c) => c.className.startsWith("elab")).map(labelView),
-    paths: fixed.arrows.children.map(pathView), chips: fixed.strip.children.map(chipView), rows: fixed.rows.children.map(rowView) };
+    paths: fixed.arrows.children.map(pathView), tethers: fixed.tethers.children.map(tetherView), glyphs: fixed.graph.children.filter((c) => c.className.startsWith("tglyph")).map(glyphView),
+    chips: fixed.strip.children.map(chipView), rows: fixed.rows.children.map(rowView) };
 }
 
 const out = [];

@@ -6,7 +6,8 @@ Before doing anything, read CLAUDE.md and SPEC.md.
 
 - `discovery/`: the discovery helper script, the shared `sessions.json`, and the per-session `identity/` folder. `index.html` is yours until V4, when the viz-builder moves it to `viz/`.
 - `handoff/discovery/ready.md`: your handoff to the validator.
-- Your tasks are the D-series in SPEC.md. The manager assigns each one by ID. D3 (self-registration) is the current one.
+- P-series tasks (packaging and the Claude Code plugin, added 2026-10-20): you also own `pyproject.toml`, `path_finder/`, and `plugin/` at the repo root, and the `.gitignore` lines they need.
+- Your tasks are the D-series and the P-series in SPEC.md. The manager assigns each one by ID. D3 (self-registration) is the current one.
 
 ## You never touch
 

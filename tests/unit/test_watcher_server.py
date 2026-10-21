@@ -382,9 +382,9 @@ def test_parse_repo_spec_has_every_task_with_a_known_state(watcher):
     tasks = watcher.parse_spec_tasks(watcher.SPEC_PATH.read_text(encoding="utf-8"))
     ids = [t["id"] for t in tasks]
     assert len(ids) == len(set(ids)) and {"D1", "D3", "V0", "V9"} <= set(ids)
-    assert all(t["state"] in ("done", "in_progress", "todo") and t["title"] and t["owner"] in ("viz-builder", "discovery-builder") for t in tasks)
-    assert {t["area"] for t in tasks} == {"Discovery", "Visualization"}
-    assert all(t["area"] == ("Discovery" if t["id"].startswith("D") else "Visualization") for t in tasks)
+    assert all(t["state"] in ("done", "in_progress", "todo") and t["title"] for t in tasks)
+    assert all(t["owner"] == watcher.TASK_OWNERS.get(t["id"][0]) and t["area"] == watcher.TASK_AREAS.get(t["id"][0], t["id"][0]) for t in tasks)
+    assert {"Discovery", "Visualization"} <= {t["area"] for t in tasks}
 
 
 def test_spec_tasks_refresh_follows_the_file(watcher, tmp_path):

@@ -739,7 +739,7 @@ def test_reply_on_the_reversed_pair_fades_the_read_arrow_within_600ms_and_takes_
     steps = [{"name": "read", "frames": frames_between(timed, START, at("11.300"))}, {"name": "before reply", "advanceMs": 5400}, {"name": "reply sent", "frames": frames_between(timed, at("11.300"), at("17.000"))},
         {"name": "+0.3s", "advanceMs": 300}, {"name": "+0.7s", "advanceMs": 400}, {"name": "reply read", "frames": frames_between(timed, at("17.000"), at("17.700"))}, {"name": "+10s", "advanceMs": 10000}]
     views = render(tmp_path, snapshot_at(watcher, START), steps)
-    assert only_path(views["before reply"])["opacity"] == "0.550" and views["before reply"]["graphHeight"] == "150px"
+    assert only_path(views["before reply"])["opacity"] == "0.550" and views["before reply"]["graphHeight"] == "206px"
     sent = {path["key"]: path for path in views["reply sent"]["paths"]}
     assert (sent["32813>33993"]["stage"], sent["32813>33993"]["opacity"]) == ("READ", "0.550") and (sent["33993>32813"]["stage"], sent["33993>32813"]["opacity"]) == ("PENDING", "1")
     assert control_y(sent["33993>32813"]["d"]) < 57 and control_y(sent["32813>33993"]["d"]) > 138 and views["reply sent"]["graphHeight"] == "206px"
@@ -752,7 +752,7 @@ def test_reply_on_the_reversed_pair_fades_the_read_arrow_within_600ms_and_takes_
             assert not rects_overlap(rect, node_rect(node)), (label["key"], node["name"])
     fading = {path["key"]: path for path in views["+0.3s"]["paths"]}
     assert fading["32813>33993"]["opacity"] == "0.500" and fading["33993>32813"]["opacity"] == "1"
-    assert (only_path(views["+0.7s"])["key"], only_path(views["+0.7s"])["stage"]) == ("33993>32813", "PENDING") and views["+0.7s"]["graphHeight"] == "150px"
+    assert (only_path(views["+0.7s"])["key"], only_path(views["+0.7s"])["stage"]) == ("33993>32813", "PENDING") and views["+0.7s"]["graphHeight"] == "206px"
     assert (only_path(views["reply read"])["stage"], only_path(views["reply read"])["opacity"]) == ("READ", "1.000")
     assert (only_path(views["+10s"])["stage"], only_path(views["+10s"])["opacity"]) == ("READ", "0.550")
 
@@ -922,3 +922,144 @@ def test_pod_and_compact_nodes_drag_too(watcher, tmp_path):
     left0, top0 = node_pos(compact["now"], 900)
     assert node_pos(compact["drag"], 900) == pytest.approx((left0 + 50, top0 + 100)) and {"compact", "pinned"} <= set(nodes_of(compact["drag"])["manager"]["className"].split())
     assert nodes_of(compact["drag"])["manager"]["height"] == f"{COMPACT_NODE_HEIGHT}px" and pin_keys(compact["drag"]) == {"viz-web-pin:900": {"x": round(left0 + 50 + 50), "y": round(top0 + 100 + 12)}}
+
+
+GLYPH_WIDTH, GLYPH_HEIGHT = 22, 18
+
+
+def glyph_rect(glyph):
+    return (glyph["left"] - GLYPH_WIDTH / 2, glyph["top"] - GLYPH_HEIGHT / 2, glyph["left"] + GLYPH_WIDTH / 2, glyph["top"] + GLYPH_HEIGHT / 2)
+
+
+def tether_ends(tether):
+    numbers = [float(x) for x in re.findall(r"-?\d+\.?\d*", tether["d"])]
+    return (numbers[0], numbers[1]), (numbers[4], numbers[5])
+
+
+def shown_labels(view):
+    return [label for label in view["labels"] if label["clear"] == "1" and label["opacity"] != "0"]
+
+
+def assert_tethers_clear(view):
+    rects = {node["pid"]: node_rect(node) for node in view["nodes"]}
+    for tether in view["tethers"]:
+        waiter, target = (int(x) for x in tether["key"].split("~"))
+        points = curve_points(tether["d"])
+        for pid, rect in rects.items():
+            assert pid in (waiter, target) or not any(point_in(point, rect) for point in points), (tether["key"], pid)
+        for label in shown_labels(view):
+            assert not any(point_in(point, label_rect(label)) for point in points), (tether["key"], label["key"])
+    clear = [glyph for glyph in view["glyphs"] if glyph["clear"] == "1"]
+    for glyph in clear:
+        for pid, rect in rects.items():
+            assert not rects_overlap(glyph_rect(glyph), rect), (glyph["key"], pid)
+        for label in shown_labels(view):
+            assert not rects_overlap(glyph_rect(glyph), label_rect(label)), (glyph["key"], label["key"])
+        for other in clear:
+            assert other["key"] >= glyph["key"] or not rects_overlap(glyph_rect(glyph), glyph_rect(other)), (glyph["key"], other["key"])
+    for label in shown_labels(view):
+        for pid, rect in rects.items():
+            assert not rects_overlap(label_rect(label), rect), (label["key"], pid)
+
+
+def test_waiting_tether_runs_from_the_send_until_the_idle_notice_with_the_eye_at_the_midpoint(watcher, tmp_path):
+    timed = timed_changes(watcher)
+    cut = lambda name, after, until, **extra: {"name": name, "frames": frames_between(timed, at(after), at(until)), **extra}
+    steps = [{"name": "start"}, cut("send", "10.300", "10.500"), cut("enqueue", "10.500", "11.000"), cut("read", "11.000", "11.300"), {"name": "flash gone", "advanceMs": 3500}, cut("manager turn end", "11.300", "13.500"),
+        cut("reply pending", "13.500", "17.000"), cut("reply in inbox", "17.000", "17.600"), cut("reply read", "17.600", "17.700"), cut("builder idle", "17.700", "19.800"), cut("idle notice", "19.800", "21.100"),
+        {"name": "+0.25s", "advanceMs": 250}, {"name": "+0.6s", "advanceMs": 350}, {"name": "end", "frames": frames_between(timed, at("21.100"), None), "advanceMs": 9000}]
+    views = render(tmp_path, snapshot_at(watcher, START), steps)
+    assert views["start"]["tethers"] == [] and views["start"]["glyphs"] == [] and views["start"]["graphHeight"] == "150px"
+    sent = views["send"]
+    assert [(t["key"], t["marker"], t["opacity"]) for t in sent["tethers"]] == [("32813~33993", "url(#mc)", "0.000")] and sent["graphHeight"] == "206px"
+    glyph = sent["glyphs"][0]
+    assert (glyph["key"], glyph["clear"], glyph["eye"], glyph["text"], glyph["title"]) == ("32813~33993", "1", "eye", "waiting", "fake manager is waiting on fake builder")
+    assert views["enqueue"]["tethers"][0]["opacity"] == "0.848"
+    for name in ("read", "flash gone", "manager turn end", "builder idle", "idle notice"):
+        view = views[name]
+        assert [(t["key"], t["opacity"]) for t in view["tethers"]] == [("32813~33993", "0.850")], name
+        assert [(g["key"], g["opacity"], g["clear"]) for g in view["glyphs"]] == [("32813~33993", "0.850", "1")], name
+        (sx, sy), (ex, ey) = tether_ends(view["tethers"][0])
+        assert min(sx, ex) < view["glyphs"][0]["left"] < max(sx, ex), name
+        assert_tethers_clear(view)
+    read = views["read"]
+    assert control_y(only_path(read)["d"]) < 57 and control_y(read["tethers"][0]["d"]) > 138
+    inbox = views["reply in inbox"]
+    assert [(t["key"], t["opacity"]) for t in inbox["tethers"]] == [("32813~33993", "0.850"), ("33993~32813", "0.850")]
+    assert control_y(only_path(inbox)["d"]) < 57 and all(control_y(t["d"]) > 138 for t in inbox["tethers"]) and inbox["graphHeight"] == "206px"
+    assert abs(control_y(inbox["tethers"][0]["d"]) - control_y(inbox["tethers"][1]["d"])) == 24
+    assert [(g["key"], g["clear"], g["title"]) for g in inbox["glyphs"]] == [("32813~33993", "1", "fake manager is waiting on fake builder"), ("33993~32813", "1", "fake builder is waiting on fake manager")]
+    assert_tethers_clear(inbox)
+    assert [t["key"] for t in views["reply read"]["tethers"]] == ["32813~33993", "33993~32813"] and [t["key"] for t in views["builder idle"]["tethers"]] == ["32813~33993"]
+    assert [(t["key"], t["opacity"]) for t in views["+0.25s"]["tethers"]] == [("32813~33993", "0.425")] and views["+0.25s"]["glyphs"][0]["opacity"] == "0.425"
+    assert views["+0.6s"]["tethers"] == [] and views["+0.6s"]["glyphs"] == []
+    assert views["end"]["tethers"] == [] and views["end"]["graphHeight"] == "150px"
+
+
+def test_tether_fades_in_and_out_over_half_a_second_and_snaps_back(tmp_path):
+    sessions = [session(1, "a"), session(2, "b", status="WORKING")]
+    gain = {"event": "session", "at": "2026-10-20T12:00:05.000Z", "source": "assistant", "source_pid": 1, **session(1, "a", status="WORKING", waiting_on=[2])}
+    lose = {"event": "session", "at": "2026-10-20T12:00:08.000Z", "source": "user", "source_pid": 1, **session(1, "a", status="WORKING")}
+    steps = [{"name": "none"}, {"name": "gain", "frames": [gain]}, {"name": "+250", "advanceMs": 250}, {"name": "+600", "advanceMs": 350}, {"name": "+3s", "advanceMs": 2400}, {"name": "lose", "frames": [lose]},
+        {"name": "lose+250", "advanceMs": 250}, {"name": "back", "frames": [{**gain, "at": "2026-10-20T12:00:08.250Z"}]}, {"name": "back+100", "advanceMs": 100}, {"name": "lose again", "frames": [{**lose, "at": "2026-10-20T12:00:08.350Z"}]}, {"name": "gone", "advanceMs": 600}]
+    views = render(tmp_path, synthetic(sessions), steps, wall_start=TEN_START)
+    opacity = lambda name: [(t["key"], t["opacity"]) for t in views[name]["tethers"]]
+    assert opacity("none") == [] and views["none"]["glyphs"] == []
+    assert opacity("gain") == [("1~2", "0.000")] and opacity("+250") == [("1~2", "0.425")] and opacity("+600") == [("1~2", "0.850")] and opacity("+3s") == [("1~2", "0.850")]
+    assert opacity("lose") == [("1~2", "0.850")] and opacity("lose+250") == [("1~2", "0.425")]
+    assert opacity("back") == [("1~2", "0.850")] and opacity("back+100") == [("1~2", "0.850")]
+    assert opacity("gone") == [] and views["gone"]["glyphs"] == []
+    assert all(g["opacity"] == t["opacity"] for name in ("+250", "lose+250") for g, t in zip(views[name]["glyphs"], views[name]["tethers"]))
+
+
+@pytest.fixture(params=[(six_sessions_round, 356), (six_sessions_round, 720), (seven_sessions_round, 356), (seven_sessions_round, 720), (ten_sessions_round, 356)], ids=["six-narrow", "six-wide", "seven-narrow", "seven-wide", "ten"])
+def tether_views(watcher, tmp_path, request):
+    build, width = request.param
+    fixtures = build().write(tmp_path / "ring")
+    w = watcher.Watcher(fixtures=fixtures, spec_path=None)
+    w.poll_once()
+    snapshot = w.snapshot()
+    dragged = 900 if build is ten_sessions_round else 901
+    steps = [{"name": "now"}, {"name": "settled", "advanceMs": 600}, {"name": "drag", "pointer": {"pid": dragged, "dx": -60, "dy": 150}}, {"name": "pick", "clickNode": 902}]
+    input_path = tmp_path / "input.json"
+    input_path.write_text(json.dumps({"snapshot": snapshot, "steps": steps, "wallStart": TEN_WALL, "graphWidth": width, "localStorage": {}}))
+    result = subprocess.run(["node", str(HARNESS), str(PAGE), str(input_path)], capture_output=True, text=True, check=True)
+    return snapshot, dragged, {step["name"]: step["view"] for step in json.loads(result.stdout)}
+
+
+def test_tethers_match_waiting_on_run_clear_of_nodes_and_labels_and_follow_drags_and_picks(tether_views):
+    snapshot, dragged, views = tether_views
+    expected = {f"{s['pid']}~{target}" for s in snapshot["sessions"] for target in s["waiting_on"]}
+    view = views["settled"]
+    assert {t["key"] for t in view["tethers"]} == expected and {g["key"] for g in view["glyphs"]} == expected and expected
+    assert all(t["opacity"] == "0.850" and t["marker"] == "url(#mc)" and t["className"] == "" for t in view["tethers"])
+    assert all(g["eye"] == "eye" and g["text"] == "waiting" and " is waiting on " in g["title"] for g in view["glyphs"])
+    assert all(g["opacity"] == ("0.850" if g["clear"] == "1" else "0") for g in view["glyphs"])
+    assert_tethers_clear(view)
+    assert_tethers_clear(views["now"])
+    before = {t["key"]: tether_ends(t) for t in view["tethers"]}
+    after = {t["key"]: tether_ends(t) for t in views["drag"]["tethers"]}
+    moved = [key for key in before if str(dragged) in key.split("~")]
+    assert moved
+    for key in moved:
+        waiter, target = key.split("~")
+        end = 0 if waiter == str(dragged) else 1
+        assert after[key][end][1] > before[key][end][1] + 60, key
+    if len(snapshot["sessions"]) <= 8:
+        assert_tethers_clear(views["drag"])
+    picked = views["pick"]
+    for tether in picked["tethers"]:
+        touches = "902" in tether["key"].split("~")
+        assert tether["className"] == ("" if touches else "dim"), tether["key"]
+    for glyph in picked["glyphs"]:
+        touches = "902" in glyph["key"].split("~")
+        assert glyph["zIndex"] == ("4" if touches else "2") and (not touches or glyph["opacity"] != "0"), glyph["key"]
+
+
+def test_tether_rules_are_in_the_page_markup_and_css():
+    page = PAGE.read_text(encoding="utf-8")
+    assert '<g id="tethers"></g><g id="arrows"></g>' in page
+    assert re.search(r'<marker id="mc"[^>]*><circle [^>]*fill="#141414" stroke="#8a8a8a"', page)
+    assert re.search(r"\.graph #tethers path \{[^}]*stroke-dasharray: 5 4;[^}]*pointer-events: none;", page)
+    assert ".tglyph .ttext { display: none;" in page and ".tglyph:hover .ttext { display: inline; }" in page
+    assert ".graph.dragging .tglyph { transition: none; }" in page
