@@ -1,40 +1,41 @@
-# Ready: P2 round 2 2026-10-20
+# Ready: P3 2026-10-21
 
 ## Done
-A Claude Code plugin at `plugin/`, written by hand (`claude plugin init` scaffolds into `~/.claude/skills/`, not into the checkout).
 
-- `plugin/.claude-plugin/plugin.json`: name `path-finder`, version 0.1.0, description, author, keywords. No hooks, agents, MCP servers, or commands.
-- `plugin/skills/identify/SKILL.md` (`/path-finder:identify <role>`): if `$ARGUMENTS` is blank, asks "What is this session's role?" with AskUserQuestion; then runs `identify --role <role>` followed by `self` and prints the `self` line. `allowed-tools: [Bash, AskUserQuestion]`, `argument-hint: <role>`.
-- `plugin/skills/mesh/SKILL.md` (`/path-finder:mesh`): runs `list --root "$PWD"`, probes `http://127.0.0.1:4780/state` with curl and runs `window --root "$PWD"` only when nothing answers, then prints `http://127.0.0.1:4780/web`. `allowed-tools: [Bash]`.
-- Both skills define a tiny shell function `pf` that calls `path-finder` when it is on PATH and otherwise `python3 "${CLAUDE_PLUGIN_ROOT}/../discovery/discover.py"` (identify) or `python3 -m path_finder.cli` from the checkout root (mesh, so `window` also works without the CLI). A first draft used a two-word variable for the fallback, which zsh does not word-split; the first headless test session reported the failure, and the function form replaced it. The snippets were then run under `zsh -c` through both branches.
-- `plugin/README.md`: both skills, the trial install line `claude --plugin-dir plugin`, the keep-it install via a local marketplace (`claude plugin marketplace add <checkout>` then `claude plugin install path-finder@path_finder`), and a paragraph saying hooks are deliberately absent and why.
+(1) Data directory in `discovery/discover.py`. `data_dir()` returns `$PATH_FINDER_HOME` when set; else, when a parent of the script holds `discovery/`, `viz/`, and `pyproject.toml` together (the amended rule from the manager's P3 note), that checkout's `discovery/`; else `~/.path_finder`. `DISCOVERY_DIR`, `DIRECTORY_PATH`, and `IDENTITY_DIR` keep their names and are derived from it, so the test fixtures' monkeypatches still apply. The directory and `identity/` are created on first write as before (`write_identity`, `lock_directory`, `drop_identities_of_dead_sessions` all mkdir). Nothing else in the script changed.
 
-Verified on 2026-10-20 (Claude Code 2.1.305):
+(2) Self-contained wheel. `pyproject.toml` now builds with hatchling (version 0.2.0, `readme = "README.md"`). `force-include` copies `discovery/discover.py` to `path_finder/_vendor/discovery/discover.py` and `viz/watcher.py`, `viz/web.html`, `viz/index.html` to `path_finder/_vendor/viz/` at build time; the originals stay where they are. The sdist carries the four source files so a wheel can be built from it. `path_finder/repo.py` gains `VENDOR_DIR`, `vendored_copies_present()`, `data_dir()`, and `data_dir_description()`; `find_repo`, `candidate_folders`, `discover_script`, `watcher_script`, and `RepoNotFound` are unchanged. `path_finder/cli.py` resolves the code folder with `find_code_folder()`: the checkout as before, else the vendored folder, else the old error. Because an editable install has no `_vendor/`, `pip install -e .` and the test suite behave exactly as before.
 
-- `claude plugin validate plugin`: "Validation passed". It also prints two plugin-directory submission notes, a missing LICENSE and a missing icon; those only matter for submitting to the public directory and the license choice is the user's, so nothing was added.
-- `claude --plugin-dir plugin -p "List every skill ... whose name contains path-finder"` printed exactly `path-finder:identify` and `path-finder:mesh`.
-- `claude --plugin-dir plugin -p "/path-finder:identify builder" --allowedTools Bash` wrote `discovery/identity/94872.json` with role and label `builder` for that headless session (pid 94872) and printed its `self` line. The CLI was not on that session's PATH, so this exercised the `discover.py` fallback. That session has exited, so the next `list` drops the file.
-- `claude --plugin-dir plugin -p "/path-finder:mesh" --allowedTools Bash` printed the five live sessions under the checkout (manager, discovery-builder, viz-builder, validator, and itself unidentified) and `http://127.0.0.1:4780/web`. The watcher was already answering on 4780, so no window was opened; the `window` branch itself was verified in P1.
-- `python3 -m pytest tests`: 396 passed.
+(3) `path-finder --help` ends with two lines: which code runs (checkout path or "vendored copies inside the package") and the data directory in use, followed by the rule naming `PATH_FINDER_HOME`. `plugin/README.md` gains a "Where the data lives" section with the same rule.
 
-## Round 2 (validator item 1: no marketplace manifest)
+(4) `README.md` at the repo root: install for use (pipx from the GitHub repo or from a wheel, the three commands per session, the plugin from GitHub via `claude plugin marketplace add kharanga/path_finder` or `--plugin-dir plugin` for a trial), where the data lives, and install for development (clone, editable venv, pytest, direct script runs, `pip wheel`).
 
-Per the manager's decision, `.claude-plugin/marketplace.json` now sits at the checkout root (that folder is the discovery-builder's for the P-series). It names the marketplace `path_finder`, lists one plugin, `path-finder`, with source `./plugin`. The README's keep-install section now says where the manifest is; its two command lines are unchanged.
+Verified on 2026-10-21:
 
-Verified: `claude plugin validate .` reports "Validating marketplace manifest ... Validation passed"; `claude plugin validate plugin` still passes. `claude plugin marketplace add /Users/khangnguyen/Documents/path_finder` printed "Successfully added marketplace: path_finder", and `claude plugin marketplace remove path_finder` cleaned it up again, leaving `known_marketplaces.json` as it was and no `path_finder` reference in `~/.claude/settings.json`. `claude plugin install path-finder@path_finder` was not run, because installing enables the plugin in the user's settings; the validator or the user can run it when wanted.
+- `pip wheel . --no-deps` in a scratch venv outside the checkout built `path_finder-0.2.0-py3-none-any.whl`; its listing has exactly the four vendored files under `path_finder/_vendor/` plus the package and metadata.
+- With that wheel installed, from `/` with `PATH_FINDER_REPO` unset and `PATH_FINDER_HOME` set to a temp dir: `--help` says "vendored copies inside the package" and prints the temp dir; `identify --role x` wrote `<temp>/identity/74018.json` (the checkout's `discovery/identity/74018.json` was untouched); `list --root <checkout>` printed four sessions; `serve --port 4795 --no-log` answered `/state` with `data_dir` equal to the temp dir and the `x` role present, and `/web` and `/` with HTTP 200. The vendored watcher is the V20 one (it reports `data_dir`). The checkout was not renamed, since other sessions are running in it; the validator may do that instead.
+- A plain copy of `discover.py` under `<tmp>/_vendor/discovery/` with `HOME` pointed at a temp folder resolved its data dir to `<temp HOME>/.path_finder`.
+- From the checkout, `python3 discovery/discover.py self` and `path-finder --help` still use the checkout's `discovery/`; `PATH_FINDER_HOME=<dir> discover.py list` created `<dir>/identity/` and `<dir>/sessions.json`.
+- `python3 -m pytest tests`: 408 passed, 2 failed. The two are `tests/integration/test_discovery_cli.py::test_two_sessions_listed_with_roles_then_one_exit_removes_it` and `::test_stale_identity_of_dead_pid_is_dropped`. Their sandbox copies `discover.py` into a bare `<tmp>/discovery/` with no `viz/` or `pyproject.toml` and writes identities beside it; under the new rule the copy uses `<tmp HOME>/.path_finder` instead, so the identities are not seen. That is the intended P3 behaviour. In a scratch copy of the suite with one change in `run_cli`, `"PATH_FINDER_HOME": str(sandbox["discovery_dir"])` added to `env`, both tests and the rest of the discovery tests pass (57 passed). Earlier in the run four `viz/watcher.py` tests failed while the viz-builder was mid-edit on V20; they pass now.
 
 ## How to test
 
 ```
-claude plugin validate plugin
-claude --plugin-dir plugin
+python3 -m venv /tmp/pf-wheel && cd /tmp && /tmp/pf-wheel/bin/pip wheel /Users/khangnguyen/Documents/path_finder --no-deps -w /tmp/pf-dist
+python3 -c "import zipfile,glob; print([n for n in zipfile.ZipFile(glob.glob('/tmp/pf-dist/*.whl')[0]).namelist() if '_vendor' in n])"
+/tmp/pf-wheel/bin/pip install /tmp/pf-dist/path_finder-0.2.0-py3-none-any.whl
+cd / && unset PATH_FINDER_REPO && export PATH_FINDER_HOME=/tmp/pf-data
+/tmp/pf-wheel/bin/path-finder --help
+/tmp/pf-wheel/bin/path-finder identify --role x && ls /tmp/pf-data/identity
+/tmp/pf-wheel/bin/path-finder list --root /Users/khangnguyen/Documents/path_finder
+/tmp/pf-wheel/bin/path-finder serve --port 4795 --no-log &   # then curl :4795/state and :4795/web, then kill it
 ```
 
-In that session: `/path-finder:identify builder` should print the session's `self` JSON line with role `builder`, and `discovery/identity/<its pid>.json` should exist. `/path-finder:mesh` should print one JSON line per live session under the checkout and then `http://127.0.0.1:4780/web`; if port 4780 is silent it should also start the watcher and open the app window. `/path-finder:identify` with no argument should ask for the role first. Non-interactively the same two commands work with `claude --plugin-dir plugin -p "/path-finder:identify builder" --allowedTools Bash`.
+Expect the four `_vendor` files in the listing, help naming the vendored copies and `/tmp/pf-data`, the identity file in `/tmp/pf-data/identity/`, the live sessions, and `/state` with `"data_dir": "/tmp/pf-data"`. Rename the checkout first if you want the "not on disk" form; the walk-up from `/` does not reach it either way. Re-run `identify` with your real role afterwards if you ran it in a session that matters, and unset `PATH_FINDER_HOME` before using the checkout's data again.
 
 ## Requests
-- Manager: mark P2 done in `SPEC.md`; add `plugin/` to the CLAUDE.md "What exists" list if wanted. If the plugin is ever submitted to the public directory, the repo needs a LICENSE file and the plugin an icon; both are the user's choice.
-- Validator: `handoff/discovery/review.md` from P1 can stay; no tests were added for `plugin/` since the skills are prose plus one shell snippet each, and `claude plugin validate plugin/skills` covers the frontmatter.
+- Validator (owner of `tests/`): in `tests/integration/test_discovery_cli.py` `run_cli`, add `"PATH_FINDER_HOME": str(sandbox["discovery_dir"])` to the subprocess env. That is the whole fix for the two failures. Tests for the new pieces would go against `discover.data_dir` / `checkout_holding` (env var, checkout with and without `pyproject.toml`, home fallback), `repo.vendored_copies_present`, `cli.find_code_folder`, and the wheel listing if a build in tests is acceptable.
+- Manager: mark P3 done in `SPEC.md`; CLAUDE.md "What exists" could mention the wheel's vendored copies and `PATH_FINDER_HOME`. The README's GitHub lines use the `origin` remote, `kharanga/path_finder`.
 
 ## Blocked
 None.

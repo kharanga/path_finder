@@ -4,7 +4,7 @@ import runpy
 import sys
 from pathlib import Path
 
-from path_finder.repo import RepoNotFound, discover_script, find_repo, watcher_script
+from path_finder.repo import VENDOR_DIR, RepoNotFound, data_dir_description, discover_script, find_repo, vendored_copies_present, watcher_script
 from path_finder.window import open_window
 
 DISCOVER_COMMANDS = ("identify", "self", "list", "done")
@@ -12,6 +12,15 @@ WATCHER_COMMANDS = ("serve", "state", "replay", "map", "tail")
 COMMANDS_WITH_ROOT = ("list", "done", "serve", "map")
 DEFAULT_PORT = 4780
 DEFAULT_PAGE = "web"
+
+
+def find_code_folder():
+    try:
+        return find_repo()
+    except RepoNotFound:
+        if vendored_copies_present():
+            return VENDOR_DIR
+        raise
 
 
 def has_root_flag(arguments):
@@ -38,8 +47,11 @@ def usage():
         "watcher:    " + "  ".join(WATCHER_COMMANDS),
         "window:     window [--port 4780] [--page web] [--root DIR]",
         "",
-        "Every command runs the checkout's discovery/discover.py or viz/watcher.py in place.",
+        "Every command runs the checkout's discovery/discover.py or viz/watcher.py in place,",
+        "or the copies vendored in this package when no checkout is found.",
         "--root defaults to the current working directory for list, done, map, serve, and window.",
+        "",
+        data_dir_description(),
     ])
 
 
@@ -52,7 +64,7 @@ def parse_window_arguments(arguments):
 
 
 def dispatch(command, arguments):
-    repo = find_repo()
+    repo = find_code_folder()
     if command in DISCOVER_COMMANDS:
         return run_script_in_place(discover_script(repo), command, with_default_root(command, arguments))
     if command in WATCHER_COMMANDS:

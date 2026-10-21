@@ -22,6 +22,10 @@ claude plugin install path-finder@path_finder
 
 The CLI itself comes from `pip install -e .` or `pipx install .` in the checkout root (P1). Without it the skills use the scripts in the checkout directly.
 
+## Where the data lives
+
+Both skills write and read the discovery data directory: `identity/<pid>.json` per session and `sessions.json`. It is `$PATH_FINDER_HOME` when that variable is set, otherwise the checkout's `discovery/` when the scripts run inside a checkout (a folder holding `discovery/`, `viz/`, and `pyproject.toml`), otherwise `~/.path_finder`. `path-finder --help` prints the directory in use.
+
 ## No hooks
 
 Hooks are deliberately absent. Every received message already costs a session a full turn, and discovery is self-registration from files on disk, so there is nothing a hook would need to do.

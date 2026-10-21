@@ -1,5 +1,6 @@
 import json
 import re
+import tomllib
 
 from conftest import REPO_ROOT
 
@@ -53,3 +54,33 @@ def test_marketplace_manifest_at_the_checkout_root_lists_the_plugin_the_readme_i
     readme = (PLUGIN / "README.md").read_text(encoding="utf-8")
     assert "claude plugin marketplace add /Users/khangnguyen/Documents/path_finder" in readme
     assert "claude plugin install path-finder@path_finder" in readme and ".claude-plugin/marketplace.json" in readme
+
+
+def test_plugin_readme_says_where_the_data_lives():
+    text = (PLUGIN / "README.md").read_text(encoding="utf-8")
+    section = text.split("## Where the data lives")[1].split("\n## ")[0]
+    assert "`$PATH_FINDER_HOME`" in section and "`~/.path_finder`" in section and "`pyproject.toml`" in section
+    assert "`path-finder --help` prints the directory in use" in section
+
+
+def test_root_readme_gives_the_install_lines_for_users_and_developers():
+    text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "pipx install git+https://github.com/" in text and "pipx install path_finder-0.2.0-py3-none-any.whl" in text
+    assert "claude plugin marketplace add " in text and "claude plugin install path-finder@path_finder" in text and "claude --plugin-dir plugin" in text
+    assert "path-finder identify --role" in text and "path-finder list" in text and "path-finder window" in text
+    assert "## Where the data lives" in text and "`$PATH_FINDER_HOME`" in text and "`~/.path_finder`" in text
+    assert "pip install -e ." in text and "pytest tests" in text and "pip wheel . --no-deps" in text
+
+
+def test_pyproject_builds_with_hatchling_and_vendors_the_four_files():
+    project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert project["build-system"]["build-backend"] == "hatchling.build" and project["project"]["version"] == "0.2.0"
+    assert project["project"]["readme"] == "README.md" and project["project"]["scripts"] == {"path-finder": "path_finder.cli:main"}
+    wheel = project["tool"]["hatch"]["build"]["targets"]["wheel"]
+    assert wheel["packages"] == ["path_finder"]
+    assert wheel["force-include"] == {"discovery/discover.py": "path_finder/_vendor/discovery/discover.py", "viz/watcher.py": "path_finder/_vendor/viz/watcher.py",
+        "viz/web.html": "path_finder/_vendor/viz/web.html", "viz/index.html": "path_finder/_vendor/viz/index.html"}
+    sdist = set(project["tool"]["hatch"]["build"]["targets"]["sdist"]["include"])
+    assert {"discovery/discover.py", "viz/watcher.py", "viz/web.html", "viz/index.html", "pyproject.toml", "README.md", "path_finder/**"} <= sdist
+    for source in wheel["force-include"]:
+        assert (REPO_ROOT / source).is_file(), source

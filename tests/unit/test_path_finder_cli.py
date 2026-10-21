@@ -183,3 +183,92 @@ def test_start_server_reports_a_watcher_that_never_answers(tmp_path, monkeypatch
     (broken / "viz" / "watcher.py").write_text("import sys\nsys.exit(3)\n")
     with pytest.raises(RuntimeError, match="did not answer"):
         window.start_server_in_background(broken, free_port(), tmp_path)
+
+
+def fake_vendor(folder):
+    make_repo(folder)
+    for page in ("web.html", "index.html"):
+        (folder / "viz" / page).write_text("")
+    return folder
+
+
+def point_vendor_at(monkeypatch, folder):
+    monkeypatch.setattr(repo, "VENDOR_DIR", folder)
+    monkeypatch.setattr(cli, "VENDOR_DIR", folder)
+
+
+def test_find_code_folder_takes_the_checkout_then_the_vendored_copies_then_fails(tmp_path, monkeypatch):
+    monkeypatch.setenv(repo.REPO_ENV_VAR, str(make_repo(tmp_path / "checkout")))
+    point_vendor_at(monkeypatch, fake_vendor(tmp_path / "site" / "path_finder" / "_vendor"))
+    assert cli.find_code_folder() == tmp_path / "checkout"
+    monkeypatch.setattr(cli, "find_repo", lambda: (_ for _ in ()).throw(repo.RepoNotFound("nowhere")))
+    assert repo.vendored_copies_present() is True and cli.find_code_folder() == tmp_path / "site" / "path_finder" / "_vendor"
+    point_vendor_at(monkeypatch, tmp_path / "missing" / "_vendor")
+    assert repo.vendored_copies_present() is False
+    with pytest.raises(repo.RepoNotFound):
+        cli.find_code_folder()
+    assert repo.VENDOR_DIR.name == "_vendor" and not (REPO_ROOT / "path_finder" / "_vendor").exists()
+
+
+def test_vendored_copies_need_both_scripts(tmp_path, monkeypatch):
+    vendor = tmp_path / "_vendor"
+    (vendor / "discovery").mkdir(parents=True)
+    (vendor / "discovery" / "discover.py").write_text("")
+    point_vendor_at(monkeypatch, vendor)
+    assert repo.vendored_copies_present() is False
+    (vendor / "viz").mkdir()
+    (vendor / "viz" / "watcher.py").write_text("")
+    assert repo.vendored_copies_present() is True
+    assert repo.discover_script(vendor) == vendor / "discovery" / "discover.py" and repo.watcher_script(vendor) == vendor / "viz" / "watcher.py"
+
+
+def test_data_dir_for_help_follows_the_shared_rule(tmp_path, monkeypatch):
+    checkout = make_repo(tmp_path / "checkout")
+    vendor = fake_vendor(tmp_path / "_vendor")
+    point_vendor_at(monkeypatch, vendor)
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv(repo.HOME_ENV_VAR, "~/pf-data")
+    assert repo.data_dir(checkout) == home / "pf-data" and repo.data_dir(vendor) == home / "pf-data"
+    monkeypatch.setenv(repo.HOME_ENV_VAR, "")
+    assert repo.data_dir(checkout) == home / ".path_finder"
+    (checkout / "pyproject.toml").write_text("")
+    assert repo.data_dir(checkout) == checkout / "discovery"
+    monkeypatch.delenv(repo.HOME_ENV_VAR)
+    assert repo.data_dir(checkout) == checkout / "discovery" and repo.data_dir(vendor) == home / ".path_finder"
+    (vendor / "pyproject.toml").write_text("")
+    assert repo.data_dir(vendor) == home / ".path_finder"
+    assert repo.HOME_ENV_VAR == "PATH_FINDER_HOME"
+
+
+def test_help_names_the_code_in_use_and_the_data_directory(tmp_path, monkeypatch, capsys):
+    checkout = make_repo(tmp_path / "checkout")
+    (checkout / "pyproject.toml").write_text("")
+    monkeypatch.setenv(repo.REPO_ENV_VAR, str(checkout))
+    monkeypatch.delenv(repo.HOME_ENV_VAR, raising=False)
+    assert cli.main(["--help"]) == 0
+    text = capsys.readouterr().out
+    assert f"code: checkout {checkout}" in text and f"data directory: {checkout / 'discovery'}" in text
+    assert "PATH_FINDER_HOME when set, else the checkout's discovery/, else ~/.path_finder" in text
+    assert "or the copies vendored in this package when no checkout is found." in text
+    monkeypatch.setenv(repo.HOME_ENV_VAR, str(tmp_path / "data"))
+    monkeypatch.setattr(repo, "find_repo", lambda: (_ for _ in ()).throw(repo.RepoNotFound("nowhere")))
+    point_vendor_at(monkeypatch, fake_vendor(tmp_path / "_vendor"))
+    assert cli.main(["--help"]) == 0
+    text = capsys.readouterr().out
+    assert "code: vendored copies inside the package" in text and f"data directory: {tmp_path / 'data'}" in text
+    point_vendor_at(monkeypatch, tmp_path / "missing")
+    assert cli.main(["--help"]) == 0
+    assert "data directory: PATH_FINDER_HOME when set, else ~/.path_finder (no checkout found)" in capsys.readouterr().out
+
+
+def test_commands_run_the_vendored_scripts_when_no_checkout_is_found(tmp_path, monkeypatch, capsys):
+    vendor = tmp_path / "_vendor"
+    (vendor / "discovery").mkdir(parents=True)
+    (vendor / "viz").mkdir()
+    (vendor / "discovery" / "discover.py").write_text("import sys\nprint('vendored discover', sys.argv[1:])\n")
+    (vendor / "viz" / "watcher.py").write_text("import sys\nprint('vendored watcher', sys.argv[1:])\n")
+    point_vendor_at(monkeypatch, vendor)
+    monkeypatch.setattr(cli, "find_repo", lambda: (_ for _ in ()).throw(repo.RepoNotFound("nowhere")))
+    assert cli.main(["self"]) == 0 and capsys.readouterr().out.strip() == "vendored discover ['self']"
+    assert cli.main(["tail", "--root", "/x"]) == 0 and capsys.readouterr().out.strip() == "vendored watcher ['tail', '--root', '/x']"

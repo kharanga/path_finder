@@ -23,8 +23,13 @@ def sandbox(tmp_path):
     return {"home": home, "sessions_dir": sessions_dir, "discovery_dir": discovery_dir}
 
 
-def run_cli(sandbox, *args):
+def run_cli(sandbox, *args, data_home="sandbox"):
     env = {**os.environ, "HOME": str(sandbox["home"])}
+    env.pop("PATH_FINDER_HOME", None)
+    if data_home == "sandbox":
+        env["PATH_FINDER_HOME"] = str(sandbox["discovery_dir"])
+    elif data_home is not None:
+        env["PATH_FINDER_HOME"] = str(data_home)
     return subprocess.run(
         [sys.executable, "-I", str(sandbox["discovery_dir"] / "discover.py"), *args],
         capture_output=True, text=True, env=env,
@@ -135,3 +140,29 @@ def test_identify_with_blank_role_exits_2_and_writes_nothing(sandbox, role):
     assert result.stdout == ""
     assert "role is blank" in result.stderr
     assert sorted(path.name for path in sandbox["discovery_dir"].iterdir()) == before
+
+
+def test_list_reads_and_writes_the_data_directory_by_the_rule(sandbox, tmp_path):
+    child = subprocess.Popen(["sleep", "30"])
+    try:
+        register(sandbox, child.pid, "fake-session-manager", FAKE_ROOT)
+        identify_on_disk(sandbox, child.pid, "fake manager")
+        (tmp_path / "viz").mkdir()
+        (tmp_path / "pyproject.toml").write_text("")
+        listed = run_cli(sandbox, "list", "--root", FAKE_ROOT, data_home=None)
+        assert listed.returncode == 0 and [r["role"] for r in rows_of(listed)] == ["fake manager"]
+        assert (sandbox["discovery_dir"] / "sessions.json").is_file() and not (sandbox["home"] / ".path_finder").exists()
+        (tmp_path / "pyproject.toml").unlink()
+        listed = run_cli(sandbox, "list", "--root", FAKE_ROOT, data_home=None)
+        assert listed.returncode == 0 and [r["role"] for r in rows_of(listed)] == [None]
+        assert (sandbox["home"] / ".path_finder" / "sessions.json").is_file() and (sandbox["home"] / ".path_finder" / "identity").is_dir()
+        elsewhere = tmp_path / "elsewhere"
+        listed = run_cli(sandbox, "list", "--root", FAKE_ROOT, data_home=elsewhere)
+        assert listed.returncode == 0 and [r["role"] for r in rows_of(listed)] == [None]
+        assert (elsewhere / "sessions.json").is_file() and (elsewhere / "identity").is_dir()
+        listed = run_cli(sandbox, "list", "--root", FAKE_ROOT)
+        assert [r["role"] for r in rows_of(listed)] == ["fake manager"]
+        assert (sandbox["discovery_dir"] / "identity" / f"{child.pid}.json").is_file()
+    finally:
+        child.kill()
+        child.wait()

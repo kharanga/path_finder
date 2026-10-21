@@ -338,3 +338,53 @@ def test_command_identify_stores_the_role_stripped(discover, monkeypatch, write_
 def test_module_has_no_ui_leftovers(discover):
     assert not any(name.startswith("UI_") or "ui" in name.lower().split("_") for name in dir(discover))
     assert not hasattr(discover, "time") and not hasattr(discover, "urllib")
+
+
+def checkout_like(root, with_pyproject=True):
+    (root / "discovery").mkdir(parents=True)
+    (root / "viz").mkdir()
+    if with_pyproject:
+        (root / "pyproject.toml").write_text("")
+    return root
+
+
+def test_checkout_holding_needs_discovery_viz_and_pyproject_in_one_parent(discover, tmp_path):
+    root = checkout_like(tmp_path / "repo")
+    assert discover.checkout_holding(root / "discovery" / "discover.py") == root
+    assert discover.checkout_holding(root / "discovery" / "deeper" / "discover.py") == root
+    assert discover.checkout_holding(checkout_like(tmp_path / "bare", with_pyproject=False) / "discovery" / "discover.py") is None
+    folder_marker = checkout_like(tmp_path / "folder", with_pyproject=False)
+    (folder_marker / "pyproject.toml").mkdir()
+    assert discover.checkout_holding(folder_marker / "discovery" / "discover.py") is None
+    vendor = tmp_path / "site" / "path_finder" / "_vendor"
+    (vendor / "discovery").mkdir(parents=True)
+    (vendor / "viz").mkdir()
+    assert discover.checkout_holding(vendor / "discovery" / "discover.py") is None
+    assert discover.checkout_holding(tmp_path / "elsewhere" / "discover.py") is None
+
+
+def test_data_dir_prefers_the_env_var_then_the_checkout_then_the_home_folder(discover, tmp_path, monkeypatch):
+    root = checkout_like(tmp_path / "repo")
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(discover, "SCRIPT_PATH", root / "discovery" / "discover.py")
+    monkeypatch.setenv("PATH_FINDER_HOME", str(tmp_path / "data"))
+    assert discover.data_dir() == tmp_path / "data"
+    monkeypatch.setenv("PATH_FINDER_HOME", "~/pf-data")
+    assert discover.data_dir() == home / "pf-data"
+    monkeypatch.setenv("PATH_FINDER_HOME", "")
+    assert discover.data_dir() == root / "discovery"
+    monkeypatch.delenv("PATH_FINDER_HOME")
+    assert discover.data_dir() == root / "discovery"
+    monkeypatch.setattr(discover, "SCRIPT_PATH", checkout_like(tmp_path / "bare", with_pyproject=False) / "discovery" / "discover.py")
+    assert discover.data_dir() == home / ".path_finder"
+    monkeypatch.setattr(discover, "SCRIPT_PATH", tmp_path / "site" / "path_finder" / "_vendor" / "discovery" / "discover.py")
+    assert discover.data_dir() == home / ".path_finder"
+    assert discover.HOME_ENV_VAR == "PATH_FINDER_HOME"
+
+
+def test_module_paths_derive_from_the_data_dir(discover):
+    module = type(discover)("probe")
+    module.__dict__.update(discover.__dict__)
+    assert discover.DIRECTORY_PATH.name == "sessions.json" and discover.IDENTITY_DIR.name == "identity"
+    assert discover.DIRECTORY_PATH.parent == discover.IDENTITY_DIR.parent

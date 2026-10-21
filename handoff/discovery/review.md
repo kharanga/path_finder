@@ -1,28 +1,28 @@
-# Review: P2 round 2 2026-10-21
+# Review: P3 2026-10-21
 
 PASS
 
-Round 1 item: the README's keep-install now matches a real marketplace. `.claude-plugin/marketplace.json` at the checkout root names the marketplace `path_finder` with one plugin, `path-finder`, source `./plugin`; `claude plugin validate .` and `claude plugin validate plugin` both pass; `claude plugin marketplace add /Users/khangnguyen/Documents/path_finder` registered it (`Successfully added marketplace: path_finder (declared in user settings)`), `claude plugin marketplace list` showed `path_finder` with the folder source, and `claude plugin marketplace remove path_finder` took it out again, leaving no `path_finder` reference in `~/.claude/settings.json`. `claude plugin install` was not run (the manager's instruction: it enables the plugin in the user's settings).
+## Verified against SPEC P3
 
-Round 1 (FAIL) item for the record: plugin/README.md keep-install pointed at a checkout with no marketplace manifest.
-
-## Verified against SPEC P2
-
-- `claude plugin validate plugin` → `Validation passed` (Claude Code 2.1.305), with the two directory-submission notes (no icon, no LICENSE) that do not change the result.
-- Manifest: `plugin/.claude-plugin/plugin.json` names `path-finder` 0.1.0 with description, author and keywords; no `hooks`, `agents`, `mcpServers` or `commands` keys, no `hooks/` folder; two skills under `plugin/skills/`.
-- Trial session: `claude --plugin-dir plugin -p "List every skill … path-finder"` printed exactly `path-finder:identify` and `path-finder:mesh`.
-- `/path-finder:identify builder` headless with `--allowedTools Bash`: once with no `path-finder` on PATH (the `discover.py` fallback) and once with the P1 scratch venv on PATH (the CLI branch). Each run printed the `self` JSON line with role and label `builder` and wrote `discovery/identity/<its pid>.json` (96818, 97118) for that headless session; the validator's own identity file was not touched (role `validator`, verified after), and the next `discover.py list` dropped the dead sessions' files. With no role argument the headless session reported that AskUserQuestion is not available non-interactively and ran nothing (no Bash call, no file); the interactive prompt itself cannot be exercised with `-p`, the skill text asks the one question the SPEC names.
-- `/path-finder:mesh` headless while the manager's 4780 watcher answered: printed the five live sessions under the checkout (the four team sessions plus itself, unidentified) and `http://127.0.0.1:4780/web`; no window started. The `window` branch was verified under P1.
-- Both skill snippets run under `zsh -c` and `bash -c` with `CLAUDE_PLUGIN_ROOT=<checkout>/plugin` through the fallback branch: `pf self` prints this session's line via `discover.py`; `pf list --root "$PWD"` through `python3 -m path_finder.cli` prints the four sessions; the curl probe skips `window` while 4780 answers.
-- README: the trial line `claude --plugin-dir plugin`, the keep-install lines with the manifest's location, the hooks paragraph, and the CLI note are present.
+- Wheel: in a scratch venv outside the checkout, `pip wheel <checkout> --no-deps` built `path_finder-0.2.0-py3-none-any.whl` whose listing holds exactly the four vendored files under `path_finder/_vendor/` (`discovery/discover.py`, `viz/watcher.py`, `viz/web.html`, `viz/index.html`) plus the package modules and metadata. An sdist built with `python -m build --sdist` carries the four source files, `pyproject.toml` and `README.md`, and `pip wheel <sdist>` gives the same four vendored files.
+- Installed wheel, run from `/` with `PATH_FINDER_REPO` unset and `PATH_FINDER_HOME` at a temp dir (the walk-up from `/` does not reach the checkout, so it is off the path; I did not rename it while the other sessions run in it): `--help` prints `code: vendored copies inside the package` and the temp data dir with the rule naming `PATH_FINDER_HOME`; `identify --role x` wrote `<temp>/identity/74335.json` and `<temp>/sessions.json`, and the checkout's `discovery/identity/74335.json` still says `validator`; `list --root <checkout>` printed the four live sessions; `self` printed the temp identity; `serve --port 4796 --no-log` (stopped) ran the vendored watcher (process command line points into the venv) and answered `/state` with `data_dir` = the temp dir and PID 74335 as role `x`, and `/web`, `/` and `/index.html` with 200 (the V19/V20 page). No `~/.path_finder` was created at any point.
+- `discovery/discover.py` rule: `checkout_holding` needs `discovery/`, `viz/` and a `pyproject.toml` file in one parent of the script (a vendor-like `_vendor/discovery/discover.py` and a checkout without the file both fall back); `data_dir` prefers the variable (expanded), treats an empty one as unset, then the checkout's `discovery/`, then `~/.path_finder`. End to end, a sandbox copy with the three markers writes `sessions.json` beside itself, without the marker writes `<HOME>/.path_finder/` (created on first write with `identity/`), and with the variable writes there.
+- `path_finder`: `find_code_folder` takes the checkout, else the vendored folder when both scripts are present, else the old `RepoNotFound`; commands run the vendored scripts in place; `--help` reports the three cases. An editable install has no `_vendor/`, so the existing entry-point tests behave as before.
+- Plugin README has the "Where the data lives" section; the root `README.md` gives pipx from the repo and from a wheel, the three per-session commands, the marketplace and plugin install lines, the trial line, the data rule and the developer steps.
+- Existing tests: `python3 -m pytest tests` → 423 passed on HEAD (V20 committed) plus the builder's uncommitted P3 files.
 
 ## Tests
 
-- `tests/unit/test_plugin_files.py`: manifest name and absent hook/agent/server keys, the two skills and their frontmatter, the identify snippet (AskUserQuestion, `identify --role` then `self`, the `discover.py` fallback), the mesh snippet (`list --root "$PWD"`, the 4780 probe before `window`, the URL), the README's install lines and hooks paragraph.
-- `tests/unit/test_plugin_files.py` also pins the marketplace manifest (name, plugin, source) against the README's install lines.
-- `python3 -m pytest tests` → 401 passed.
+- `tests/integration/test_discovery_cli.py`: `run_cli` drops any inherited `PATH_FINDER_HOME` and sets it to the sandbox's `discovery/` by default (the builder's requested fix); new `test_list_reads_and_writes_the_data_directory_by_the_rule`.
+- `tests/unit/test_discover.py`: `checkout_holding` markers (folder-as-marker, vendor-like tree), `data_dir` branches, module paths derived from it.
+- `tests/unit/test_path_finder_cli.py`: `find_code_folder`, `vendored_copies_present`, `repo.data_dir`, the three `--help` forms, commands running fake vendored scripts.
+- `tests/integration/test_path_finder_entry.py`: a copied package with a `_vendor/` tree built from the real scripts runs `--help`, `list`, `state` and `serve` (port 4797) from `/` with the data dir from the environment, writes nothing into `_vendor/`.
+- `tests/unit/test_plugin_files.py`: plugin README section, root README lines, `pyproject.toml` backend, version, readme, force-include mapping and sdist includes.
 
 ## Notes
 
-- The headless trial sessions appear briefly on the live 4780 page as unidentified `path-finder-NN` nodes and vanish when the watcher drops their registry entries.
-- For a public directory submission the validator also wants an icon and a repository LICENSE; the user's choice, as ready.md says.
+- `pyproject.toml` now declares `readme = "README.md"`, so the build needs the untracked root `README.md`; the manager should commit it with P3.
+- The root README's install lines use `github.com/kharanga/path_finder`; whether that repository is public is a user item.
+- The vendored watcher's `SPEC_PATH` is `_vendor/SPEC.md` (absent, so `/state` has no tasks) and its default `--log` would write `events.jsonl` into `_vendor/viz/`; running it also leaves a `__pycache__` there. All outside P3 as specified.
+- If a venv lives inside the checkout, the vendored copies sit under the checkout and both scripts resolve the checkout's `discovery/` through the walk-up; the same data either way.
+- For the manager (from ready.md): mark P3 done; CLAUDE.md "What exists" could mention the vendored copies and `PATH_FINDER_HOME`.

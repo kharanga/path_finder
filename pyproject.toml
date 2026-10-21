@@ -1,16 +1,34 @@
 [build-system]
-requires = ["setuptools>=64"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
 
 [project]
 name = "path-finder"
-version = "0.1.0"
+version = "0.2.0"
 description = "Discovery and visualization of Claude Code sessions talking to each other on one machine"
+readme = "README.md"
 requires-python = ">=3.9"
 dependencies = []
 
 [project.scripts]
 path-finder = "path_finder.cli:main"
 
-[tool.setuptools]
+[tool.hatch.build.targets.sdist]
+include = [
+  "path_finder/**",
+  "discovery/discover.py",
+  "viz/watcher.py",
+  "viz/web.html",
+  "viz/index.html",
+  "pyproject.toml",
+  "README.md",
+]
+
+[tool.hatch.build.targets.wheel]
 packages = ["path_finder"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"discovery/discover.py" = "path_finder/_vendor/discovery/discover.py"
+"viz/watcher.py" = "path_finder/_vendor/viz/watcher.py"
+"viz/web.html" = "path_finder/_vendor/viz/web.html"
+"viz/index.html" = "path_finder/_vendor/viz/index.html"
