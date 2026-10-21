@@ -65,6 +65,14 @@
   .graph svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
   .graph path { transition: opacity .4s, stroke-width .3s; pointer-events: stroke; cursor: pointer; }
   .graph path.dim { opacity: .25 !important; }
+  .graph #tethers path { stroke: #9a9a9a; stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; pointer-events: none; cursor: default; }
+  .tglyph { position: absolute; z-index: 2; transform: translate(-50%, -50%); font-size: 12px; line-height: 1; color: var(--win-muted); background: var(--win); border-radius: 9px; padding: 1px 3px; white-space: nowrap; display: flex; align-items: center; gap: 3px; cursor: default; transition: opacity .3s, left .3s, top .3s; }
+  .tglyph .eye { margin-right: 0; }
+  .tglyph .ttext { display: none; font-size: 11px; }
+  .tglyph:hover { z-index: 4; color: var(--win-fg); box-shadow: 0 0 0 1px #2a2a2a; }
+  .tglyph:hover .ttext { display: inline; }
+  .tglyph[data-clear="0"] { pointer-events: none; }
+  .graph.dragging .tglyph { transition: none; }
   .graph .quiet { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--win-muted); font-size: 12px; }
   .node { position: absolute; z-index: 1; background: var(--card); border: 1px solid var(--card-edge); border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; transition: border-color .3s, box-shadow .3s, left .4s, top .4s; touch-action: none; cursor: grab; user-select: none; }
   .node.dragging { transition: none; z-index: 5; cursor: grabbing; box-shadow: 0 6px 18px rgba(0, 0, 0, .5); }
@@ -123,7 +131,8 @@
       <marker id="mg" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#4ad17a"></path></marker>
       <marker id="mp" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#8a8a8a"></path></marker>
       <marker id="mr" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#ff6b6b"></path></marker>
-    </defs><g id="arrows"></g></svg></div>
+      <marker id="mc" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="7" markerHeight="7" orient="auto"><circle cx="4" cy="4" r="2.6" fill="#141414" stroke="#8a8a8a" stroke-width="1.2"></circle></marker>
+    </defs><g id="tethers"></g><g id="arrows"></g></svg></div>
     <div class="cap"><span id="cap-entry"></span><span id="cap-pair"></span><button id="reset-layout" type="button" title="clear every pinned node and return to the ring" hidden>Reset layout</button></div>
   </div>
   <div class="strip" id="strip"></div>
@@ -136,6 +145,12 @@
   const READ_LINGER_MS = 30000;
   const READ_FADE_MS = 600;
   const READ_MUTED_OPACITY = 0.55;
+  const TETHER_FADE_MS = 500;
+  const TETHER_OPACITY = 0.85;
+  const TETHER_OFFSET = 14;
+  const TETHER_LANE_STEP = 24;
+  const GLYPH_SIZE = [22, 18];
+  const GLYPH_SIDE_OFFSETS = [0, 12, -12];
   const PULSE_MS = 1200;
   const RING_WINDOW_MS = 10 * 60 * 1000;
   const COMPACT_ABOVE = 8;
@@ -159,6 +174,7 @@
   const LABEL_SIDE_OFFSETS = [0, 20, -20];
   const LABEL_CHAR_PX = 6.3;
   const LABEL_HEIGHT = 30;
+  const TETHER_LABEL_CLEARANCE = LABEL_HEIGHT / 2 + 7;
   const CURVE_SAMPLES = 16;
   const OVERLAP_PENALTY = 100;
   const CROSSING_PENALTY = 4;
@@ -168,6 +184,7 @@
   const graph = document.getElementById("graph");
   const svg = document.getElementById("svg");
   const arrows = document.getElementById("arrows");
+  const tethers = document.getElementById("tethers");
   const title = document.getElementById("title");
   const link = document.getElementById("link");
   const capEntry = document.getElementById("cap-entry");
@@ -199,6 +216,9 @@
   const nodeEls = new Map();
   const labelEls = new Map();
   const pathEls = new Map();
+  const tetherEls = new Map();
+  const glyphEls = new Map();
+  const tetherSeen = new Map();
   let pickedPid = null;
   let litKey = null;
 
@@ -810,7 +830,7 @@
     return pulls.map((pull) => [mx + (cx - mx) * pull, my + (cy - my) * pull]);
   }
 
-  function placeArrow(entry, placed, rects, otherPids) {
+  function placeArrow(entry, placed, rects, otherPids, sideOffsets = LABEL_SIDE_OFFSETS) {
     const { A, B, key, reverseKey, size, lower, ends } = entry;
     const bounds = { x1: 0, y1: 0, x2: layout.W, y2: layout.H };
     let best = null;
@@ -825,7 +845,7 @@
       }
       for (const t of LABEL_POSITIONS) {
         const onCurve = bezierPoint(S, C, E, t), normal = bezierNormal(S, C, E, t);
-        for (const side of LABEL_SIDE_OFFSETS) {
+        for (const side of sideOffsets) {
           const center = [onCurve[0] + normal[0] * side, onCurve[1] + normal[1] * side];
           const labelRect = rectAround(center, size[0], size[1]);
           let score = curveScore + Math.abs(t - 0.5) * 10 + Math.abs(side) / 10;
@@ -835,7 +855,7 @@
             if (other.labelRect && rectsOverlap(labelRect, other.labelRect)) score += OVERLAP_PENALTY;
             if (curveHitsRect(other.points, labelRect)) score += OVERLAP_PENALTY / 2;
           }
-          if (!best || score < best.score) best = { score, S, C, E, points, labelCenter: center, labelRect };
+          if (!best || score < best.score) best = { score, S, C, E, points, labelCenter: center, labelRect, labelSide: side, labelT: t };
         }
       }
     });
@@ -924,12 +944,204 @@
       label.style.left = `${fit.labelCenter[0].toFixed(1)}px`;
       label.style.top = `${fit.labelCenter[1].toFixed(1)}px`;
       label.dataset.clear = labelClear ? "1" : "0";
+      if (label.offsetWidth) fit.labelRect = rectAround(fit.labelCenter, label.offsetWidth + 2, LABEL_HEIGHT);
       const hidden = !lit && !labelClear;
       label.style.opacity = hidden ? "0" : (read ? readOpacity(m, now).toFixed(3) : "1");
       label.style.zIndex = lit ? "4" : "2";
     });
     for (const [key, path] of pathEls) if (!keep.has(key)) { path.remove(); pathEls.delete(key); }
     for (const [key, label] of labelEls) if (!keep.has(key)) { label.remove(); labelEls.delete(key); }
+    return entries.map((entry, index) => ({ entry, fit: fits[index] }));
+  }
+
+  function tetherOpacity(seen, now) {
+    const fadeIn = Math.min(1, Math.max(0, (now - seen.since) / TETHER_FADE_MS));
+    const fadeOut = seen.goneAt === null ? 1 : 1 - (now - seen.goneAt) / TETHER_FADE_MS;
+    return Math.max(0, Math.min(fadeIn, fadeOut)) * TETHER_OPACITY;
+  }
+
+  function activeTetherPairs() {
+    const pairs = new Map();
+    for (const session of state.sessions.values()) for (const target of session.waiting_on || []) {
+      const targetPid = Number(target);
+      if (!Number.isInteger(targetPid) || targetPid === session.pid) continue;
+      pairs.set(`${session.pid}~${targetPid}`, [session.pid, targetPid]);
+    }
+    return pairs;
+  }
+
+  function trackTethers(pairs, now) {
+    for (const [key, ends] of pairs) {
+      const seen = tetherSeen.get(key);
+      if (!seen) tetherSeen.set(key, { since: now, goneAt: null, ends });
+      else if (seen.goneAt !== null) { seen.goneAt = null; seen.since = now - TETHER_FADE_MS; }
+    }
+    for (const [key, seen] of tetherSeen) {
+      if (!pairs.has(key) && seen.goneAt === null) seen.goneAt = now;
+      if (seen.goneAt !== null && now - seen.goneAt >= TETHER_FADE_MS) tetherSeen.delete(key);
+    }
+  }
+
+  function curveBetween(ends, C, endGap) {
+    const A = layout.pos.get(ends[0]), B = layout.pos.get(ends[1]);
+    const S = exitPoint(A, C, 3, sizeOf(ends[0])), E = exitPoint(B, C, endGap, sizeOf(ends[1]));
+    return { S, C, E, points: sampleCurve(S, C, E) };
+  }
+
+  function curveScore(curve, placed, rects, otherPids) {
+    let score = 0;
+    for (const pid of otherPids) if (curveHitsRect(curve.points, rects.get(pid))) score += NODE_HIT_PENALTY;
+    for (const other of placed) {
+      score += CROSSING_PENALTY * curvesCross(curve.points, other.points);
+      if (other.labelRect && curveHitsRect(curve.points, other.labelRect)) score += OVERLAP_PENALTY / 2;
+    }
+    return score;
+  }
+
+  function translatedCurve(fit, ends, normal, distance) {
+    const shifted = (point) => [point[0] + normal[0] * distance, point[1] + normal[1] * distance];
+    const S = shifted(fit.S), C = shifted(fit.C);
+    const E = exitPoint(layout.pos.get(ends[1]), C, 7, sizeOf(ends[1]));
+    return { S, C, E, points: sampleCurve(S, C, E) };
+  }
+
+  function curveAtDistance(fit, ends, normal, distance) {
+    const first = translatedCurve(fit, ends, normal, distance);
+    const arrowMid = bezierPoint(fit.S, fit.C, fit.E, 0.5), firstMid = bezierPoint(first.S, first.C, first.E, 0.5);
+    const achieved = (firstMid[0] - arrowMid[0]) * normal[0] + (firstMid[1] - arrowMid[1]) * normal[1];
+    if (Math.abs(achieved) < 1 || Math.abs(achieved - distance) < 1) return first;
+    return translatedCurve(fit, ends, normal, distance * distance / achieved);
+  }
+
+  function besideArrow(arrow, ends, rank, placed, rects, otherPids) {
+    const { fit, entry } = arrow;
+    const A = layout.pos.get(ends[0]), B = layout.pos.get(ends[1]);
+    if (layout.pod) {
+      const lowerLane = !entry.lower;
+      const mx = (A[0] + B[0]) / 2, my = (A[1] + B[1]) / 2;
+      const lift = layout.podLift + (rank - 1) * TETHER_LANE_STEP;
+      return curveBetween(ends, [mx, lowerLane ? my + lift : my - lift], 7);
+    }
+    const normal = bezierNormal(fit.S, fit.C, fit.E, 0.5);
+    const labelSide = fit.labelClear ? fit.labelSide : 0;
+    const labelReach = fit.labelClear ? Math.abs(normal[0]) * (fit.labelRect.x2 - fit.labelRect.x1) / 2 + Math.abs(normal[1]) * (fit.labelRect.y2 - fit.labelRect.y1) / 2 : 0;
+    const preferredSide = labelSide > 0 ? -1 : (labelSide < 0 ? 1 : (entry.key < entry.reverseKey ? 1 : -1));
+    let best = null;
+    [preferredSide, -preferredSide].forEach((side, sideIndex) => {
+      const nearest = fit.labelClear ? Math.max(TETHER_OFFSET, labelSide * side + labelReach + TETHER_OFFSET / 2) : TETHER_OFFSET;
+      [0, 1, 2].forEach((step) => {
+        const distance = nearest + (step + rank - 1) * TETHER_OFFSET;
+        const curve = curveAtDistance(fit, ends, normal, side * distance);
+        const score = curveScore(curve, placed, rects, otherPids) + sideIndex * 2 + step + distance / 50;
+        if (!best || score < best.score) best = { score, curve };
+      });
+    });
+    const free = placeArrow({ A, B, key: `${ends[0]}~${ends[1]}`, reverseKey: `${ends[1]}>${ends[0]}`, size: GLYPH_SIZE, lower: rank === 2, ends }, placed, rects, otherPids, [0]);
+    const freeCurve = { S: free.S, C: free.C, E: free.E, points: free.points };
+    const freeScore = curveScore(freeCurve, placed, rects, otherPids) + 6;
+    return freeScore < best.score ? freeCurve : best.curve;
+  }
+
+  function placeGlyph(curve, placed, rects) {
+    let best = null;
+    for (const t of LABEL_POSITIONS) {
+      const onCurve = bezierPoint(curve.S, curve.C, curve.E, t), normal = bezierNormal(curve.S, curve.C, curve.E, t);
+      for (const side of GLYPH_SIDE_OFFSETS) {
+        const center = [onCurve[0] + normal[0] * side, onCurve[1] + normal[1] * side];
+        const glyphRect = rectAround(center, GLYPH_SIZE[0], GLYPH_SIZE[1]);
+        let score = Math.abs(t - 0.5) * 10 + Math.abs(side) / 4;
+        if (glyphRect.x1 < 0 || glyphRect.y1 < 0 || glyphRect.x2 > layout.W || glyphRect.y2 > layout.H) score += OVERLAP_PENALTY / 4;
+        for (const rect of rects.values()) if (rectsOverlap(glyphRect, rect)) score += OVERLAP_PENALTY;
+        for (const other of placed) {
+          if (other.labelRect && rectsOverlap(glyphRect, other.labelRect)) score += OVERLAP_PENALTY;
+          if (curveHitsRect(other.points, glyphRect)) score += OVERLAP_PENALTY / 2;
+        }
+        if (!best || score < best.score) best = { score, center, glyphRect };
+      }
+    }
+    return best;
+  }
+
+  function hideCrossedLabel(arrow) {
+    const { entry, fit } = arrow;
+    fit.labelClear = false;
+    const label = labelEls.get(entry.key);
+    if (!label) return;
+    label.dataset.clear = "0";
+    const lit = litKey === entry.key || (pickedPid !== null && (entry.ends[0] === pickedPid || entry.ends[1] === pickedPid));
+    if (!lit) label.style.opacity = "0";
+  }
+
+  function podNeedsLowerLane(visible) {
+    if (hasReversedPair(visible)) return true;
+    const arrowKeys = new Set(visible.map(arrowKey));
+    const pairs = new Set([...activeTetherPairs().keys(), ...tetherSeen.keys()]);
+    for (const key of pairs) {
+      const [a, b] = key.split("~");
+      if (arrowKeys.has(`${a}>${b}`) || arrowKeys.has(`${b}>${a}`) || pairs.has(`${b}~${a}`)) return true;
+    }
+    return false;
+  }
+
+  function renderTethers(ring, now, arrowFits) {
+    if (!tethers) return;
+    const pairs = activeTetherPairs();
+    trackTethers(pairs, now);
+    const rects = nodeRects(ring);
+    const placed = arrowFits.map(({ fit }) => ({ points: fit.points, labelRect: fit.labelClear ? fit.labelRect : null }));
+    const keep = new Set();
+    const ordered = [...tetherSeen.entries()].sort(([a], [b]) => a.localeCompare(b));
+    for (const [key, seen] of ordered) {
+      const ends = seen.ends;
+      const A = layout.pos.get(ends[0]), B = layout.pos.get(ends[1]);
+      if (!A || !B) continue;
+      const reverseKey = `${ends[1]}~${ends[0]}`;
+      const rank = tetherSeen.has(reverseKey) && key > reverseKey ? 2 : 1;
+      const sameWay = arrowFits.find(({ entry }) => entry.ends[0] === ends[0] && entry.ends[1] === ends[1]);
+      const otherWay = arrowFits.find(({ entry }) => entry.ends[0] === ends[1] && entry.ends[1] === ends[0]);
+      let curve;
+      const otherPids = ring.map((s) => s.pid).filter((pid) => pid !== ends[0] && pid !== ends[1]);
+      if (sameWay || otherWay) {
+        curve = besideArrow(sameWay || otherWay, ends, rank, placed, rects, otherPids);
+      } else {
+        const fit = placeArrow({ A, B, key, reverseKey: `${ends[1]}>${ends[0]}`, size: GLYPH_SIZE, lower: rank === 2, ends }, placed, rects, otherPids, [0]);
+        curve = { S: fit.S, C: fit.C, E: fit.E, points: fit.points };
+      }
+      for (const arrow of arrowFits) if (arrow.fit.labelClear && curveHitsRect(curve.points, arrow.fit.labelRect)) hideCrossedLabel(arrow);
+      const glyph = placeGlyph(curve, placed, rects);
+      placed.push({ points: curve.points, labelRect: glyph.glyphRect });
+      const opacity = tetherOpacity(seen, now).toFixed(3);
+      let path = tetherEls.get(key);
+      if (!path) {
+        path = document.createElementNS(SVG_NS, "path");
+        path.setAttribute("data-key", key);
+        path.setAttribute("marker-end", "url(#mc)");
+        tethers.append(path);
+        tetherEls.set(key, path);
+      }
+      path.setAttribute("d", `M${curve.S[0].toFixed(1)},${curve.S[1].toFixed(1)} Q${curve.C[0].toFixed(1)},${curve.C[1].toFixed(1)} ${curve.E[0].toFixed(1)},${curve.E[1].toFixed(1)}`);
+      path.style.opacity = opacity;
+      path.classList.toggle("dim", pickedPid !== null && ends[0] !== pickedPid && ends[1] !== pickedPid);
+      let glyphEl = glyphEls.get(key);
+      if (!glyphEl) {
+        glyphEl = el("div", "tglyph");
+        glyphEl.dataset.key = key;
+        glyphEl.append(eyeEl(false), el("span", "ttext", "waiting"));
+        graph.append(glyphEl);
+        glyphEls.set(key, glyphEl);
+      }
+      glyphEl.title = `${labelFor(ends[0])} is waiting on ${labelFor(ends[1])}`;
+      glyphEl.style.left = `${glyph.center[0].toFixed(1)}px`;
+      glyphEl.style.top = `${glyph.center[1].toFixed(1)}px`;
+      const glyphClear = glyph.score < OVERLAP_PENALTY / 2;
+      const lit = pickedPid !== null && (ends[0] === pickedPid || ends[1] === pickedPid);
+      glyphEl.style.opacity = glyphClear || lit ? opacity : "0";
+      glyphEl.dataset.clear = glyphClear ? "1" : "0";
+      glyphEl.style.zIndex = lit ? "4" : "2";
+      keep.add(key);
+    }
+    for (const [key, path] of tetherEls) if (!keep.has(key)) { path.remove(); tetherEls.delete(key); }
+    for (const [key, glyphEl] of glyphEls) if (!keep.has(key)) { glyphEl.remove(); glyphEls.delete(key); }
   }
 
   function renderStrip(ring) {
@@ -1111,9 +1323,10 @@
     if (ring.length && quiet) quiet.remove();
     renderNodes(ring, now, inFlight);
     measureNodes(ring);
-    positionNodes(ring, ring.length <= 2 && hasReversedPair(visible));
+    positionNodes(ring, ring.length <= 2 && podNeedsLowerLane(visible));
     svg.setAttribute("viewBox", `0 0 ${layout.W} ${layout.H}`);
-    renderArrows(visible.filter((m) => { const ends = endpointsOf(m); return layout.pos.has(ends[0]) && layout.pos.has(ends[1]); }), ring, now);
+    const arrowFits = renderArrows(visible.filter((m) => { const ends = endpointsOf(m); return layout.pos.has(ends[0]) && layout.pos.has(ends[1]); }), ring, now);
+    renderTethers(ring, now, arrowFits);
     capEntry.textContent = state.caption.entry;
     capPair.textContent = state.caption.pair;
     if (resetLayoutButton) resetLayoutButton.hidden = !(layout.pinned && layout.pinned.size);
