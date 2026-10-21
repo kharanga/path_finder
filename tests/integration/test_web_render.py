@@ -23,6 +23,7 @@ REPLY_BODY_START = "Hi again from fake-session-builder"
 MANAGER_TEXT_START = "The hello is in `fake-session-builder`'s inbox."
 MANAGER_REPLY_TEXT_START = "The reply came back from `fake-session-builder`"
 PENDING_STROKE, OK_STROKE, FAILED_STROKE = "#8a8a8a", "#4ad17a", "#ff6b6b"
+TETHER_YELLOW, ORANGE_COUNT = "#f0e45a", "#ffb454"
 LABEL_CHAR_PX, LABEL_HEIGHT, LABEL_MAX_WIDTH = 6.3, 30, 170
 COMPACT_NODE_HEIGHT = 24
 NODE_BASE_HEIGHT, NODE_CHAR_PX, NODE_LINE_PX = 62, 5.6, 15
@@ -977,6 +978,7 @@ def test_waiting_tether_runs_from_the_send_until_the_idle_notice_with_the_eye_at
     assert [(t["key"], t["marker"], t["opacity"]) for t in sent["tethers"]] == [("32813~33993", "url(#mc)", "0.000")] and sent["graphHeight"] == "206px"
     glyph = sent["glyphs"][0]
     assert (glyph["key"], glyph["clear"], glyph["eye"], glyph["text"], glyph["title"]) == ("32813~33993", "1", "eye", "waiting", "fake manager is waiting on fake builder")
+    assert glyph["eyeText"] == "" and glyph["eyePicture"] == {"stroke": "currentColor", "fill": "none", "parts": [["path", None, None], ["circle", None, "currentColor"]]}
     assert views["enqueue"]["tethers"][0]["opacity"] == "0.848"
     for name in ("read", "flash gone", "manager turn end", "builder idle", "idle notice"):
         view = views[name]
@@ -1036,7 +1038,7 @@ def test_tethers_match_waiting_on_run_clear_of_nodes_and_labels_and_follow_drags
     view = views["settled"]
     assert {t["key"] for t in view["tethers"]} == expected and {g["key"] for g in view["glyphs"]} == expected and expected
     assert all(t["opacity"] == "0.850" and t["marker"] == "url(#mc)" and t["className"] == "" for t in view["tethers"])
-    assert all(g["eye"] == "eye" and g["text"] == "waiting" and " is waiting on " in g["title"] for g in view["glyphs"])
+    assert all(g["eye"] == "eye" and g["eyePicture"]["stroke"] == "currentColor" and g["text"] == "waiting" and " is waiting on " in g["title"] for g in view["glyphs"])
     assert all(g["opacity"] == ("0.850" if g["clear"] == "1" else "0") for g in view["glyphs"])
     assert_tethers_clear(view)
     assert_tethers_clear(views["now"])
@@ -1062,7 +1064,29 @@ def test_tethers_match_waiting_on_run_clear_of_nodes_and_labels_and_follow_drags
 def test_tether_rules_are_in_the_page_markup_and_css():
     page = PAGE.read_text(encoding="utf-8")
     assert '<g id="tethers"></g><g id="arrows"></g>' in page
-    assert re.search(r'<marker id="mc"[^>]*><circle [^>]*fill="#141414" stroke="#8a8a8a"', page)
-    assert re.search(r"\.graph #tethers path \{[^}]*stroke-dasharray: 5 4;[^}]*pointer-events: none;", page)
+    assert re.search(r'<marker id="mc"[^>]*><circle [^>]*fill="#141414" stroke="#f0e45a"', page)
+    assert re.search(r"\.graph #tethers path \{ stroke: var\(--yellow\);[^}]*stroke-dasharray: 5 4;[^}]*pointer-events: none;", page)
     assert ".tglyph .ttext { display: none;" in page and ".tglyph:hover .ttext { display: inline; }" in page
     assert ".graph.dragging .tglyph { transition: none; }" in page
+
+
+def test_tether_yellow_is_one_root_colour_used_by_curve_circle_eye_and_hover_text():
+    page = PAGE.read_text(encoding="utf-8")
+    root = re.search(r":root \{(.*?)\n  \}", page, re.S).group(1)
+    assert "--yellow: #f0e45a;" in root
+    assert TETHER_YELLOW not in {ORANGE_COUNT, OK_STROKE, FAILED_STROKE, PENDING_STROKE}
+    assert all(colour in root for colour in (f"--orange-fg: {ORANGE_COUNT};", f"--green: {OK_STROKE};", f"--red: {FAILED_STROKE};"))
+    tether_rule = re.search(r"\.graph #tethers path \{([^}]*)\}", page).group(1)
+    assert "stroke: var(--yellow);" in tether_rule and "#9a9a9a" not in page
+    glyph_rule = re.search(r"\n  \.tglyph \{([^}]*)\}", page).group(1)
+    assert "color: var(--yellow);" in glyph_rule
+    hover_rule = re.search(r"\.tglyph:hover \{([^}]*)\}", page).group(1)
+    assert "color" not in hover_rule
+    assert re.search(r"\.tglyph \.ttext \{[^}]*\}", page).group(0).count("color") == 0
+    assert re.search(r"\.tglyph \.eye \{[^}]*\}", page).group(0).count("color") == 0
+    assert re.search(r"\.tglyph \.eye svg \{ position: static;", page)
+    assert re.search(r'<marker id="mc"[^>]*><circle [^>]*stroke="%s"' % TETHER_YELLOW, page)
+    assert re.search(r'<marker id="mg"[^>]*><path [^>]*fill="%s"' % OK_STROKE, page) and re.search(r'<marker id="mr"[^>]*><path [^>]*fill="%s"' % FAILED_STROKE, page)
+    assert 'el("span", "eye" + (pulse ? " pulse" : ""), "👁")' in page
+    assert "function tetherEyeEl()" in page and 'el("span", "eye")' in page.split("function tetherEyeEl()")[1].split("\n  }")[0]
+    assert 'glyphEl.append(tetherEyeEl(), el("span", "ttext", "waiting"));' in page

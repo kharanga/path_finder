@@ -1,22 +1,21 @@
-# Review: V17 2026-10-21
+# Review: V18 2026-10-21
 
 PASS
 
-## Verified against SPEC V17
+## Verified against SPEC V18
 
-- Watcher: `task_area("P1")` and `task_area("p2")` are `Packaging`; `/state` on a temp copy of SPEC.md (spare port 4796, stopped) lists areas Discovery, Packaging and Visualization with P1 `in_progress` and P2 `todo`, owner `null`. The page shows a `Packaging · 1 in progress · 1 to do` folder with P1 and P2 after Discovery and Visualization, and a task without `area` falls back to the page's own map (`P` → Packaging).
-- Hover in headless Chrome at 720 px: V11 (`idle sessions show nothing unless waiting`, truncated with the ellipsis before hover) wraps on hover (`white-space: normal`, title 17 → 35 px, card 32 → 49 px, no longer truncated), `.tfull` stays `display: none`, the card stays inside the panel; leaving restores the ellipsis; a click opens the full SPEC text (card 703 px) and it stays after the pointer leaves; a second click closes it. V9 (`task panel`, fits): hover changes nothing (17 px title, 32 px card, `.tfull` none) and the full text appears only after the click. The card tooltip reads `click for the full SPEC text`, `click to collapse` when open. Screenshots `v17/webv17-hover.png` and `webv17-clicked.png` in the scratchpad.
-- Through the harness: `mouseenter` adds `hover` without `open`, the class survives a render tick and a `tasks` change, `mouseleave` removes it, click toggles `open` and leaving keeps it; the CSS has `.task.open .tfull { display: block; }` with no `:hover`/`.hover` rule for `.tfull`, the three-selector `white-space: normal` rule for `.ttitle`, and the title's `overflow: hidden; text-overflow: ellipsis; white-space: nowrap` default.
+- Fixture replay (round-trip manager/builder fixtures, `--until 2026-10-08T04:31:11.200Z`, temp copy of SPEC.md, spare port 4796, stopped) in headless Chrome at 380 × 720 and 720 × 600: the pair manager → builder carries a green `READ` arrow (computed stroke `rgb(74, 209, 122)`, marker `#mg`) and, on the lower lane, the waiting tether with computed stroke `rgb(240, 228, 90)`, dash `5px, 4px`, marker `#mc`, opacity 0.85. The `#mc` circle has computed stroke `rgb(240, 228, 90)` and fill `rgb(20, 20, 20)`. The glyph, its `.eye` and its `.ttext` all compute to `rgb(240, 228, 90)`; the eye is a 13 × 13 px inline SVG (static position, inside the `span.eye` box, path stroke and pupil fill both yellow) with no text content. Hover: `waiting` shows (display `block` inside the flex glyph) to the right of the eye, still yellow, glyph 58 px wide, grey hover ring; leaving hides it. Overlap probe: no tether through a node or label, no glyph over a node or label, glyph inside the graph. Screenshots `v18/v18-380.png`, `v18-380-hover.png`, `v18-720.png`, `v18-720-hover.png` in the scratchpad.
+- `--yellow: #f0e45a` is distinct from the orange count `#ffb454`, green `#4ad17a`, red `#ff6b6b` and the grey `#8a8a8a`; the old `#9a9a9a` is gone from the page. The node idle-notice eye (`eyeEl(true)`, emoji, blue pulse) is unchanged.
+- Through the harness: the glyph's `span.eye` holds an `svg` with `stroke="currentColor"`, `fill="none"`, a `path` and a `circle` filled `currentColor`; `eye` class, `waiting` text and title are as in V16, geometry, fade, lanes, drag and pick tests all unchanged.
 
 ## Tests
 
-- `tests/integration/test_web_render.py`: tooltip re-pin; `test_hovering_a_task_marks_it_hover_without_opening_it_and_click_pins` (was the V14 full-text hover test); `test_task_hover_wraps_the_title_only_and_click_opens_the_text_in_the_page_css`; the folder test gains a `P1` task without `area` landing in a Packaging folder.
-- `tests/unit/test_watcher_server.py`: `task_area` cases for `P1`/`p2`; the repo-SPEC pin requires a Packaging area and a `null` owner for P tasks.
-- `python3 -m pytest tests` → 396 passed (includes the new P1 tests).
+- `tests/page/render_web.mjs`: `glyphView` gains `eyeText` and `eyePicture` (svg stroke/fill and its parts).
+- `tests/integration/test_web_render.py`: `#mc` re-pinned to `stroke="#f0e45a"` and the tether rule to `stroke: var(--yellow)`; new `test_tether_yellow_is_one_root_colour_used_by_curve_circle_eye_and_hover_text` pins `--yellow: #f0e45a` in `:root`, the curve, `.tglyph` colour, no `color` in `.tglyph:hover`, `.tglyph .ttext` or `.tglyph .eye`, the `svg { position: static }` rule, the marker colours, the emoji node eye and the SVG tether eye; the midpoint and multi-tether tests assert the SVG eye.
+- `python3 -m pytest tests` → 402 passed.
 
 ## Notes
 
-- The harness cannot see CSS, so the hover's visual effect (title wrap, full text hidden) is pinned by the CSS rules and by the real-browser check above; the class behaviour is pinned in the harness.
-- P-series tasks have no owner, so an in-progress P task highlights no node or row; the SPEC leaves owners unchanged for V17.
-- The 4780 watcher still runs the pre-V17 `viz/watcher.py`; its P tasks already land in a Packaging folder through the page's fallback map, and `/state` gains the area after the manager restarts it (builder request).
-- Docs user items (from ready.md): plan §6 replace the V14 hover note with title-only hover; plan §4 add Packaging to the area map; earlier items unchanged.
+- Pre-existing, not V18: `.tglyph:hover { z-index: 4 }` never applies because the page sets `style.zIndex` inline (2, or 4 when its pair is picked), and inline wins; on hover the glyph stays at z-index 2 (computed `2` in Chrome). The hover text still shows because nothing overlaps it in the fixtures. Worth a builder follow-up if the manager wants hovered glyphs above neighbouring labels.
+- Docs user item (from ready.md): plan §6 tether note, grey → yellow (`#f0e45a`); earlier items unchanged.
+- The 4780 watcher serves the page from disk, so the yellow tether is already live there.

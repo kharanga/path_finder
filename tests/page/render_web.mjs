@@ -118,9 +118,15 @@ function tetherView(path) {
   return { key: path.attrs["data-key"], d: path.attrs.d, opacity: path.style.opacity, marker: path.attrs["marker-end"], className: path.className };
 }
 
+function eyePictureView(eye) {
+  const picture = eye.children.find((c) => c.tag === "svg");
+  if (!picture) return null;
+  return { stroke: picture.attrs.stroke, fill: picture.attrs.fill, parts: picture.children.map((part) => [part.tag, part.attrs.stroke || null, part.attrs.fill || null]) };
+}
+
 function glyphView(glyph) {
   const eye = findByClass(glyph, "eye"), text = findByClass(glyph, "ttext");
-  return { key: glyph.dataset.key, clear: glyph.dataset.clear, opacity: glyph.style.opacity, left: parseFloat(glyph.style.left), top: parseFloat(glyph.style.top), title: glyph.title, zIndex: glyph.style.zIndex, eye: eye ? eye.className : null, text: text ? textOf(text) : null };
+  return { key: glyph.dataset.key, clear: glyph.dataset.clear, opacity: glyph.style.opacity, left: parseFloat(glyph.style.left), top: parseFloat(glyph.style.top), title: glyph.title, zIndex: glyph.style.zIndex, eye: eye ? eye.className : null, eyeText: eye ? textOf(eye) : null, eyePicture: eye ? eyePictureView(eye) : null, text: text ? textOf(text) : null };
 }
 
 function chipView(chip) {
