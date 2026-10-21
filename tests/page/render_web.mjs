@@ -32,7 +32,10 @@ function makeElement(tag) {
     replaceChildren(...nodes) { this.children = []; this.append(...nodes); },
     remove() { if (this.parent) { this.parent.children = this.parent.children.filter((c) => c !== this); this.parent = null; } },
     setAttribute(name, value) { this.attrs[name] = String(value); },
-    getBoundingClientRect() { return { top: 0, left: 0, right: GRAPH_WIDTH, bottom: 0, width: GRAPH_WIDTH, height: 0 }; },
+    getBoundingClientRect() {
+      if (this.parent === fixed.rows) { const index = fixed.rows.children.indexOf(this); return { top: index * ROW_PITCH, left: 0, right: GRAPH_WIDTH, bottom: index * ROW_PITCH + ROW_HEIGHT, width: GRAPH_WIDTH, height: ROW_HEIGHT }; }
+      return { top: 0, left: 0, right: GRAPH_WIDTH, bottom: 0, width: GRAPH_WIDTH, height: 0 };
+    },
     setPointerCapture() { this.captured = true; }, releasePointerCapture() { this.captured = false; },
     addEventListener(type, handler) { this.listeners[type] = handler; },
     querySelector(selector) { const name = selector.slice(1); return this.children.find((c) => c.className && c.className.split(" ").includes(name)) || null; } };
@@ -40,6 +43,7 @@ function makeElement(tag) {
   return element;
 }
 
+const ROW_PITCH = 40, ROW_HEIGHT = 35;
 const fixed = {};
 for (const id of ["graph", "svg", "arrows", "tethers", "title", "link", "cap-entry", "cap-pair", "strip", "rows", "panel", "ptab", "plist", "reset-layout"]) fixed[id] = makeElement("div");
 fixed["reset-layout"].hidden = true;
@@ -126,7 +130,7 @@ function eyePictureView(eye) {
 
 function glyphView(glyph) {
   const eye = findByClass(glyph, "eye"), text = findByClass(glyph, "ttext");
-  return { key: glyph.dataset.key, clear: glyph.dataset.clear, opacity: glyph.style.opacity, left: parseFloat(glyph.style.left), top: parseFloat(glyph.style.top), title: glyph.title, zIndex: glyph.style.zIndex, eye: eye ? eye.className : null, eyeText: eye ? textOf(eye) : null, eyePicture: eye ? eyePictureView(eye) : null, text: text ? textOf(text) : null };
+  return { key: glyph.dataset.key, clear: glyph.dataset.clear, className: glyph.className, opacity: glyph.style.opacity, left: parseFloat(glyph.style.left), top: parseFloat(glyph.style.top), title: glyph.title, zIndex: glyph.style.zIndex, eye: eye ? eye.className : null, eyeText: eye ? textOf(eye) : null, eyePicture: eye ? eyePictureView(eye) : null, text: text ? textOf(text) : null };
 }
 
 function chipView(chip) {
@@ -139,7 +143,8 @@ function rowView(row) {
   const name = findByClass(row, "name"), pill = findByClass(row, "pill"), act = findByClass(row, "act");
   const badge = findByClass(name, "task-badge");
   return { pid: Number(row.dataset.pid), status: row.dataset.status, className: row.className, dotClass: findByClass(row, "dot").className, name: textOf(name), nameTitle: name.title, badge: badge ? textOf(badge) : null,
-    pill: [pill.className, textOf(pill)], activity: textOf(act), activityTitle: act.title, clickable: Boolean(row.listeners.click) };
+    pill: [pill.className, textOf(pill)], activity: textOf(act), activityTitle: act.title, clickable: Boolean(row.listeners.click), captured: Boolean(row.captured),
+    draggable: Boolean(row.listeners.pointerdown && row.listeners.pointermove && row.listeners.pointerup && row.listeners.pointercancel) };
 }
 
 function taskView(item) {
@@ -201,20 +206,39 @@ for (const step of input.steps || []) {
   if (step.pointer) {
     const node = fixed.graph.children.find((c) => c.className.startsWith("node") && Number(c.dataset.pid) === Number(step.pointer.pid));
     const x0 = parseFloat(node.style.left) + 10, y0 = parseFloat(node.style.top) + 10;
-    const at = (x, y) => ({ pointerId: 7, button: 0, clientX: x, clientY: y });
-    node.listeners.pointerdown(at(x0, y0));
+    const at = (type, x, y) => ({ type, pointerId: 7, button: 0, clientX: x, clientY: y });
+    node.listeners.pointerdown(at("pointerdown", x0, y0));
     runTimers();
     const moves = step.pointer.moves || [[step.pointer.dx, step.pointer.dy]];
-    for (const [dx, dy] of moves) { node.listeners.pointermove(at(x0 + dx, y0 + dy)); runTimers(); }
-    if (step.pointer.cancel) node.listeners.pointercancel(at(x0 + moves[moves.length - 1][0], y0 + moves[moves.length - 1][1]));
-    else if (!step.pointer.hold) node.listeners.pointerup(at(x0 + moves[moves.length - 1][0], y0 + moves[moves.length - 1][1]));
+    for (const [dx, dy] of moves) { node.listeners.pointermove(at("pointermove", x0 + dx, y0 + dy)); runTimers(); }
+    if (step.pointer.cancel) node.listeners.pointercancel(at("pointercancel", x0 + moves[moves.length - 1][0], y0 + moves[moves.length - 1][1]));
+    else if (!step.pointer.hold) node.listeners.pointerup(at("pointerup", x0 + moves[moves.length - 1][0], y0 + moves[moves.length - 1][1]));
     runTimers();
     if (step.pointer.thenClick) node.listeners.click();
+  }
+  if (step.dragRow) {
+    const row = fixed.rows.children.find((r) => Number(r.dataset.pid) === Number(step.dragRow.pid));
+    const rect = row.getBoundingClientRect();
+    const x0 = 20, y0 = (rect.top + rect.bottom) / 2;
+    const at = (type, y) => ({ type, pointerId: 9, button: step.dragRow.button === undefined ? 0 : step.dragRow.button, clientX: x0, clientY: y });
+    row.listeners.pointerdown(at("pointerdown", y0));
+    runTimers();
+    const ys = step.dragRow.toYs || [step.dragRow.toY];
+    for (const y of ys) { row.listeners.pointermove(at("pointermove", y)); runTimers(); }
+    const last = ys[ys.length - 1];
+    if (step.dragRow.cancel) row.listeners.pointercancel(at("pointercancel", last));
+    else if (!step.dragRow.hold) row.listeners.pointerup(at("pointerup", last));
+    runTimers();
+    if (step.dragRow.thenClick) row.listeners.click();
+  }
+  if (step.releaseRow !== undefined) {
+    const row = fixed.rows.children.find((r) => Number(r.dataset.pid) === Number(step.releaseRow));
+    row.listeners.pointerup({ type: "pointerup", pointerId: 9, button: 0, clientX: 20, clientY: step.releaseY === undefined ? 0 : step.releaseY });
   }
   if (step.clickReset) fixed["reset-layout"].listeners.click();
   if (step.releaseNode !== undefined) {
     const node = fixed.graph.children.find((c) => c.className.startsWith("node") && Number(c.dataset.pid) === Number(step.releaseNode));
-    node.listeners.pointerup({ pointerId: 7, button: 0, clientX: parseFloat(node.style.left) + 10, clientY: parseFloat(node.style.top) + 10 });
+    node.listeners.pointerup({ type: "pointerup", pointerId: 7, button: 0, clientX: parseFloat(node.style.left) + 10, clientY: parseFloat(node.style.top) + 10 });
   }
   runTimers();
   tick();

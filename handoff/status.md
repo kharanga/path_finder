@@ -163,3 +163,6 @@ All edits below are applied. CLAUDE.md, SPEC.md, .claude/roles/, docs/ remain un
 - 2026-10-21T11:56Z V18 ready received from viz-builder (handoff/viz/ready.md, viz/web.html only; tether eye is now an inline SVG because the emoji ignores CSS colour). Pointed the validator at it.
 - 2026-10-21T12:00Z User asked to drag and reorder the activity rows. Added V19 to SPEC.md as [ ], queued behind V18.
 - 2026-10-21T12:01Z V18 review PASS; 402 tests pass. Marked V18 done and V19 in progress in SPEC.md; plan §6 says yellow; the validator's hover z-index note folded into V19. Committing and pushing, assigning V19.
+- 2026-10-21T12:01Z Committed 42d1cd3 and pushed. Assigned V19 to viz-builder.
+- 2026-10-21T12:10Z V19 ready received from viz-builder (handoff/viz/ready.md, viz/web.html only). Pointed the validator at it. Trade-off noted: rows take touch-action none, so on a touch screen the list scrolls from its padding and gaps, not from a row.
+- 2026-10-21T12:17Z V19 review PASS; 405 tests pass. Marked V19 done in SPEC.md; plan §6 records row order and the glyph z-index. Notes (user items): touch starting on a row no longer scrolls the list; dropping below the last row ranks every row so new sessions follow below them until Reset. Committing and pushing. No open assignments. Manager idle.

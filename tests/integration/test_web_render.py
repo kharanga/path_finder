@@ -906,11 +906,14 @@ def test_saved_pins_land_a_session_and_a_later_session_with_the_same_label_at_th
 
 
 def test_reset_layout_clears_every_pin_and_returns_to_the_ring(watcher, tmp_path):
-    steps = [{"name": "start"}, {"name": "drag one", "pointer": {"pid": 901, "dx": -100, "dy": 200}}, {"name": "drag two", "pointer": {"pid": 905, "dx": 40, "dy": 10}}, {"name": "reset", "clickReset": True}, {"name": "tick"}]
-    views = seven_render(watcher, tmp_path, steps, local_storage={"viz-web-folder-closed:Discovery": "1", "viz-web-pin:999": json.dumps({"x": 1, "y": 2})})
+    steps = [{"name": "start"}, {"name": "drag one", "pointer": {"pid": 901, "dx": -100, "dy": 200}}, {"name": "drag two", "pointer": {"pid": 905, "dx": 40, "dy": 10}},
+        {"name": "drag row", "dragRow": {"pid": 904, "toY": -10}}, {"name": "reset", "clickReset": True}, {"name": "tick"}]
+    views = seven_render(watcher, tmp_path, steps, local_storage={"viz-web-folder-closed:Discovery": "1", "viz-web-pin:999": json.dumps({"x": 1, "y": 2}), "viz-web-row:stale": "3"})
     assert set(pin_keys(views["drag two"])) == {"viz-web-pin:901", "viz-web-pin:905", "viz-web-pin:999"} and views["drag two"]["resetHidden"] is False
+    assert row_order(views["drag row"])[0] == 904 and row_keys(views["drag row"]) == {"viz-web-row:904": "0", "viz-web-row:stale": "3"}
     reset = views["reset"]
     assert pin_keys(reset) == {} and reset["storage"] == {"viz-web-folder-closed:Discovery": "1"} and reset["resetHidden"] is True
+    assert row_order(reset) == row_order(views["start"]) and row_order(views["tick"]) == row_order(views["start"])
     for pid in (900, 901, 902, 903, 904, 905, 906):
         assert node_pos(reset, pid) == node_pos(views["start"], pid) and node_pos(views["tick"], pid) == node_pos(views["start"], pid), pid
     assert not any("pinned" in node["className"].split() for node in reset["nodes"])
@@ -926,6 +929,105 @@ def test_pod_and_compact_nodes_drag_too(watcher, tmp_path):
     left0, top0 = node_pos(compact["now"], 900)
     assert node_pos(compact["drag"], 900) == pytest.approx((left0 + 50, top0 + 100)) and {"compact", "pinned"} <= set(nodes_of(compact["drag"])["manager"]["className"].split())
     assert nodes_of(compact["drag"])["manager"]["height"] == f"{COMPACT_NODE_HEIGHT}px" and pin_keys(compact["drag"]) == {"viz-web-pin:900": {"x": round(left0 + 50 + 50), "y": round(top0 + 100 + 12)}}
+
+
+ROW_PITCH = 40
+
+
+def row_order(view):
+    return [row["pid"] for row in view["rows"]]
+
+
+def row_keys(view):
+    return {key: value for key, value in view["storage"].items() if key.startswith("viz-web-row:")}
+
+
+def row_classes(view):
+    return {row["pid"]: row["className"] for row in view["rows"]}
+
+
+def row_y(index):
+    return index * ROW_PITCH + 17.5
+
+
+def test_dragging_a_row_shows_the_indicator_and_drops_it_above_or_below_another_row(watcher, tmp_path):
+    steps = [{"name": "start"},
+        {"name": "wiggle", "dragRow": {"pid": 904, "toY": row_y(1) + 2, "thenClick": True}}, {"name": "unpick", "clickRow": 904},
+        {"name": "hold", "dragRow": {"pid": 904, "toYs": [row_y(1) - 6, -10], "hold": True}}, {"name": "drop", "releaseRow": 904, "releaseY": -10},
+        {"name": "click after drop", "clickRow": 904}, {"name": "late click", "advanceMs": 1000, "clickRow": 904}, {"name": "unpick again", "clickRow": 904},
+        {"name": "below hold", "dragRow": {"pid": 905, "toY": 1000, "hold": True}}, {"name": "below drop", "releaseRow": 905, "releaseY": 1000},
+        {"name": "cancelled", "dragRow": {"pid": 900, "toYs": [-10], "cancel": True}},
+        {"name": "right button", "dragRow": {"pid": 906, "toY": -10, "button": 2}},
+        {"name": "node drag", "pointer": {"pid": 901, "dx": -60, "dy": 120}}, {"name": "tick"}]
+    views = seven_render(watcher, tmp_path, steps)
+    start = views["start"]
+    assert row_order(start) == [901, 904, 905, 902, 900, 903, 906] and all(row["draggable"] and not row["captured"] for row in start["rows"])
+    assert start["resetHidden"] is True and row_keys(start) == {}
+    assert row_order(views["wiggle"]) == row_order(start) and row_classes(views["wiggle"])[904] == "arow picked" and row_keys(views["wiggle"]) == {}
+    assert row_classes(views["unpick"])[904] == "arow"
+    held = views["hold"]
+    assert row_order(held) == row_order(start) and row_classes(held)[904] == "arow dragging" and row_classes(held)[901] == "arow work drop-above"
+    assert all("drop-" not in cls for pid, cls in row_classes(held).items() if pid != 901) and row_keys(held) == {} and held["resetHidden"] is True
+    assert next(row for row in held["rows"] if row["pid"] == 904)["captured"] is True
+    dropped = views["drop"]
+    assert row_order(dropped) == [904, 901, 905, 902, 900, 903, 906] and row_keys(dropped) == {"viz-web-row:904": "0"} and dropped["resetHidden"] is False
+    assert row_classes(dropped) == {904: "arow", 901: "arow work", 905: "arow", 902: "arow", 900: "arow", 903: "arow", 906: "arow"}
+    assert all(not row["captured"] for row in dropped["rows"])
+    assert row_classes(views["click after drop"])[904] == "arow"
+    assert row_classes(views["late click"])[904] == "arow picked" and row_classes(views["unpick again"])[904] == "arow"
+    below = views["below hold"]
+    assert row_classes(below)[905] == "arow dragging" and row_classes(below)[906] == "arow drop-below" and row_order(below) == row_order(dropped)
+    placed = views["below drop"]
+    assert row_order(placed) == [904, 901, 902, 900, 903, 906, 905]
+    assert row_keys(placed) == {f"viz-web-row:{pid}": str(rank) for rank, pid in enumerate([904, 901, 902, 900, 903, 906, 905])}
+    assert row_order(views["cancelled"]) == row_order(placed) and row_keys(views["cancelled"]) == row_keys(placed) and "dragging" not in row_classes(views["cancelled"])[900]
+    assert row_order(views["right button"]) == row_order(placed) and row_keys(views["right button"]) == row_keys(placed)
+    for pid in (900, 901, 902, 903, 904, 905, 906):
+        assert node_pos(placed, pid) == node_pos(start, pid), pid
+    assert row_order(views["node drag"]) == row_order(placed) and row_order(views["tick"]) == row_order(placed)
+    assert "pinned" in nodes_of(views["node drag"])["viz-builder"]["className"].split() and row_keys(views["node drag"]) == row_keys(placed)
+    assert [(row["name"], row["pill"], row["activity"]) for row in placed["rows"]] == sorted([(row["name"], row["pill"], row["activity"]) for row in start["rows"]], key=lambda r: row_order(placed).index(next(x["pid"] for x in start["rows"] if x["name"] == r[0])))
+
+
+def test_row_order_is_kept_by_label_then_role_then_pid_and_unplaced_rows_follow_the_automatic_order(tmp_path):
+    sessions = [session(1, "a"), session(2, "b"), session(3, "c"), session(4, "d", status="WORKING")]
+    joined = {"event": "session", "at": "2026-10-20T12:00:06.000Z", "source": "registry", "source_pid": 5, **session(5, "e", status="WORKING", last_seen_at="2026-10-20T12:00:06.000Z")}
+    plain = render(tmp_path, synthetic(sessions), [{"name": "now"}, {"name": "joined", "frames": [joined]}], wall_start=TEN_START)
+    assert row_order(plain["now"]) == [4, 1, 2, 3] and plain["now"]["resetHidden"] is True and row_order(plain["joined"]) == [5, 4, 1, 2, 3]
+    seeded = render(tmp_path, synthetic(sessions), [{"name": "now"}, {"name": "joined", "frames": [joined]}], wall_start=TEN_START, local_storage={"viz-web-row:b": "0"})
+    assert row_order(seeded["now"]) == [2, 4, 1, 3] and seeded["now"]["resetHidden"] is False and row_order(seeded["joined"]) == [2, 5, 4, 1, 3]
+    assert [(row["name"], row["className"], row["pill"]) for row in seeded["now"]["rows"]] == [("b", "arow", ["pill idle", "Idle"]), ("d", "arow work", ["pill work", "Working"]), ("a", "arow", ["pill idle", "Idle"]), ("c", "arow", ["pill idle", "Idle"])]
+    two = render(tmp_path, synthetic(sessions), [{"name": "now"}], wall_start=TEN_START, local_storage={"viz-web-row:c": "0", "viz-web-row:a": "1"})["now"]
+    assert row_order(two) == [3, 1, 4, 2]
+    restarted = [session(1, "a"), session(9, "b"), session(3, "c"), session(4, "d", status="WORKING")]
+    again = render(tmp_path, synthetic(restarted), [{"name": "now"}], wall_start=TEN_START, local_storage={"viz-web-row:b": "0"})["now"]
+    assert row_order(again) == [9, 4, 1, 3] and again["resetHidden"] is False
+    for bad in ("nope", "", "1.5", "-1"):
+        broken = render(tmp_path, synthetic(sessions), [{"name": "now"}], wall_start=TEN_START, local_storage={"viz-web-row:b": bad})["now"]
+        assert row_order(broken) == [4, 1, 2, 3] and broken["resetHidden"] is True, bad
+    keyed = [session(1, "a"), session(2, "b"), session(3, "c")]
+    keyed[1]["label"] = None
+    keyed[2]["label"] = keyed[2]["role"] = None
+    steps = [{"name": "now"}, {"name": "three", "dragRow": {"pid": 3, "toY": -10}}, {"name": "two", "dragRow": {"pid": 2, "toY": -10}}, {"name": "one", "dragRow": {"pid": 1, "toY": -10}}]
+    views = render(tmp_path, synthetic(keyed), steps, wall_start=TEN_START)
+    assert row_order(views["now"]) == [1, 2, 3] and row_order(views["three"]) == [3, 1, 2] and row_keys(views["three"]) == {"viz-web-row:3": "0"}
+    assert row_order(views["two"]) == [2, 3, 1] and row_keys(views["two"]) == {"viz-web-row:r": "0", "viz-web-row:3": "1"}
+    assert row_order(views["one"]) == [1, 2, 3] and row_keys(views["one"]) == {"viz-web-row:a": "0", "viz-web-row:r": "1", "viz-web-row:3": "2"}
+    blocked = render(tmp_path, synthetic(sessions), [{"name": "now"}, {"name": "drag", "dragRow": {"pid": 1, "toY": -10}}], wall_start=TEN_START, storage_throws=True)
+    assert row_order(blocked["drag"]) == [1, 4, 2, 3] and blocked["drag"]["storage"] == {} and blocked["drag"]["resetHidden"] is False
+
+
+def test_row_drag_rules_and_the_glyph_lift_are_in_the_page_css():
+    page = PAGE.read_text(encoding="utf-8")
+    assert ".tglyph:hover, .tglyph.lit { z-index: 4; }" in page and "glyphEl.style.zIndex" not in page
+    assert re.search(r"\n  \.tglyph \{ position: absolute; z-index: 2;", page)
+    arow = re.search(r"\n  \.arow \{([^}]*)\}", page).group(1)
+    assert "position: relative;" in arow and "touch-action: none;" in arow and "user-select: none;" in arow
+    assert ".arow.dragging { opacity: .55; cursor: grabbing; }" in page
+    assert re.search(r"\.arow\.drop-above::before, \.arow\.drop-below::after \{ content: \"\"; position: absolute;[^}]*height: 2px;[^}]*background: var\(--blue-fg\); pointer-events: none; \}", page)
+    assert ".arow.drop-above::before { top: -4px; }" in page and ".arow.drop-below::after { bottom: -4px; }" in page
+    assert 'const ROW_STORAGE_PREFIX = "viz-web-row:";' in page
+    assert 'title="clear every pinned node and row order and return to the automatic layout"' in page
 
 
 GLYPH_WIDTH, GLYPH_HEIGHT = 22, 18
@@ -1058,7 +1160,7 @@ def test_tethers_match_waiting_on_run_clear_of_nodes_and_labels_and_follow_drags
         assert tether["className"] == ("" if touches else "dim"), tether["key"]
     for glyph in picked["glyphs"]:
         touches = "902" in glyph["key"].split("~")
-        assert glyph["zIndex"] == ("4" if touches else "2") and (not touches or glyph["opacity"] != "0"), glyph["key"]
+        assert glyph["className"] == ("tglyph lit" if touches else "tglyph") and glyph.get("zIndex", "") == "" and (not touches or glyph["opacity"] != "0"), glyph["key"]
 
 
 def test_tether_rules_are_in_the_page_markup_and_css():
