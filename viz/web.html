@@ -70,7 +70,8 @@
   .tglyph .eye { margin-right: 0; display: inline-flex; width: 13px; height: 13px; }
   .tglyph .eye svg { position: static; width: 100%; height: 100%; overflow: visible; }
   .tglyph .ttext { display: none; font-size: 11px; }
-  .tglyph:hover { z-index: 4; box-shadow: 0 0 0 1px #2a2a2a; }
+  .tglyph:hover, .tglyph.lit { z-index: 4; }
+  .tglyph:hover { box-shadow: 0 0 0 1px #2a2a2a; }
   .tglyph:hover .ttext { display: inline; }
   .tglyph[data-clear="0"] { pointer-events: none; }
   .graph.dragging .tglyph { transition: none; }
@@ -113,7 +114,11 @@
   .chip.on { border-color: #2e4a6e; } .chip.hot { border-color: #4a3618; } .chip.picked { border-color: #7cb4ff; }
   .chip .n { font-size: 11px; color: var(--orange-fg); background: var(--orange-bg); padding: 0 5px; border-radius: 5px; font-weight: 600; }
   .rows { padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 5px; min-height: 60px; flex: 1; overflow: auto; }
-  .arow { display: grid; grid-template-columns: auto minmax(60px, auto) auto 1fr; gap: 8px; align-items: center; min-width: 0; padding: 6px 10px; border-radius: 8px; background: var(--card); border: 1px solid #262626; font-size: 12px; transition: border-color .3s; cursor: pointer; }
+  .arow { position: relative; display: grid; grid-template-columns: auto minmax(60px, auto) auto 1fr; gap: 8px; align-items: center; min-width: 0; padding: 6px 10px; border-radius: 8px; background: var(--card); border: 1px solid #262626; font-size: 12px; transition: border-color .3s; cursor: pointer; touch-action: none; user-select: none; }
+  .arow.dragging { opacity: .55; cursor: grabbing; }
+  .arow.drop-above::before, .arow.drop-below::after { content: ""; position: absolute; left: 6px; right: 6px; height: 2px; border-radius: 1px; background: var(--blue-fg); pointer-events: none; }
+  .arow.drop-above::before { top: -4px; }
+  .arow.drop-below::after { bottom: -4px; }
   .arow.work { border-left: 3px solid var(--blue-fg); }
   .arow.picked { border-color: #7cb4ff; }
   .arow .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -134,7 +139,7 @@
       <marker id="mr" viewBox="0 0 6 6" refX="5" refY="3" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#ff6b6b"></path></marker>
       <marker id="mc" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="7" markerHeight="7" orient="auto"><circle cx="4" cy="4" r="2.6" fill="#141414" stroke="#f0e45a" stroke-width="1.2"></circle></marker>
     </defs><g id="tethers"></g><g id="arrows"></g></svg></div>
-    <div class="cap"><span id="cap-entry"></span><span id="cap-pair"></span><button id="reset-layout" type="button" title="clear every pinned node and return to the ring" hidden>Reset layout</button></div>
+    <div class="cap"><span id="cap-entry"></span><span id="cap-pair"></span><button id="reset-layout" type="button" title="clear every pinned node and row order and return to the automatic layout" hidden>Reset layout</button></div>
   </div>
   <div class="strip" id="strip"></div>
   <div class="rows" id="rows"></div>
@@ -200,6 +205,7 @@
   const PANEL_STORAGE_KEY = "viz-web-panel-collapsed";
   const FOLDER_STORAGE_PREFIX = "viz-web-folder-closed:";
   const PIN_STORAGE_PREFIX = "viz-web-pin:";
+  const ROW_STORAGE_PREFIX = "viz-web-row:";
   const DRAG_START_PX = 4;
   const CLICK_AFTER_DRAG_MS = 400;
   const TASK_AREAS = { D: "Discovery", V: "Visualization", P: "Packaging" };
@@ -210,6 +216,11 @@
   const pinLookups = new Set();
   let drag = null;
   let lastDragEnd = null;
+  const rowEls = new Map();
+  const rowRanks = new Map();
+  const rowLookups = new Set();
+  let rowDrag = null;
+  let lastRowDragEnd = null;
   let hoveredTaskId = null;
   let panelCollapsed = false;
   try { panelCollapsed = localStorage.getItem(PANEL_STORAGE_KEY) === "1"; } catch (error) { panelCollapsed = false; }
@@ -549,15 +560,53 @@
     try { localStorage.setItem(PIN_STORAGE_PREFIX + pinKeyOf(session), JSON.stringify({ x: Math.round(position[0]), y: Math.round(position[1]) })); } catch (error) { }
   }
 
+  function removeStoredKeys(prefix) {
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i += 1) { const key = localStorage.key(i); if (key && key.startsWith(prefix)) keys.push(key); }
+      for (const key of keys) localStorage.removeItem(key);
+    } catch (error) { }
+  }
+
   function clearPins() {
     pins.clear();
     pinLookups.clear();
-    try {
-      const keys = [];
-      for (let i = 0; i < localStorage.length; i += 1) { const key = localStorage.key(i); if (key && key.startsWith(PIN_STORAGE_PREFIX)) keys.push(key); }
-      for (const key of keys) localStorage.removeItem(key);
-    } catch (error) { }
+    removeStoredKeys(PIN_STORAGE_PREFIX);
     for (const session of state.sessions.values()) pinLookups.add(session.pid);
+  }
+
+  function rowRankOf(session) {
+    if (rowRanks.has(session.pid)) return rowRanks.get(session.pid);
+    if (rowLookups.has(session.pid)) return null;
+    rowLookups.add(session.pid);
+    try {
+      const saved = localStorage.getItem(ROW_STORAGE_PREFIX + pinKeyOf(session));
+      if (saved !== null && /^\d+$/.test(saved)) { rowRanks.set(session.pid, Number(saved)); return rowRanks.get(session.pid); }
+    } catch (error) { }
+    return null;
+  }
+
+  function saveRowOrder(placedSessions) {
+    placedSessions.forEach((session, rank) => {
+      rowRanks.set(session.pid, rank);
+      try { localStorage.setItem(ROW_STORAGE_PREFIX + pinKeyOf(session), String(rank)); } catch (error) { }
+    });
+  }
+
+  function clearRowOrder() {
+    rowRanks.clear();
+    rowLookups.clear();
+    removeStoredKeys(ROW_STORAGE_PREFIX);
+    for (const session of state.sessions.values()) rowLookups.add(session.pid);
+  }
+
+  function hasRowOrder() {
+    return [...state.sessions.values()].some((session) => rowRanks.has(session.pid));
+  }
+
+  function resetLayout() {
+    clearPins();
+    clearRowOrder();
     render();
   }
 
@@ -1152,7 +1201,7 @@
       const lit = pickedPid !== null && (ends[0] === pickedPid || ends[1] === pickedPid);
       glyphEl.style.opacity = glyphClear || lit ? opacity : "0";
       glyphEl.dataset.clear = glyphClear ? "1" : "0";
-      glyphEl.style.zIndex = lit ? "4" : "2";
+      glyphEl.classList.toggle("lit", lit);
       keep.add(key);
     }
     for (const [key, path] of tetherEls) if (!keep.has(key)) { path.remove(); tetherEls.delete(key); }
@@ -1198,29 +1247,118 @@
     });
   }
 
-  function renderRows() {
-    rows.replaceChildren();
+  function orderedRows() {
+    const automatic = activityRows();
+    const placed = automatic.filter((session) => rowRankOf(session) !== null).sort((a, b) => rowRanks.get(a.pid) - rowRanks.get(b.pid) || a.pid - b.pid);
+    const following = automatic.filter((session) => !rowRanks.has(session.pid));
+    return [...placed, ...following];
+  }
+
+  function rowDragClass(pid) {
+    if (!rowDrag || !rowDrag.moved) return "";
+    if (pid === rowDrag.pid) return " dragging";
+    if (pid === rowDrag.targetPid) return rowDrag.below ? " drop-below" : " drop-above";
+    return "";
+  }
+
+  function rowClassName(session, tasked) {
+    return "arow" + (session.status === "WORKING" ? " work" : "") + (pickedPid === session.pid ? " picked" : "") + (tasked.has(session.pid) ? " tasked" : "") + rowDragClass(session.pid);
+  }
+
+  function rowDropTargetAt(clientY) {
+    let last = null;
+    for (const row of rows.children) {
+      const pid = Number(row.dataset.pid);
+      if (!Number.isFinite(pid) || !row.dataset.pid || pid === rowDrag.pid) continue;
+      const rect = row.getBoundingClientRect();
+      if (clientY < (rect.top + rect.bottom) / 2) return { pid, below: false };
+      last = pid;
+    }
+    return last === null ? null : { pid: last, below: true };
+  }
+
+  function placeRow(draggedPid, targetPid, below) {
+    const order = [...rows.children].map((row) => Number(row.dataset.pid)).filter((pid) => state.sessions.has(pid));
+    const from = order.indexOf(draggedPid);
+    if (from < 0) return;
+    order.splice(from, 1);
+    const targetIndex = order.indexOf(targetPid);
+    if (targetIndex < 0) return;
+    const at = targetIndex + (below ? 1 : 0);
+    order.splice(at, 0, draggedPid);
+    const placedPids = [...order.slice(0, at + 1), ...order.slice(at + 1).filter((pid) => rowRanks.has(pid))];
+    saveRowOrder(placedPids.map((pid) => state.sessions.get(pid)));
+  }
+
+  function refreshRowDragClasses() {
     const tasked = taskedPids();
-    const sessions = activityRows();
+    for (const [pid, row] of rowEls) { const session = state.sessions.get(pid); if (session) row.className = rowClassName(session, tasked); }
+  }
+
+  function startRowDrag(session, row, event) {
+    if (event.button !== undefined && event.button !== 0) return;
+    rowDrag = { pid: session.pid, pointerId: event.pointerId, startY: event.clientY, moved: false, targetPid: null, below: false };
+    if (row.setPointerCapture) row.setPointerCapture(event.pointerId);
+  }
+
+  function moveRowDrag(session, row, event) {
+    if (!rowDrag || rowDrag.pid !== session.pid) return;
+    if (!rowDrag.moved && Math.abs(event.clientY - rowDrag.startY) < DRAG_START_PX) return;
+    rowDrag.moved = true;
+    const target = rowDropTargetAt(event.clientY);
+    rowDrag.targetPid = target ? target.pid : null;
+    rowDrag.below = target ? target.below : false;
+    refreshRowDragClasses();
+  }
+
+  function endRowDrag(session, row, event) {
+    if (!rowDrag || rowDrag.pid !== session.pid) return;
+    const { moved, targetPid, below } = rowDrag;
+    rowDrag = null;
+    if (row.releasePointerCapture) { try { row.releasePointerCapture(event.pointerId); } catch (error) { } }
+    if (!moved) return;
+    lastRowDragEnd = { pid: session.pid, at: Date.now() };
+    if (targetPid !== null && event.type !== "pointercancel") placeRow(session.pid, targetPid, below);
+    render();
+  }
+
+  function renderRows() {
+    const tasked = taskedPids();
+    const sessions = orderedRows();
     if (!sessions.length) {
-      rows.append(el("div", "quiet-rows", "No sessions discovered yet"));
+      rowEls.clear();
+      rows.replaceChildren(el("div", "quiet-rows", "No sessions discovered yet"));
       return;
     }
+    if (!rowEls.size) rows.replaceChildren();
+    const keep = new Set();
     for (const session of sessions) {
+      keep.add(session.pid);
       const status = statusText(session);
       const working = session.status === "WORKING";
-      const row = el("div", "arow" + (working ? " work" : "") + (pickedPid === session.pid ? " picked" : "") + (tasked.has(session.pid) ? " tasked" : ""));
-      row.dataset.pid = session.pid;
+      let row = rowEls.get(session.pid);
+      if (!row) {
+        row = el("div", "arow");
+        row.dataset.pid = session.pid;
+        row.addEventListener("click", () => { if (lastRowDragEnd && lastRowDragEnd.pid === session.pid && Date.now() - lastRowDragEnd.at < CLICK_AFTER_DRAG_MS) return; pick(session.pid); });
+        row.addEventListener("pointerdown", (event) => startRowDrag(session, row, event));
+        row.addEventListener("pointermove", (event) => moveRowDrag(session, row, event));
+        row.addEventListener("pointerup", (event) => endRowDrag(session, row, event));
+        row.addEventListener("pointercancel", (event) => endRowDrag(session, row, event));
+        rowEls.set(session.pid, row);
+        if (rowDrag) rows.append(row);
+      }
+      row.className = rowClassName(session, tasked);
       row.dataset.status = status;
       const name = el("span", "name", labelOf(session));
       name.title = `${session.name || "unnamed"} · pid ${session.pid}`;
       const activity = el("span", "act", activityOf(session));
       activity.title = activity.textContent && session.status === "WORKING" && session.activity && !waitingText(session) ? `${session.activity}${session.activity_at ? "\n" + session.activity_at : ""}` : activity.textContent;
-      row.append(dotEl(session.pid, working), name, el("span", `pill ${status === "Idle" ? "idle" : "work"}`, status), activity);
+      row.replaceChildren(dotEl(session.pid, working), name, el("span", `pill ${status === "Idle" ? "idle" : "work"}`, status), activity);
       if (tasked.has(session.pid)) name.append(document.createTextNode(" "), taskBadge(tasked.get(session.pid)));
-      row.addEventListener("click", () => pick(session.pid));
-      rows.append(row);
     }
+    for (const [pid, row] of rowEls) if (!keep.has(pid)) { row.remove(); rowEls.delete(pid); }
+    if (!rowDrag) for (const session of sessions) rows.append(rowEls.get(session.pid));
   }
 
   function countsText() {
@@ -1344,7 +1482,7 @@
     renderTethers(ring, now, arrowFits);
     capEntry.textContent = state.caption.entry;
     capPair.textContent = state.caption.pair;
-    if (resetLayoutButton) resetLayoutButton.hidden = !(layout.pinned && layout.pinned.size);
+    if (resetLayoutButton) resetLayoutButton.hidden = !((layout.pinned && layout.pinned.size) || hasRowOrder());
     renderStrip(ring);
     renderRows();
     renderPanel();
@@ -1394,7 +1532,7 @@
   }
 
   panelTab.addEventListener("click", togglePanel);
-  if (resetLayoutButton) resetLayoutButton.addEventListener("click", clearPins);
+  if (resetLayoutButton) resetLayoutButton.addEventListener("click", resetLayout);
   window.addEventListener("resize", scheduleRender);
   setInterval(render, RENDER_EVERY_MS);
   loadState();
