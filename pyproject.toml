@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "path-finder"
+version = "0.1.0"
+description = "Discovery and visualization of Claude Code sessions talking to each other on one machine"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+path-finder = "path_finder.cli:main"
+
+[tool.setuptools]
+packages = ["path_finder"]
