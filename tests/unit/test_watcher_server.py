@@ -351,7 +351,7 @@ def test_parse_spec_tasks_without_a_section_or_text(watcher):
         {"id": "V1", "state": "done", "title": "done", "text": "done.", "owner": "viz-builder", "area": "Visualization"}, {"id": "V2", "state": "todo", "title": "again", "text": "again.", "owner": "viz-builder", "area": "Visualization"}]
 
 
-@pytest.mark.parametrize("task_id, area", [("D1", "Discovery"), ("d4", "Discovery"), ("V10", "Visualization"), ("X7", "X"), ("q2", "Q")])
+@pytest.mark.parametrize("task_id, area", [("D1", "Discovery"), ("d4", "Discovery"), ("V10", "Visualization"), ("P1", "Packaging"), ("p2", "Packaging"), ("X7", "X"), ("q2", "Q")])
 def test_task_area_maps_the_series_letter(watcher, task_id, area):
     assert watcher.task_area(task_id) == area
 
@@ -384,7 +384,8 @@ def test_parse_repo_spec_has_every_task_with_a_known_state(watcher):
     assert len(ids) == len(set(ids)) and {"D1", "D3", "V0", "V9"} <= set(ids)
     assert all(t["state"] in ("done", "in_progress", "todo") and t["title"] for t in tasks)
     assert all(t["owner"] == watcher.TASK_OWNERS.get(t["id"][0]) and t["area"] == watcher.TASK_AREAS.get(t["id"][0], t["id"][0]) for t in tasks)
-    assert {"Discovery", "Visualization"} <= {t["area"] for t in tasks}
+    assert {"Discovery", "Visualization", "Packaging"} <= {t["area"] for t in tasks}
+    assert all(t["owner"] is None for t in tasks if t["id"].startswith("P"))
 
 
 def test_spec_tasks_refresh_follows_the_file(watcher, tmp_path):

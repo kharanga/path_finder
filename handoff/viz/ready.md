@@ -1,39 +1,43 @@
-# Ready: V16 2026-10-21
+# Ready: V17 2026-10-21
 
 ## Done
 
-Waiting tethers on `viz/web.html`; the watcher is unchanged.
+Task hover shows the title only; P-series tasks get a Packaging folder.
 
-- Source: `activeTetherPairs()` reads `waiting_on` from every session, one pair per (waiter, target). `trackTethers` keeps `tetherSeen` so a tether fades in over `TETHER_FADE_MS` = 500 ms when the pair appears and fades out over the same time when it leaves (reply read, idle notice, message FAILED), then is removed; a pair that comes back mid-fade snaps back. Steady opacity `TETHER_OPACITY` = 0.85.
-- Drawing: a `<g id="tethers">` before `<g id="arrows">` in the graph SVG, so tethers sit under the message arrows. Each tether is a thin dashed grey quadratic curve (`stroke #9a9a9a`, 1.4 px, dash 5 4), no arrowhead, hollow circle marker `#mc` at the target end, `pointer-events: none`. The glyph is a `div.tglyph` (the same eye glyph the V5 watching line used) centred on the curve, with the word `waiting` shown on hover (`.ttext`) and a title `<waiter> is waiting on <target>`. Picking a node (click) dims tethers that do not touch it, like arrows.
-- Placement: a tether with no message arrow on its pair runs through the V8 scorer (`placeArrow` with the glyph as its label and side offset 0 only), so it avoids nodes, arrow labels, and crossings like any arrow. A tether whose pair has a message arrow (either direction: PENDING, IN_INBOX, FAILED, or a lingering READ) runs beside it: in the ring, `besideArrow` scores candidate curves on both sides of the arrow at three distances starting just past the arrow label's reach across the curve (`curveAtDistance` corrects the control point for the end-point shift so the midpoint lands at the asked distance), plus the free-scorer curve as a fallback, and takes the cheapest; in the pod the tether takes the lane opposite the arrow (lower when the arrow is upper) and the graph grows for it (`podNeedsLowerLane`). Two tethers on a reversed pair get ranks 1 and 2 (one lane step apart).
-- Glyph: `placeGlyph` tries positions along the curve (t 0.2–0.8, nearest the midpoint first) and small offsets off the curve (0, ±12 px), penalising nodes, arrow labels, other tethers' glyphs, curve hits, and leaving the graph. A glyph that still has no clear spot (two nodes almost touching) is hidden (`data-clear="0"`) and shows when either node is picked, exactly as V8 hides a crowded arrow label. An arrow label that a tether has to cross (no clean lane in a tight ring) is hidden by the same V8 rule (`hideCrossedLabel`) and shows on hover or pick.
-- Tethers follow dragged and pinned nodes because they are computed from `layout.pos` on every render.
+`viz/watcher.py`:
 
-Files: `viz/web.html`.
+- `TASK_AREAS` adds `"P": "Packaging"`, so `task_area("P1")` is `Packaging` and the `area` field on P tasks puts them in their own folder. Owner stays `null` for the P series (`TASK_OWNERS` unchanged; not in this task).
+
+`viz/web.html`:
+
+- Hovering a task card no longer shows the SPEC text: the `.task.hover .tfull` / `.task:hover .tfull` rules are gone, `.tfull` shows only with `.open` (the V9 click pin). Hover keeps the `hover` class (CSS `:hover` and the `hoveredTaskId` class that survives re-renders) and the only effect is `.ttitle { white-space: normal }`, so a title cut off by the ellipsis wraps inside the card and shows in full; a title that already fits does not change. The wrapped title stays inside the card's grid column, so it is never clipped by the panel edge. Click behaviour is unchanged (`open` toggles the full SPEC text; the card tooltip now reads `click for the full SPEC text`).
+- The page's fallback area map (used when a task carries no `area`) also knows `P: "Packaging"`.
+
+Files: `viz/watcher.py`, `viz/web.html`.
 
 ## How to test
 
-Round trip frozen at moments (spare port; 4780 is the manager's):
+Fixture replay with a temp copy of SPEC.md, spare port (4780 is the manager's):
 
 ```
+S=$(mktemp -d); cp SPEC.md $S/SPEC.md
 F="--fixture 32813=tests/fixtures/viz/round_trip_manager_32813_33993.jsonl --fixture 33993=tests/fixtures/viz/round_trip_builder_32813_33993.jsonl"
-S=$(mktemp -d); python3 viz/watcher.py replay $F --out-dir $S --speed 0 --until 2026-10-08T04:31:13.500Z
-python3 viz/watcher.py serve --port 4792 --no-log --fixture 32813=$S/32813.jsonl --fixture 33993=$S/33993.jsonl &
+python3 viz/watcher.py replay $F --out-dir $S --speed 0
+python3 viz/watcher.py serve --port 4792 --no-log --spec $S/SPEC.md --fixture 32813=$S/32813.jsonl --fixture 33993=$S/33993.jsonl &
 open http://127.0.0.1:4792/web
 ```
 
-Expected: from 10.318 (the send) a dashed tether runs from the manager to the builder in the lower lane under the two cards, hollow circle at the builder's edge, eye at the midpoint, the pod graph grown to 206 px; the message arrow stays in the upper lane. Hover the eye: `waiting` appears beside it. At 17.000 a second tether (builder → manager) sits one lane lower while the reply arrow is above; at 17.700 only the manager's tether remains; at 21.100 (idle notice read) it is gone, after a 500 ms fade in the live replay. Six sessions at 380 px (`make_six.py` fixture, `serve … $(cat six_args.txt)`): tethers manager → viz-builder, validator → discovery-builder, discovery-builder → manager; the last runs beside the `D5 ready` arrow on the same pair with its label still shown; no tether, glyph, label, or node overlaps another (the validator ↔ discovery-builder glyph is hidden at 380 px because those two cards nearly touch; it shows when either is picked).
+Expected: the panel has Discovery, Visualization, and Packaging folders (P1 in progress, P2 to do). Hover V11 (`idle sessions show nothing unless waiting`, cut off at 250 px): the title wraps onto two lines and nothing else appears; move away and it collapses. Hover V9 (`task panel`, fits): nothing changes. Click V11: the full SPEC text opens under it and stays after the pointer leaves; click again to close.
 
-Checked here: `v16timeline.py` (serve-path replay of the nine round-trip moments through the Node harness): tether `32813~33993` present with a clear glyph and the title `fake-session-manager is waiting on fake-session-builder` from 10.5 through 19.8, both tethers at 17.0, none from 21.1; `web_tether_fade.json` harness: opacity 0 → 0.85 over the first 600 ms, a `tasks`-style session frame clearing `waiting_on` takes it 0.85 → 0.425 at +250 ms → gone at +600 ms, picking an unrelated node dims the others; `cdp_check.mjs` (now also checks clear glyphs against nodes, labels and each other, and samples every tether path against nodes and shown labels) reports no problems for six and seven sessions at 380 and 720 px; `websix-tether.png` (380 px), `websix-tether-wide.png`, `websix-tether-wide2x.png` (720 px) show the dashed tethers, circles and eyes beside the arrows.
+Checked here: `/state` from the replay shows areas Discovery, Packaging, Visualization with P1 `in_progress` and P2 `todo`; `cdp_hover.mjs` in headless Chrome at 720 px: V11 before hover is truncated (`scrollWidth > clientWidth`), on hover `white-space: normal`, title 17 → 35 px, card 32 → 49 px, `.tfull` `display: none`, card inside the panel; after the pointer leaves it is truncated again; after a click `.tfull` is `block` (card 703 px); V9 before, during, and after hover is identical (17 px title, 32 px card, `.tfull` none) and shows the full text only after the click. Harness `web_hover.json`: `hover` class on enter, off on leave, `open` on click, kept across a render tick.
 
-Suite: `python3 -m pytest tests` → 360 passed, 1 failed, expected pin: `test_reply_on_the_reversed_pair_fades_the_read_arrow_within_600ms_and_takes_the_upper_lane` pins the pod graph at 150 px before the reply; it is 206 px now because the manager's tether occupies the lower lane beside its own arrow (this also removes the 150 → 206 → 150 jump noted on V14 for this scenario, the graph stays at 206 while the wait lasts).
+Suite: `python3 -m pytest tests` → 366 passed, 3 failed, all expected pins in `tests/integration/test_web_render.py`: `test_task_hover_and_wrap_rules_are_in_the_page_css` and `test_hovering_a_task_shows_its_full_text_until_the_pointer_leaves_and_click_pins` pin the V14 hover (full text on hover) that V17 replaces; `test_panel_lists_every_task_with_state_words_and_counts` pins the card tooltip text `click for the full text` (now `click for the full SPEC text`).
 
 ## Requests
 
-- Manager: nothing to restart; the page is served from the file.
-- Validator: re-pin the one test; harness needs a fixed `tethers` element (SVG group) and a view of `#tethers` paths and `.tglyph` elements; tests for appear/fade/disappear, the pod lanes, beside-arrow placement in the ring, the hidden glyph and hidden crossed label rules, drag following — my scratchpad has `web_tether_fade.json`, `v16timeline.py`, and the updated `cdp_check.mjs`.
-- Docs (user): plan §6 add the tether (dashed, hollow circle, eye, hover text), its lanes and the hide rules.
+- Manager: restart the 4780 watcher on the new `viz/watcher.py` for the Packaging folder (until then P tasks fall back to the page's own map, so the folder already shows); the page change is live.
+- Validator: re-pin the three tests; the hover test should check the `hover` class with `.tfull` hidden and `.open` with it shown; `TASK_AREAS` gains `P` (`task_area("P1") == "Packaging"`).
+- Docs (user): plan §6 replace the V14 hover note with title-only hover; plan §4 add Packaging to the area map.
 
 ## Blocked
 

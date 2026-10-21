@@ -531,7 +531,7 @@ def test_panel_lists_every_task_with_state_words_and_counts(tmp_path):
     ]
     assert [t["owner"] for t in panel["tasks"]] == [None, "viz-builder", None, "discovery-builder"]
     assert panel["tasks"][1]["ownerDot"] == "#3ed6a4" and panel["tasks"][3]["ownerDot"] is None
-    assert all(t["full"] == f"{t['ttitle']}. Full text of {t['id']}." and t["clickable"] and t["title"] == "click for the full text" for t in panel["tasks"])
+    assert all(t["full"] == f"{t['ttitle']}. Full text of {t['id']}." and t["clickable"] and t["title"] == "click for the full SPEC text" for t in panel["tasks"])
     assert panel["storage"] == {}
 
 
@@ -619,11 +619,11 @@ def test_panel_groups_tasks_into_folders_with_their_own_counts(tmp_path):
 
 
 def test_folders_follow_the_area_field_and_name_other_series_after_the_letter(tmp_path):
-    tasks = [{**task("D1", "done", "first", owner="discovery-builder"), "area": "Discovery"}, {**task("V1", "done", "second"), "area": "Visualization"}, {**task("X1", "todo", "third", owner=None), "area": "X"}, {**task("D2", "todo", "fourth", owner="discovery-builder"), "area": "Discovery"}]
-    counts = {"done": 2, "in_progress": 0, "todo": 2}
+    tasks = [{**task("D1", "done", "first", owner="discovery-builder"), "area": "Discovery"}, {**task("V1", "done", "second"), "area": "Visualization"}, {**task("X1", "todo", "third", owner=None), "area": "X"}, {**task("D2", "todo", "fourth", owner="discovery-builder"), "area": "Discovery"}, task("P1", "in_progress", "fifth", owner=None)]
+    counts = {"done": 2, "in_progress": 1, "todo": 2}
     view = render(tmp_path, with_tasks(synthetic([session(1, "a")]), tasks, counts), [{"name": "open"}], wall_start=TEN_START)["open"]
-    assert [(f["area"], f["counts"], [t["id"] for t in f["tasks"]]) for f in view["panel"]["folders"]] == [("Discovery", "· 1 done · 1 to do", ["D1", "D2"]), ("Visualization", "· 1 done", ["V1"]), ("X", "· 1 to do", ["X1"])]
-    assert view["panel"]["counts"] == "2 done · 0 in progress · 2 to do"
+    assert [(f["area"], f["counts"], [t["id"] for t in f["tasks"]]) for f in view["panel"]["folders"]] == [("Discovery", "· 1 done · 1 to do", ["D1", "D2"]), ("Visualization", "· 1 done", ["V1"]), ("X", "· 1 to do", ["X1"]), ("Packaging", "· 1 in progress", ["P1"])]
+    assert view["panel"]["counts"] == "2 done · 1 in progress · 2 to do"
 
 
 def test_closing_a_folder_hides_its_tasks_and_the_choice_is_remembered(tmp_path):
@@ -767,7 +767,7 @@ def test_newer_message_on_the_same_pair_replaces_the_lingering_read_arrow(tmp_pa
     assert (only_path(alone)["stage"], only_path(alone)["opacity"]) == ("READ", "0.550") and only_label(alone)["summary"] == "first"
 
 
-def test_hovering_a_task_shows_its_full_text_until_the_pointer_leaves_and_click_pins(tmp_path):
+def test_hovering_a_task_marks_it_hover_without_opening_it_and_click_pins(tmp_path):
     changed = {"event": "tasks", "at": "2026-10-20T12:00:06.000Z", "source": "spec", "source_pid": None, "tasks": TASKS, "task_counts": TASK_COUNTS, "spec_path": "/x"}
     steps = [{"name": "open"}, {"name": "hover", "hoverTask": "V9"}, {"name": "tick"}, {"name": "tasks change", "frames": [changed]}, {"name": "leave", "leaveTask": "V9"}, {"name": "hover second", "hoverTask": "D5"},
         {"name": "click second", "clickTask": "D5"}, {"name": "leave second", "leaveTask": "D5"}, {"name": "hover first again", "hoverTask": "V9"}]
@@ -776,8 +776,8 @@ def test_hovering_a_task_shows_its_full_text_until_the_pointer_leaves_and_click_
     assert all(t["hoverable"] and t["clickable"] for t in views["open"]["panel"]["tasks"])
     assert by_id("open")["V9"]["className"] == "task in_progress"
     for name in ("hover", "tick", "tasks change"):
-        assert by_id(name)["V9"]["className"] == "task in_progress hover" and by_id(name)["V9"]["title"] == "click for the full text", name
-        assert by_id(name)["V9"]["full"] == "task panel. Full text of V9."
+        assert by_id(name)["V9"]["className"] == "task in_progress hover" and by_id(name)["V9"]["title"] == "click for the full SPEC text", name
+        assert "open" not in by_id(name)["V9"]["className"].split()
     assert by_id("leave")["V9"]["className"] == "task in_progress"
     assert by_id("hover second")["D5"]["className"] == "task todo hover"
     assert by_id("click second")["D5"]["className"] == "task todo open hover" and by_id("click second")["D5"]["title"] == "click to collapse"
@@ -785,11 +785,14 @@ def test_hovering_a_task_shows_its_full_text_until_the_pointer_leaves_and_click_
     assert by_id("hover first again")["V9"]["className"] == "task in_progress hover" and by_id("hover first again")["D5"]["className"] == "task todo open"
 
 
-def test_task_hover_and_wrap_rules_are_in_the_page_css():
+def test_task_hover_wraps_the_title_only_and_click_opens_the_text_in_the_page_css():
     css = PAGE.read_text(encoding="utf-8")
-    assert ".task.open .tfull, .task.hover .tfull, .task:hover .tfull { display: block; }" in css
+    assert ".task.open .tfull { display: block; }" in css
+    assert ".task:hover .tfull" not in css and ".task.hover .tfull" not in css
     assert ".task.open .ttitle, .task.hover .ttitle, .task:hover .ttitle { white-space: normal; }" in css
-    assert re.search(r"\.task \.tfull \{[^}]*white-space: pre-wrap;[^}]*word-break: break-word;", css)
+    assert re.search(r"\.task \.ttitle \{[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;", css)
+    assert re.search(r"\.task \.tfull \{[^}]*display: none;[^}]*white-space: pre-wrap;[^}]*word-break: break-word;", css)
+    assert 'const TASK_AREAS = { D: "Discovery", V: "Visualization", P: "Packaging" };' in css
 
 
 def seven_render(watcher, tmp_path, steps, width=356, local_storage=None, window_height=1000, build=seven_sessions_round):
