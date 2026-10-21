@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "path_finder",
+  "description": "Local marketplace for the path_finder checkout: the path-finder plugin.",
+  "owner": {
+    "name": "Khang Nguyen"
+  },
+  "plugins": [
+    {
+      "name": "path-finder",
+      "description": "Register this Claude Code session's role with path_finder discovery and open the live session web. Two skills, no hooks.",
+      "source": "./plugin",
+      "category": "productivity"
+    }
+  ]
+}
