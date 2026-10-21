@@ -1,42 +1,46 @@
-# Ready: V19 2026-10-21
+# Ready: V20 2026-10-21 (round 2: pyproject.toml marker)
 
 ## Done
 
-Activity rows can be dragged into a viewer's order, the order persists by label, Reset layout clears it, and a hovered tether glyph rises above the arrows.
+`viz/watcher.py` no longer anchors the identity folder to its own location; it follows the shared data-directory rule and reports the directory in `/state`.
 
-`viz/web.html`:
+`viz/watcher.py`:
 
-- Rows are persistent elements (`rowEls` by PID, like `nodeEls`), updated in place and re-appended in order each render. Each row has `pointerdown`/`pointermove`/`pointerup`/`pointercancel` handlers (`startRowDrag`, `moveRowDrag`, `endRowDrag`) with pointer capture, so mouse and touch both work (`.arow { touch-action: none; user-select: none }`). A drag starts after `DRAG_START_PX` (4 px) of vertical movement; the dragged row gets `.dragging` (dimmed, grab cursor). The drop target is the first other row whose vertical midpoint is below the pointer (`rowDropTargetAt`), marked `.drop-above`; below every row it is the last row marked `.drop-below`. The indicator is a 2 px blue line drawn by `::before`/`::after` in the 5 px gap between rows. While a drag is in progress the DOM order is frozen (reordering would release the pointer capture), so the list only moves on the drop. A click within `CLICK_AFTER_DRAG_MS` of a drag end is ignored, as for nodes, so a drop does not also pick the row. `pointercancel` ends the drag without placing anything.
-- Order storage: `ROW_STORAGE_PREFIX = "viz-web-row:"` + `pinKeyOf(session)` (label, else role, else PID; the same key as the node pins) → a whole-number rank. `rowRankOf` reads a saved rank once per PID (`rowLookups`, like `pinLookups`); anything that is not `/^\d+$/` is ignored. `orderedRows()` = sessions with a rank sorted by rank (ties by PID), then the rest in the V8 automatic order (Working first, then last change, then PID). On a drop, `placeRow` takes the displayed order, moves the dragged row to the indicated slot, and saves ranks 0… for every row from the top through the dropped row plus any row below that already had a rank, so rows that were never placed keep following the automatic order below the placed ones and a new session lands among them. A later session with the same label gets the saved rank and so the same slot.
-- Reset layout: `resetLayout()` = `clearPins()` + `clearRowOrder()` + render (`removeStoredKeys(prefix)` shared). The button shows while any node on the ring is pinned or any live session has a rank (`hasRowOrder`); title now reads `clear every pinned node and row order and return to the automatic layout`.
-- Row content is unchanged (dot, name with owner badge, pill, activity, titles, `work`/`picked`/`tasked` classes). Row drags do not touch `pins`; node drags do not touch `rowRanks`.
-- Tether glyph: the inline `style.zIndex` is gone; `.tglyph.lit { z-index: 4 }` (class toggled when the pair is picked) and `.tglyph:hover { z-index: 4 }` now both apply, the resting value stays the `.tglyph` rule's 2. Checked in Chrome: computed z-index 4 while hovered, 2 otherwise.
+- `HOME_ENV_VAR = "PATH_FINDER_HOME"`, `CHECKOUT_FOLDERS = ("discovery", "viz")`, `CHECKOUT_FILES = ("pyproject.toml",)`, `USER_DATA_DIR_NAME = ".path_finder"`.
+- `is_checkout(folder)` is true when the folder holds the `discovery/` and `viz/` folders and the `pyproject.toml` file (the manager's V20 decision: the vendored copies in a wheel have no `pyproject.toml` beside them, so they never match). `checkout_root(start)` walks `start` and its parents for the first such folder.
+- `resolve_data_dir(environ=None, script_dir=None, home=None)`: `$PATH_FINDER_HOME` when set and non-empty (expanded and resolved); else the checkout's `discovery/` when the script sits inside one; else `<home>/.path_finder`. The arguments default to `os.environ`, the watcher's own folder, and `Path.home()`, and exist so the rule can be tested without the environment.
+- `DATA_DIR = resolve_data_dir()` and `IDENTITY_DIR = DATA_DIR / "identity"` replace `DISCOVERY_DIR` / `IDENTITY_DIR`. `read_identity` still reads `IDENTITY_DIR` at call time, so the test fixture that redirects `IDENTITY_DIR` works unchanged. In this checkout the values are the same as before (`<checkout>/discovery/identity`), so the 4780 watcher behaves as today after a restart.
+- `Watcher.snapshot()` adds `"data_dir": str(IDENTITY_DIR.parent)` (the folder that holds `identity/`), so `/state` and the SSE snapshot carry it.
+- Unchanged: `STATIC_DIRS = (VIZ_DIR,)` still serves `web.html` and `index.html` from the watcher's own folder; `SPEC_PATH`, `EVENT_LOG_PATH`, the CLI, the registry and transcript readers, the model, the pages.
 
-Files: `viz/web.html`.
+Files: `viz/watcher.py`.
 
 ## How to test
 
-Seven-session fixture (the scratchpad set from V13; any fixture with several sessions works), spare port (4780 is the manager's), a window tall enough that the rows are on screen:
+Vendored copy outside the checkout with a temp data dir holding one identity file for a live PID (use your own session's PID from `discovery/identity/`):
 
 ```
-S=$(mktemp -d); cp SPEC.md $S/SPEC.md
-F="--fixture 32813=tests/fixtures/viz/round_trip_manager_32813_33993.jsonl --fixture 33993=tests/fixtures/viz/round_trip_builder_32813_33993.jsonl"
-python3 viz/watcher.py replay $F --out-dir $S --speed 0
-python3 viz/watcher.py serve --port 4792 --no-log --spec $S/SPEC.md --fixture 32813=$S/32813.jsonl --fixture 33993=$S/33993.jsonl &
-open http://127.0.0.1:4792/web
+V=$(mktemp -d); mkdir -p $V/vendored $V/data/identity
+cp viz/watcher.py viz/web.html viz/index.html $V/vendored/
+python3 -c "import json; json.dump({'pid': <pid>, 'role': 'vendored-check-role', 'label': 'vendored-check'}, open('$V/data/identity/<pid>.json', 'w'))"
+(cd $V/vendored && PATH_FINDER_HOME=$V/data python3 watcher.py serve --port 4792 --no-log &)
+curl -s http://127.0.0.1:4792/state | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['data_dir'], [(s['pid'], s['role'], s['label']) for s in d['sessions'] if s['pid'] == <pid>])"
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:4792/web
 ```
 
-Expected: drag the second row upward; after a few pixels it dims and a blue line appears above the first row; release and the rows swap, Reset layout appears in the caption bar, and `localStorage` holds `viz-web-row:<label of the dragged row>` = `0` (the other row has no rank and follows automatically below). Reload: the order is kept. Drag a node: the rows stay; drag a row: the nodes stay. Click Reset layout: the automatic order returns, the button hides, the keys are gone. With more sessions, drop a row below the last one with a touch (the line appears under the last row) and watch a new session appear below the placed rows.
+Expected: `data_dir` is `$V/data`, the session shows `vendored-check-role` / `vendored-check`, `/web` answers 200 with the page (and `/` with `index.html`). Without `PATH_FINDER_HOME`, `python3 -c "import watcher; print(watcher.DATA_DIR)"` from `$V/vendored` prints `~/.path_finder`; from `viz/` in the checkout it prints `<checkout>/discovery`.
 
-Checked here: headless Chrome at 380 × 1000 on the seven-session set: mouse press, move, release on a row shows `dragging` on it and `drop-above` on the target, drops and saves ranks, the reload keeps the order, a touch drag (`Input.dispatchTouchEvent`) of the fifth row to below the last shows `drop-below` on the last row and moves it there, node positions are unchanged throughout, a plain click still picks, and Reset layout restores the V8 order with the storage empty. Node harness (scratchpad copy with a `dragRow` step that gives rows index-based rects): drag indicator during a hold, drop above / below, the new-session case (a `session` frame for a new working PID lands at its automatic slot below the placed rows), node drag leaves rows alone, a reload with saved ranks and the same label on a new PID (validator 102 → 202) lands at rank 0, bad stored values (`nope`, empty) are ignored, pointercancel leaves the order alone, reset clears pins and ranks together.
+Checked here: exactly that (the temp copy served `/state` with `data_dir` = the temp data dir and PID 74170 as `vendored-check-role`, `/web` 200 with the V19 page, `/` 200, `/index.html` 200; without the variable the copy resolves `~/.path_finder`); a vendor-like tree `_vendor/discovery/` beside `_vendor/viz/watcher.py` with no `pyproject.toml` resolves `~/.path_finder`; `resolve_data_dir` with a fake tree: override wins (`~` expanded), a script in `<repo>/viz` or deeper resolves `<repo>/discovery` once `pyproject.toml` exists, the same tree without it or with `pyproject.toml` as a folder resolves `<home>/.path_finder`, an empty variable counts as unset. In the checkout the module still resolves `<checkout>/discovery/identity`.
 
-Suite: `python3 -m pytest tests` → 397 passed, 5 failed, all the expected pin: `test_tethers_match_waiting_on_run_clear_of_nodes_and_labels_and_follow_drags_and_picks[*]` reads `glyph["zIndex"]` (inline, now unset; the glyph view returns no key).
+Suite: `python3 -m pytest tests` → 399 passed, 6 failed. Three are expected pins of this task: the `/state` key set in `tests/unit/test_watcher_server.py` (`test_fixture_watcher_first_poll_registers_sessions_and_replays_history`, `test_watcher_emits_the_tasks_change_on_the_first_poll_and_on_edits`) gains `data_dir`; and `tests/integration/test_watcher_cli.py::test_map_prints_pid_session_id_and_transcript_for_two_fake_sessions`, whose `sandbox` copies `watcher.py` into `tmp/repo/viz/` beside `tmp/repo/discovery/identity/` but writes no `tmp/repo/pyproject.toml`, so under the three-marker rule the copy resolves `$HOME/.path_finder` and the identity label is not found (add an empty `tmp/repo/pyproject.toml` to the sandbox, or pass `PATH_FINDER_HOME=tmp/repo/discovery`). The other three (`tests/integration/test_discovery_cli.py::test_two_sessions_listed_with_roles_then_one_exit_removes_it`, `::test_stale_identity_of_dead_pid_is_dropped`, `tests/unit/test_path_finder_cli.py::test_repo_not_found_is_exit_1`) come from the discovery-builder's uncommitted P3 edits to `discovery/discover.py`, `path_finder/repo.py`, and `path_finder/cli.py`: with the committed copies of those three files and this watcher, those test files pass (31 passed). I did not touch them.
 
 ## Requests
 
-- Validator: re-pin the glyph test to the `lit` class (`glyph["className"]` or an `eye`-style field; inline `zIndex` is `""`). For row drags through `tests/page/render_web.mjs`: rows need `pointerdown`/`pointermove`/`pointerup`/`pointercancel` listeners driven like the node `pointer` step, and `getBoundingClientRect` on rows; with the shim's zero-height rects every row's midpoint is 0, so a `clientY` below 0 means "above the first other row" and `clientY ≥ 0` means "below the last other row". Index-based rects (for example `top = index * 40`, `bottom = top + 35`) let a test target any slot. The row view can expose `className` (already has it) and the storage keys `viz-web-row:*`.
-- Docs (user): plan §6 add the row order (per-label ranks in `localStorage`, Reset clears pins and rows); plan tether note: hovered glyphs rise to z-index 4.
-- Note for the manager: `.arow { touch-action: none }` is needed for touch drags, so on a touch screen the rows list scrolls from its padding and gaps rather than from a row; the mouse wheel and trackpad are unaffected.
+- Validator: re-pin the two key-set assertions with `data_dir` and give the map test's sandbox a `pyproject.toml` (or `PATH_FINDER_HOME`); `resolve_data_dir(environ, script_dir, home)`, `checkout_root`, and `is_checkout` are plain functions for unit tests of the three branches and the three markers; the server test can assert `snapshot["data_dir"] == str(watcher.IDENTITY_DIR.parent)`.
+- Manager: restart the 4780 watcher on the new `viz/watcher.py` for `data_dir` in `/state`.
+- Discovery-builder (P3): `discovery/discover.py` should use the same three markers (`discovery/`, `viz/`, `pyproject.toml`) so both scripts resolve one directory.
+- Note: `EVENT_LOG_PATH` stays `<watcher folder>/events.jsonl` (not in this task), so a vendored watcher with the default `--log` writes its event log next to itself; `--no-log` or `--log` elsewhere avoids that. `SPEC_PATH` likewise stays `<watcher folder>/../SPEC.md` and a missing file yields an empty task list.
+- Docs (user): plan §3 / README: data directory rule and `PATH_FINDER_HOME`; `/state` field `data_dir`.
 
 ## Blocked
 

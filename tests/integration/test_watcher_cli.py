@@ -27,11 +27,15 @@ def sandbox(tmp_path):
     for folder in (sessions_dir, projects_dir, viz_dir, identity_dir):
         folder.mkdir(parents=True)
     shutil.copy(WATCHER_SCRIPT, viz_dir / "watcher.py")
-    return {"home": home, "sessions_dir": sessions_dir, "projects_dir": projects_dir, "viz_dir": viz_dir, "identity_dir": identity_dir}
+    (tmp_path / "repo" / "pyproject.toml").write_text("")
+    return {"home": home, "sessions_dir": sessions_dir, "projects_dir": projects_dir, "viz_dir": viz_dir, "identity_dir": identity_dir, "pyproject": tmp_path / "repo" / "pyproject.toml"}
 
 
-def run_map(sandbox, *args):
+def run_map(sandbox, *args, data_home=None):
     env = {**os.environ, "HOME": str(sandbox["home"])}
+    env.pop("PATH_FINDER_HOME", None)
+    if data_home is not None:
+        env["PATH_FINDER_HOME"] = str(data_home)
     return subprocess.run([sys.executable, "-I", str(sandbox["viz_dir"] / "watcher.py"), "map", *args], capture_output=True, text=True, env=env)
 
 
@@ -103,3 +107,24 @@ def test_map_ignores_dead_pids(sandbox):
     register(sandbox, child.pid, "gone", FAKE_ROOT, "eeeeeeee-0000-0000-0000-000000000005")
     result = run_map(sandbox, "--root", FAKE_ROOT)
     assert result.stdout == ""
+
+
+def test_map_reads_identity_from_the_data_directory_rule(sandbox):
+    child = subprocess.Popen(["sleep", "30"])
+    try:
+        register(sandbox, child.pid, "fake-session-manager", FAKE_ROOT, "cccccccc-0000-0000-0000-000000000003")
+        write_transcript(sandbox, FAKE_ROOT, "cccccccc-0000-0000-0000-000000000003")
+        (sandbox["identity_dir"] / f"{child.pid}.json").write_text(json.dumps({"role": "fake manager", "label": "fake manager"}))
+        label_of = lambda result: {int(line.split("\t")[0]): line.split("\t")[3] for line in result.stdout.splitlines()}[child.pid]
+        assert label_of(run_map(sandbox, "--root", FAKE_ROOT)) == "fake manager"
+        sandbox["pyproject"].unlink()
+        assert label_of(run_map(sandbox, "--root", FAKE_ROOT)) == "fake-session-manager"
+        assert label_of(run_map(sandbox, "--root", FAKE_ROOT, data_home=sandbox["identity_dir"].parent)) == "fake manager"
+        elsewhere = sandbox["home"] / ".path_finder" / "identity"
+        elsewhere.mkdir(parents=True)
+        (elsewhere / f"{child.pid}.json").write_text(json.dumps({"role": "home manager", "label": "home manager"}))
+        assert label_of(run_map(sandbox, "--root", FAKE_ROOT)) == "home manager"
+        assert label_of(run_map(sandbox, "--root", FAKE_ROOT, data_home=sandbox["identity_dir"].parent)) == "fake manager"
+    finally:
+        child.kill()
+        child.wait()

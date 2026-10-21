@@ -1,10 +1,11 @@
 import json
+import os
 import queue
 import re
 
 import pytest
 
-from conftest import FIXTURES_DIR
+from conftest import FIXTURES_DIR, REPO_ROOT, load_watcher_module
 
 MANAGER_FIXTURE = FIXTURES_DIR / "viz" / "round_trip_manager_32813_33993.jsonl"
 BUILDER_FIXTURE = FIXTURES_DIR / "viz" / "round_trip_builder_32813_33993.jsonl"
@@ -60,7 +61,8 @@ def test_fixture_watcher_first_poll_registers_sessions_and_replays_history(watch
     assert events[0]["transcript"] == str(manager)
     assert len(events) == 2 + 31
     snapshot = w.snapshot()
-    assert set(snapshot) == {"generated_at", "sessions", "messages", "sources", "tasks", "task_counts", "spec_path"}
+    assert set(snapshot) == {"generated_at", "data_dir", "sessions", "messages", "sources", "tasks", "task_counts", "spec_path"}
+    assert snapshot["data_dir"] == str(watcher.IDENTITY_DIR.parent) and snapshot["data_dir"].endswith("/discovery")
     assert [(e["source"], e["source_pid"]) for e in events[:2]] == [("registry", 32813), ("registry", 33993)]
     assert all(e["source"] and e["source_pid"] in (32813, 33993) for e in events[2:])
     assert [s["pid"] for s in snapshot["sources"]] == [32813, 33993]
@@ -430,7 +432,8 @@ def test_watcher_emits_the_tasks_change_on_the_first_poll_and_on_edits(watcher, 
     assert re.fullmatch(r".*Z", tasks_change["at"])
     assert len(events) == 3 + 31
     snapshot = w.snapshot()
-    assert set(snapshot) == {"generated_at", "sessions", "messages", "sources", "tasks", "task_counts", "spec_path"}
+    assert set(snapshot) == {"generated_at", "data_dir", "sessions", "messages", "sources", "tasks", "task_counts", "spec_path"}
+    assert snapshot["data_dir"] == str(watcher.IDENTITY_DIR.parent)
     assert snapshot["task_counts"] == {"done": 0, "in_progress": 1, "todo": 1}
     w.poll_once()
     assert drain(subscriber) == []
@@ -458,3 +461,68 @@ def test_watcher_default_spec_path_is_the_repo_spec(watcher):
     args = watcher.build_parser().parse_args(["serve"])
     assert args.spec == str(watcher.SPEC_PATH)
     assert watcher.build_parser().parse_args(["serve", "--spec", "/tmp/x.md"]).spec == "/tmp/x.md"
+
+
+def checkout_tree(root, with_pyproject=True):
+    (root / "discovery" / "identity").mkdir(parents=True)
+    (root / "viz" / "deeper").mkdir(parents=True)
+    if with_pyproject:
+        (root / "pyproject.toml").write_text("")
+    return root
+
+
+def test_is_checkout_needs_the_two_folders_and_the_pyproject_file(watcher, tmp_path):
+    root = checkout_tree(tmp_path / "repo")
+    assert watcher.is_checkout(root) is True
+    assert watcher.is_checkout(root / "viz") is False and watcher.is_checkout(tmp_path) is False
+    assert watcher.is_checkout(checkout_tree(tmp_path / "bare", with_pyproject=False)) is False
+    folder_marker = checkout_tree(tmp_path / "folder", with_pyproject=False)
+    (folder_marker / "pyproject.toml").mkdir()
+    assert watcher.is_checkout(folder_marker) is False
+    vendor = tmp_path / "site" / "path_finder" / "_vendor"
+    (vendor / "discovery").mkdir(parents=True)
+    (vendor / "viz").mkdir()
+    assert watcher.is_checkout(vendor) is False
+    assert watcher.CHECKOUT_FOLDERS == ("discovery", "viz") and watcher.CHECKOUT_FILES == ("pyproject.toml",) and watcher.HOME_ENV_VAR == "PATH_FINDER_HOME"
+
+
+def test_checkout_root_walks_up_from_the_script_folder_to_the_first_checkout(watcher, tmp_path):
+    root = checkout_tree(tmp_path / "repo")
+    assert watcher.checkout_root(root / "viz") == root and watcher.checkout_root(root / "viz" / "deeper") == root and watcher.checkout_root(root) == root
+    assert watcher.checkout_root(tmp_path / "elsewhere") is None
+    nested = checkout_tree(root / "viz" / "deeper" / "inner")
+    assert watcher.checkout_root(nested / "viz") == nested
+    assert watcher.checkout_root(checkout_tree(tmp_path / "bare", with_pyproject=False) / "viz") is None
+
+
+def test_resolve_data_dir_prefers_the_env_var_then_the_checkout_then_the_home_folder(watcher, tmp_path, monkeypatch):
+    root = checkout_tree(tmp_path / "repo")
+    home = tmp_path / "home"
+    home.mkdir(exist_ok=True)
+    monkeypatch.setenv("HOME", str(home))
+    assert watcher.resolve_data_dir({"PATH_FINDER_HOME": str(tmp_path / "data")}, root / "viz", home) == (tmp_path / "data").resolve()
+    assert watcher.resolve_data_dir({"PATH_FINDER_HOME": "~/pf-data"}, root / "viz", home) == (home / "pf-data").resolve()
+    assert watcher.resolve_data_dir({"PATH_FINDER_HOME": ""}, root / "viz", home) == root / "discovery"
+    assert watcher.resolve_data_dir({}, root / "viz", home) == root / "discovery"
+    assert watcher.resolve_data_dir({}, str(root / "viz" / "deeper"), home) == root / "discovery"
+    assert watcher.resolve_data_dir({}, tmp_path / "elsewhere", home) == home / ".path_finder"
+    assert watcher.resolve_data_dir({}, checkout_tree(tmp_path / "bare", with_pyproject=False) / "viz", home) == home / ".path_finder"
+    vendor = tmp_path / "site" / "path_finder" / "_vendor"
+    (vendor / "discovery").mkdir(parents=True)
+    (vendor / "viz").mkdir()
+    assert watcher.resolve_data_dir({}, vendor / "viz", home) == home / ".path_finder"
+    assert watcher.resolve_data_dir({}, vendor / "viz", str(home)) == home / ".path_finder"
+    monkeypatch.setenv("PATH_FINDER_HOME", str(tmp_path / "from-env"))
+    assert watcher.resolve_data_dir(None, tmp_path / "elsewhere", home) == (tmp_path / "from-env").resolve()
+    monkeypatch.delenv("PATH_FINDER_HOME")
+    assert watcher.resolve_data_dir(None, tmp_path / "elsewhere", None) == home / ".path_finder"
+
+
+def test_module_constants_follow_the_rule_and_identity_sits_under_the_data_dir(watcher):
+    module = load_watcher_module()
+    assert module.IDENTITY_DIR == module.DATA_DIR / "identity"
+    assert module.DATA_DIR == module.resolve_data_dir()
+    if not os.environ.get("PATH_FINDER_HOME"):
+        assert module.DATA_DIR == REPO_ROOT / "discovery"
+    assert module.STATIC_DIRS == (module.VIZ_DIR,) and module.VIZ_DIR == REPO_ROOT / "viz"
+    assert not hasattr(module, "DISCOVERY_DIR")

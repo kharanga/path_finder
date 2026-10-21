@@ -27,7 +27,7 @@ Extend the existing capsule page (`discover.py ui`, D2) so it shows **messages t
 | Source | Path | Gives |
 | :- | :- | :- |
 | Session registry | `~/.claude/sessions/<pid>.json` | PID, display name, start path (undocumented; already used by `discover.py`) |
-| Identity | `discovery/identity/<pid>.json` | role, label (entered by each session's human) |
+| Identity | `<data dir>/identity/<pid>.json` | role, label (entered by each session's human). Data dir rule since V20: `$PATH_FINDER_HOME`, else the checkout's `discovery/` when the parent holds `discovery/`, `viz/`, and `pyproject.toml`, else `~/.path_finder`; `/state` reports it as `data_dir` |
 | Transcripts | `~/.claude/projects/<encoded-cwd>/<session-id>.jsonl` | every send, receive, result, idle notice, turn end |
 
 **Gap to close first (task V0):** the registry is keyed by PID, transcripts are keyed by session UUID, and no entry on either side carries both. Options to test, in order:

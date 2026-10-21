@@ -15,8 +15,36 @@ from pathlib import Path
 SESSIONS_DIR = Path.home() / ".claude" / "sessions"
 PROJECTS_DIR = Path.home() / ".claude" / "projects"
 VIZ_DIR = Path(__file__).resolve().parent
-DISCOVERY_DIR = VIZ_DIR.parent / "discovery"
-IDENTITY_DIR = DISCOVERY_DIR / "identity"
+HOME_ENV_VAR = "PATH_FINDER_HOME"
+CHECKOUT_FOLDERS = ("discovery", "viz")
+CHECKOUT_FILES = ("pyproject.toml",)
+USER_DATA_DIR_NAME = ".path_finder"
+
+
+def is_checkout(folder):
+    return all((folder / name).is_dir() for name in CHECKOUT_FOLDERS) and all((folder / name).is_file() for name in CHECKOUT_FILES)
+
+
+def checkout_root(start):
+    for folder in (start, *start.parents):
+        if is_checkout(folder):
+            return folder
+    return None
+
+
+def resolve_data_dir(environ=None, script_dir=None, home=None):
+    environ = os.environ if environ is None else environ
+    override = environ.get(HOME_ENV_VAR)
+    if override:
+        return Path(override).expanduser().resolve()
+    checkout = checkout_root(VIZ_DIR if script_dir is None else Path(script_dir))
+    if checkout is not None:
+        return checkout / "discovery"
+    return (Path.home() if home is None else Path(home)) / USER_DATA_DIR_NAME
+
+
+DATA_DIR = resolve_data_dir()
+IDENTITY_DIR = DATA_DIR / "identity"
 STATIC_DIRS = (VIZ_DIR,)
 PAGE_ROUTES = {"/web": "/web.html"}
 EVENT_LOG_PATH = VIZ_DIR / "events.jsonl"
@@ -891,7 +919,7 @@ class Watcher:
 
     def snapshot(self):
         with self.lock:
-            return {"generated_at": now_iso(), **copy.deepcopy(self.model.snapshot()), **self.spec.payload()}
+            return {"generated_at": now_iso(), "data_dir": str(IDENTITY_DIR.parent), **copy.deepcopy(self.model.snapshot()), **self.spec.payload()}
 
 
 class VizRequestHandler(SimpleHTTPRequestHandler):
