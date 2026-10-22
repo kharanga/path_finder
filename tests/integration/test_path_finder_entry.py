@@ -61,7 +61,8 @@ def vendored_site(tmp_path):
     vendor = site / "path_finder" / "_vendor"
     (vendor / "discovery").mkdir(parents=True)
     (vendor / "viz").mkdir()
-    shutil.copy(REPO_ROOT / "discovery" / "discover.py", vendor / "discovery" / "discover.py")
+    for module in (REPO_ROOT / "discovery").glob("*.py"):
+        shutil.copy(module, vendor / "discovery" / module.name)
     for name in ("watcher.py", "web.html", "index.html"):
         shutil.copy(REPO_ROOT / "viz" / name, vendor / "viz" / name)
     return site

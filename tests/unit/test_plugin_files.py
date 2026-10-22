@@ -72,15 +72,16 @@ def test_root_readme_gives_the_install_lines_for_users_and_developers():
     assert "pip install -e ." in text and "pytest tests" in text and "pip wheel . --no-deps" in text
 
 
-def test_pyproject_builds_with_hatchling_and_vendors_the_four_files():
+def test_pyproject_builds_with_hatchling_and_vendors_the_eight_files():
     project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert project["build-system"]["build-backend"] == "hatchling.build" and project["project"]["version"] == "0.2.0"
     assert project["project"]["readme"] == "README.md" and project["project"]["scripts"] == {"path-finder": "path_finder.cli:main"}
     wheel = project["tool"]["hatch"]["build"]["targets"]["wheel"]
     assert wheel["packages"] == ["path_finder"]
-    assert wheel["force-include"] == {"discovery/discover.py": "path_finder/_vendor/discovery/discover.py", "viz/watcher.py": "path_finder/_vendor/viz/watcher.py",
+    vendored_discovery = {f"discovery/{name}.py": f"path_finder/_vendor/discovery/{name}.py" for name in ("discover", "paths", "processes", "registry", "identity")}
+    assert wheel["force-include"] == {**vendored_discovery, "viz/watcher.py": "path_finder/_vendor/viz/watcher.py",
         "viz/web.html": "path_finder/_vendor/viz/web.html", "viz/index.html": "path_finder/_vendor/viz/index.html"}
     sdist = set(project["tool"]["hatch"]["build"]["targets"]["sdist"]["include"])
-    assert {"discovery/discover.py", "viz/watcher.py", "viz/web.html", "viz/index.html", "pyproject.toml", "README.md", "path_finder/**"} <= sdist
+    assert {*vendored_discovery, "viz/watcher.py", "viz/web.html", "viz/index.html", "pyproject.toml", "README.md", "path_finder/**"} <= sdist
     for source in wheel["force-include"]:
         assert (REPO_ROOT / source).is_file(), source

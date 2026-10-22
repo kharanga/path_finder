@@ -19,7 +19,8 @@ def sandbox(tmp_path):
     sessions_dir.mkdir(parents=True)
     discovery_dir = tmp_path / "discovery"
     discovery_dir.mkdir()
-    shutil.copy(DISCOVER_SCRIPT, discovery_dir / "discover.py")
+    for module in DISCOVER_SCRIPT.parent.glob("*.py"):
+        shutil.copy(module, discovery_dir / module.name)
     return {"home": home, "sessions_dir": sessions_dir, "discovery_dir": discovery_dir}
 
 
