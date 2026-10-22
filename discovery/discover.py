@@ -4,195 +4,36 @@ import json
 import os
 import subprocess
 import sys
+import types
 from datetime import datetime, timezone
 from pathlib import Path
 
-SESSIONS_DIR = Path.home() / ".claude" / "sessions"
-SCRIPT_PATH = Path(__file__).resolve()
-HOME_ENV_VAR = "PATH_FINDER_HOME"
+OWN_FOLDER = str(Path(__file__).resolve().parent)
+if OWN_FOLDER not in sys.path:
+    sys.path.insert(0, OWN_FOLDER)
+sys.dont_write_bytecode = True
+
+import identity
+import paths
+import processes
+import registry
 
 
-def checkout_holding(path):
-    for folder in path.parents:
-        if (folder / "discovery").is_dir() and (folder / "viz").is_dir() and (folder / "pyproject.toml").is_file():
-            return folder
-    return None
+def bound_to_this_namespace(function):
+    return types.FunctionType(function.__code__, globals(), function.__name__, function.__defaults__, function.__closure__)
 
 
-def data_dir():
-    override = os.environ.get(HOME_ENV_VAR)
-    if override:
-        return Path(override).expanduser()
-    checkout = checkout_holding(SCRIPT_PATH)
-    if checkout is not None:
-        return checkout / "discovery"
-    return Path.home() / ".path_finder"
+def re_export(module, names):
+    for name in names:
+        value = getattr(module, name)
+        globals()[name] = bound_to_this_namespace(value) if isinstance(value, types.FunctionType) else value
 
 
-DISCOVERY_DIR = data_dir()
-DIRECTORY_PATH = DISCOVERY_DIR / "sessions.json"
-IDENTITY_DIR = DISCOVERY_DIR / "identity"
-
-
-def now_iso():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def pid_is_alive(pid):
-    try:
-        os.kill(pid, 0)
-        return True
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-
-
-def parent_and_command(pid):
-    try:
-        line = subprocess.run(
-            ["ps", "-o", "ppid=,comm=", "-p", str(pid)],
-            capture_output=True, text=True, check=True,
-        ).stdout.strip()
-    except subprocess.CalledProcessError:
-        return None, None
-    parts = line.split(None, 1)
-    if len(parts) != 2:
-        return None, None
-    return int(parts[0]), parts[1].strip()
-
-
-def find_claude_ancestor_pid(start_pid=None, max_depth=8):
-    pid = start_pid if start_pid is not None else os.getppid()
-    for _ in range(max_depth):
-        if pid <= 1:
-            return None
-        ppid, command = parent_and_command(pid)
-        if ppid is None:
-            return None
-        if os.path.basename(command) == "claude":
-            return pid
-        pid = ppid
-    return None
-
-
-def socket_address(pid):
-    return f"uds:/tmp/cc-socks/{pid}.sock"
-
-
-def read_registry_entry(path):
-    try:
-        with open(path) as handle:
-            entry = json.load(handle)
-    except (OSError, ValueError):
-        return None
-    if not isinstance(entry.get("pid"), int):
-        return None
-    return {
-        "pid": entry["pid"],
-        "name": entry.get("name"),
-        "cwd": entry.get("cwd"),
-        "socket": socket_address(entry["pid"]),
-        "session_id": entry.get("sessionId"),
-    }
-
-
-def live_sessions():
-    sessions = []
-    for path in sorted(SESSIONS_DIR.glob("*.json")):
-        entry = read_registry_entry(path)
-        if entry and pid_is_alive(entry["pid"]):
-            sessions.append(entry)
-    return sessions
-
-
-def under_root(cwd, root):
-    if root is None:
-        return True
-    if cwd is None:
-        return False
-    return Path(cwd).resolve().is_relative_to(Path(root).resolve())
-
-
-def own_session():
-    pid = find_claude_ancestor_pid()
-    if pid is None:
-        return None
-    return read_registry_entry(SESSIONS_DIR / f"{pid}.json")
-
-
-def identity_path(pid):
-    return IDENTITY_DIR / f"{pid}.json"
-
-
-def read_identity(pid):
-    try:
-        with open(identity_path(pid)) as handle:
-            return json.load(handle)
-    except (OSError, ValueError):
-        return None
-
-
-def write_identity(session, role):
-    identity = {**session, "role": role, "label": role, "identified_at": now_iso()}
-    IDENTITY_DIR.mkdir(parents=True, exist_ok=True)
-    with open(identity_path(session["pid"]), "w") as handle:
-        json.dump(identity, handle, indent=2)
-        handle.write("\n")
-    return identity
-
-
-def drop_identities_of_dead_sessions(live_pids):
-    IDENTITY_DIR.mkdir(parents=True, exist_ok=True)
-    for path in IDENTITY_DIR.glob("*.json"):
-        if not path.stem.isdigit() or int(path.stem) not in live_pids:
-            path.unlink(missing_ok=True)
-
-
-def with_identity(session):
-    identity = read_identity(session["pid"]) or {}
-    return {
-        **session,
-        "role": identity.get("role"),
-        "label": identity.get("label"),
-        "identified_at": identity.get("identified_at") or identity.get("set_at"),
-    }
-
-
-def is_identified(entry):
-    return entry.get("role") is not None
-
-
-def directory_entries():
-    sessions = live_sessions()
-    drop_identities_of_dead_sessions({s["pid"] for s in sessions})
-    return [with_identity(s) for s in sessions]
-
-
-def lock_directory():
-    DIRECTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    lock_handle = open(DIRECTORY_PATH.with_suffix(".json.lock"), "w")
-    fcntl.flock(lock_handle, fcntl.LOCK_EX)
-    return lock_handle
-
-
-def write_directory(entries):
-    data = {"updated_at": now_iso(), "sessions": entries}
-    tmp_path = DIRECTORY_PATH.with_suffix(".json.tmp")
-    with open(tmp_path, "w") as handle:
-        json.dump(data, handle, indent=2)
-        handle.write("\n")
-    os.replace(tmp_path, DIRECTORY_PATH)
-
-
-def rebuild_directory():
-    lock = lock_directory()
-    try:
-        entries = directory_entries()
-        write_directory(entries)
-    finally:
-        lock.close()
-    return entries
+re_export(paths, ("SESSIONS_DIR", "SCRIPT_PATH", "HOME_ENV_VAR", "DISCOVERY_DIR", "DIRECTORY_PATH", "IDENTITY_DIR", "checkout_holding", "data_dir", "now_iso"))
+re_export(processes, ("pid_is_alive", "parent_and_command", "find_claude_ancestor_pid"))
+re_export(registry, ("socket_address", "read_registry_entry", "live_sessions", "under_root", "own_session"))
+re_export(identity, ("identity_path", "read_identity", "write_identity", "drop_identities_of_dead_sessions", "with_identity", "is_identified",
+                     "directory_entries", "lock_directory", "write_directory", "rebuild_directory"))
 
 
 def command_identify(args):

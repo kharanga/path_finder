@@ -17,6 +17,10 @@ path-finder = "path_finder.cli:main"
 include = [
   "path_finder/**",
   "discovery/discover.py",
+  "discovery/paths.py",
+  "discovery/processes.py",
+  "discovery/registry.py",
+  "discovery/identity.py",
   "viz/watcher.py",
   "viz/web.html",
   "viz/index.html",
@@ -29,6 +33,10 @@ packages = ["path_finder"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "discovery/discover.py" = "path_finder/_vendor/discovery/discover.py"
+"discovery/paths.py" = "path_finder/_vendor/discovery/paths.py"
+"discovery/processes.py" = "path_finder/_vendor/discovery/processes.py"
+"discovery/registry.py" = "path_finder/_vendor/discovery/registry.py"
+"discovery/identity.py" = "path_finder/_vendor/discovery/identity.py"
 "viz/watcher.py" = "path_finder/_vendor/viz/watcher.py"
 "viz/web.html" = "path_finder/_vendor/viz/web.html"
 "viz/index.html" = "path_finder/_vendor/viz/index.html"
