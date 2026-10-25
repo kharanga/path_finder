@@ -143,6 +143,10 @@ def live_sessions():
     return sessions
 
 
+def resolved_root(root):
+    return None if root is None else str(Path(root).resolve())
+
+
 def under_root(cwd, root):
     if root is None:
         return True
@@ -829,7 +833,7 @@ class SpecTasks:
 
 class Watcher:
     def __init__(self, root=None, fixtures=None, log_path=None, spec_path=SPEC_PATH):
-        self.root = root
+        self.root = resolved_root(root)
         self.fixtures = fixtures
         self.spec = SpecTasks(spec_path)
         self.model = StateModel()
@@ -919,7 +923,7 @@ class Watcher:
 
     def snapshot(self):
         with self.lock:
-            return {"generated_at": now_iso(), "data_dir": str(IDENTITY_DIR.parent), **copy.deepcopy(self.model.snapshot()), **self.spec.payload()}
+            return {"generated_at": now_iso(), "data_dir": str(IDENTITY_DIR.parent), "root": self.root, **copy.deepcopy(self.model.snapshot()), **self.spec.payload()}
 
 
 class VizRequestHandler(SimpleHTTPRequestHandler):
