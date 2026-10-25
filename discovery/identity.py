@@ -3,7 +3,7 @@ import json
 import os
 
 from paths import DIRECTORY_PATH, IDENTITY_DIR, now_iso
-from registry import live_sessions
+from registry import live_sessions, role_from_name
 
 
 def identity_path(pid):
@@ -34,14 +34,23 @@ def drop_identities_of_dead_sessions(live_pids):
             path.unlink(missing_ok=True)
 
 
-def with_identity(session):
+def session_role(session):
     identity = read_identity(session["pid"]) or {}
-    return {
-        **session,
-        "role": identity.get("role"),
-        "label": identity.get("label"),
-        "identified_at": identity.get("identified_at") or identity.get("set_at"),
-    }
+    if identity.get("role"):
+        return {
+            "role": identity["role"],
+            "label": identity.get("label"),
+            "identified_at": identity.get("identified_at") or identity.get("set_at"),
+            "role_source": "identity",
+        }
+    role = role_from_name(session.get("name"), session.get("cwd"), session.get("name_source"))
+    if role:
+        return {"role": role, "label": role, "identified_at": None, "role_source": "name"}
+    return {"role": None, "label": None, "identified_at": None, "role_source": None}
+
+
+def with_identity(session):
+    return {**session, **session_role(session)}
 
 
 def is_identified(entry):

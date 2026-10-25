@@ -31,8 +31,8 @@ def re_export(module, names):
 
 re_export(paths, ("SESSIONS_DIR", "SCRIPT_PATH", "HOME_ENV_VAR", "DISCOVERY_DIR", "DIRECTORY_PATH", "IDENTITY_DIR", "checkout_holding", "data_dir", "now_iso"))
 re_export(processes, ("pid_is_alive", "parent_and_command", "find_claude_ancestor_pid"))
-re_export(registry, ("socket_address", "read_registry_entry", "live_sessions", "under_root", "own_session"))
-re_export(identity, ("identity_path", "read_identity", "write_identity", "drop_identities_of_dead_sessions", "with_identity", "is_identified",
+re_export(registry, ("USER_NAME_SOURCE", "socket_address", "comparable_name", "role_from_name", "read_registry_entry", "live_sessions", "under_root", "own_session"))
+re_export(identity, ("identity_path", "read_identity", "write_identity", "drop_identities_of_dead_sessions", "session_role", "with_identity", "is_identified",
                      "directory_entries", "lock_directory", "write_directory", "rebuild_directory"))
 
 
@@ -56,11 +56,11 @@ def command_self(_args):
     if me is None:
         print("not running inside a Claude Code session", file=sys.stderr)
         return 1
-    identity = read_identity(me["pid"])
-    if identity is None:
-        print("identity not set: ask your human for the role, then run identify", file=sys.stderr)
+    found = session_role(me)
+    if found["role"] is None:
+        print("identity not set: name this session with /rename <folder>_<role> (or just <role>), or run identify --role <role>", file=sys.stderr)
         return 2
-    print(json.dumps({**me, "role": identity.get("role"), "label": identity.get("label")}))
+    print(json.dumps({**me, "role": found["role"], "label": found["label"], "role_source": found["role_source"]}))
     return 0
 
 
@@ -94,11 +94,11 @@ def build_parser():
     parser = argparse.ArgumentParser(description="Discovery helper: which sessions are live and what role each one has")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    identify_parser = sub.add_parser("identify", help="store this session's role; run first, when the session starts")
+    identify_parser = sub.add_parser("identify", help="store this session's role explicitly; overrides the role taken from the session name")
     identify_parser.add_argument("--role", required=True)
     identify_parser.set_defaults(func=command_identify)
 
-    sub.add_parser("self", help="print this session's name, pid, path, role, and label").set_defaults(func=command_self)
+    sub.add_parser("self", help="print this session's name, pid, path, role, label, and role_source (identity or name)").set_defaults(func=command_self)
 
     list_parser = sub.add_parser("list", help="rebuild sessions.json and print live sessions with roles")
     list_parser.add_argument("--root", help="print only sessions whose cwd is under this path")

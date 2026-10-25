@@ -6,8 +6,24 @@ from paths import SESSIONS_DIR
 from processes import find_claude_ancestor_pid, pid_is_alive
 
 
+USER_NAME_SOURCE = "user"
+
+
 def socket_address(pid):
     return f"uds:/tmp/cc-socks/{pid}.sock"
+
+
+def comparable_name(text):
+    return text.replace("-", "_").lower()
+
+
+def role_from_name(name, cwd, name_source):
+    if name_source != USER_NAME_SOURCE or not name:
+        return None
+    folder = Path(cwd).name if cwd else ""
+    folder_prefix = f"{comparable_name(folder)}_" if folder else None
+    bare = name[len(folder_prefix):] if folder_prefix and comparable_name(name).startswith(folder_prefix) else name
+    return bare.replace("_", "-").lower() or None
 
 
 def read_registry_entry(path):
@@ -21,6 +37,7 @@ def read_registry_entry(path):
     return {
         "pid": entry["pid"],
         "name": entry.get("name"),
+        "name_source": entry.get("nameSource"),
         "cwd": entry.get("cwd"),
         "socket": socket_address(entry["pid"]),
         "session_id": entry.get("sessionId"),

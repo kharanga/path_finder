@@ -18,10 +18,9 @@ Or from a wheel you built yourself inside the checkout (`pip wheel . --no-deps -
 pipx install dist/path_finder-0.2.0-py3-none-any.whl
 ```
 
-Then, in each Claude Code session:
+Name each Claude Code session after its role with `/rename <folder>_<role>` (or just `/rename <role>`), where `<folder>` is the project folder's name, for example `/rename path_finder_manager`. Discovery reads that name from the session registry and reports the role with `role_source` `name`; an auto-generated name gives no role. `path-finder identify --role <role>` stores an explicit role that wins over the name. Then, in each session:
 
 ```
-path-finder identify --role manager      # once, when the session starts
 path-finder list                          # every live session under the current folder, with roles
 path-finder window                        # opens a small app-mode window on this project's watcher, starting one if needed
 ```
@@ -30,7 +29,7 @@ To lay out a new agent workspace, `path-finder init --builder api --builder web`
 
 Each project root gets its own watcher and port. `window` walks up from port 4780 (or `--port`), reuses the watcher whose `/state` root matches the current folder, and otherwise starts one on the first silent port. The next `window` from the same project finds that watcher again; the printed line names the port and root used.
 
-The Claude Code plugin gives the same steps as slash commands, `/path-finder:identify <role>`, `/path-finder:mesh`, and `/path-finder:init <builder names>`. Install it from GitHub:
+The Claude Code plugin gives the same steps as slash commands, `/path-finder:mesh` and `/path-finder:init <builder names>`. Install it from GitHub:
 
 ```
 claude plugin marketplace add kharanga/path_finder
