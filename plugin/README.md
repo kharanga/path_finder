@@ -3,7 +3,7 @@
 Two skills for Claude Code sessions working in a path_finder checkout.
 
 - `/path-finder:identify <role>`: asks for the role when none is given, runs `path-finder identify --role <role>`, and prints `self`. Falls back to `python3 discovery/discover.py` from the checkout when the `path-finder` CLI is not installed.
-- `/path-finder:mesh`: runs `path-finder list --root <cwd>`, starts the watcher with `path-finder window` when nothing answers on port 4780, and prints the page URL.
+- `/path-finder:mesh`: runs `path-finder list --root <cwd>`, then `path-finder window --root <cwd>`, which reuses this project's watcher or starts one on the first free port from 4780 upward, and prints the page URL `window` chose.
 
 ## Install
 

@@ -32,7 +32,6 @@ def with_default_root(command, arguments):
         return [*arguments, "--root", os.getcwd()]
     return list(arguments)
 
-
 def run_script_in_place(script, command, arguments):
     sys.argv = [str(script), command, *arguments]
     runpy.run_path(str(script), run_name="__main__")
@@ -50,6 +49,9 @@ def usage():
         "Every command runs the checkout's discovery/discover.py or viz/watcher.py in place,",
         "or the copies vendored in this package when no checkout is found.",
         "--root defaults to the current working directory for list, done, map, serve, and window.",
+        "Each project root gets its own watcher and port: window walks up from --port over 20 ports,",
+        "reuses the watcher whose /state root matches --root, and otherwise starts one on the first silent",
+        "port. The next window from the same project finds that watcher again.",
         "",
         data_dir_description(),
     ])
@@ -57,9 +59,9 @@ def usage():
 
 def parse_window_arguments(arguments):
     parser = argparse.ArgumentParser(prog="path-finder window", description="open the page in a small app-mode browser window")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="first port tried; the walk goes upward from here")
     parser.add_argument("--page", default=DEFAULT_PAGE, help="page path on the watcher, for example web or index")
-    parser.add_argument("--root", default=os.getcwd(), help="passed to serve when the watcher has to be started")
+    parser.add_argument("--root", default=os.getcwd(), help="project root whose watcher to reuse or start")
     return parser.parse_args(arguments)
 
 

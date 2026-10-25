@@ -9,8 +9,7 @@ Run exactly this:
 ```
 pf() { if command -v path-finder >/dev/null 2>&1; then path-finder "$@"; else (cd "${CLAUDE_PLUGIN_ROOT}/.." && python3 -m path_finder.cli "$@"); fi; }
 pf list --root "$PWD"
-curl -s -m 1 http://127.0.0.1:4780/state >/dev/null || pf window --root "$PWD"
-echo "http://127.0.0.1:4780/web"
+pf window --root "$PWD" | grep -o 'http://127\.0\.0\.1:[0-9]*/web' | tail -n 1
 ```
 
-Print the session lines as they came out, then the URL on its own line.
+Print the session lines as they came out, then the URL on its own line. `window` picks the port itself: it reuses the watcher whose `/state` root is this folder, walking up from 4780, or starts one on the first silent port, so the URL is whatever its last line names, not always 4780.

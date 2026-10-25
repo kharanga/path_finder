@@ -4,11 +4,18 @@ Shows the Claude Code sessions running on one machine, the roles their humans ga
 
 ## Install for use
 
-The `path-finder` command bundles copies of both scripts and the pages, so it runs anywhere. With pipx, from the repository or from a built wheel:
+The `path-finder` command bundles copies of both scripts and the pages, so it runs anywhere. Install it with pipx in one of two ways; run only one.
+
+Either straight from GitHub, which needs no checkout:
 
 ```
 pipx install git+https://github.com/kharanga/path_finder.git
-pipx install path_finder-0.2.0-py3-none-any.whl
+```
+
+Or from a wheel you built yourself inside the checkout (`pip wheel . --no-deps -w dist`):
+
+```
+pipx install dist/path_finder-0.2.0-py3-none-any.whl
 ```
 
 Then, in each Claude Code session:
@@ -16,8 +23,10 @@ Then, in each Claude Code session:
 ```
 path-finder identify --role manager      # once, when the session starts
 path-finder list                          # every live session under the current folder, with roles
-path-finder window                        # starts the watcher if needed and opens a small app-mode window
+path-finder window                        # opens a small app-mode window on this project's watcher, starting one if needed
 ```
+
+Each project root gets its own watcher and port. `window` walks up from port 4780 (or `--port`), reuses the watcher whose `/state` root matches the current folder, and otherwise starts one on the first silent port. The next `window` from the same project finds that watcher again; the printed line names the port and root used.
 
 The Claude Code plugin gives the same two steps as slash commands, `/path-finder:identify <role>` and `/path-finder:mesh`. Install it from GitHub:
 
