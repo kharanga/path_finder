@@ -122,6 +122,7 @@ def read_registry_entry(path):
         "socket": socket_address(entry["pid"]),
         "session_id": entry.get("sessionId"),
         "started_at_ms": entry.get("startedAt"),
+        "name_source": entry.get("nameSource"),
     }
 
 
@@ -132,6 +133,32 @@ def read_identity(pid):
     except (OSError, ValueError):
         return {"role": None, "label": None}
     return {"role": identity.get("role"), "label": identity.get("label")}
+
+
+USER_NAME_SOURCE = "user"
+
+
+def comparable_name(text):
+    return text.replace("-", "_").lower()
+
+
+def role_from_name(name, cwd, name_source):
+    if name_source != USER_NAME_SOURCE or not name:
+        return None
+    folder = Path(cwd).name if cwd else ""
+    folder_prefix = f"{comparable_name(folder)}_" if folder else None
+    bare = name[len(folder_prefix):] if folder_prefix and comparable_name(name).startswith(folder_prefix) else name
+    return bare.replace("_", "-").lower() or None
+
+
+def session_role(entry):
+    identity = read_identity(entry["pid"])
+    if identity["role"]:
+        return {**identity, "role_source": "identity"}
+    role = role_from_name(entry.get("name"), entry.get("cwd"), entry.get("name_source"))
+    if role:
+        return {"role": role, "label": role, "role_source": "name"}
+    return {"role": None, "label": None, "role_source": None}
 
 
 def live_sessions():
@@ -317,12 +344,20 @@ class StateModel:
             "last_assistant_text": None,
             "waiting_on": [],
         }
-        for field in ("session_id", "name", "role", "label", "cwd", "transcript"):
+        for field in ("session_id", "name", "cwd", "transcript"):
             if row.get(field) is not None:
                 session[field] = row[field]
+        if "role_source" in row:
+            for field in ("role", "label", "role_source"):
+                session[field] = row.get(field)
+        else:
+            for field in ("role", "label"):
+                if row.get(field) is not None:
+                    session[field] = row[field]
         session.setdefault("name", None)
         session.setdefault("role", None)
         session.setdefault("label", None)
+        session.setdefault("role_source", None)
         session.setdefault("session_id", None)
         session.setdefault("cwd", None)
         session["socket"] = socket_address(pid)
@@ -759,7 +794,7 @@ def identified_live_sessions(root):
     rows = []
     for entry in live_sessions():
         if under_root(entry["cwd"], root):
-            rows.append({**entry, **read_identity(entry["pid"])})
+            rows.append({**entry, **session_role(entry)})
     return rows
 
 
@@ -1178,13 +1213,17 @@ def command_tail(args):
     return 0
 
 
+def registry_fields_for_map(entry):
+    return {key: value for key, value in entry.items() if key != "name_source"}
+
+
 def session_map(root=None):
     mapped = []
     for entry in live_sessions():
         if not under_root(entry["cwd"], root):
             continue
         resolved = resolve_transcript(entry)
-        mapped.append({**entry, **read_identity(entry["pid"]), **resolved})
+        mapped.append({**registry_fields_for_map(entry), **read_identity(entry["pid"]), **resolved})
     return mapped
 
 
