@@ -1,7 +1,7 @@
 {
   "name": "path-finder",
   "version": "0.1.0",
-  "description": "Register this Claude Code session's role with path_finder discovery and open the live session web. Two skills, no hooks.",
+  "description": "Register this Claude Code session's role with path_finder discovery, open the live session web, and scaffold an empty agent workspace. Three skills, no hooks.",
   "author": {
     "name": "Khang Nguyen"
   },

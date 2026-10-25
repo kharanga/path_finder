@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from path_finder.repo import VENDOR_DIR, RepoNotFound, data_dir_description, discover_script, find_repo, vendored_copies_present, watcher_script
+from path_finder.scaffold import run_init
 from path_finder.window import open_window
 
 DISCOVER_COMMANDS = ("identify", "self", "list", "done")
@@ -45,10 +46,15 @@ def usage():
         "discovery:  " + "  ".join(DISCOVER_COMMANDS),
         "watcher:    " + "  ".join(WATCHER_COMMANDS),
         "window:     window [--port 4780] [--page web] [--root DIR]",
+        "workspace:  init [--root DIR] --builder NAME [--builder NAME ...]",
         "",
-        "Every command runs the checkout's discovery/discover.py or viz/watcher.py in place,",
+        "init creates the empty placeholders the setup-agent-workspace skill fills in: CLAUDE.md, SPEC.md,",
+        ".claude/roles/manager.md, .claude/roles/validator.md, .claude/roles/<builder>.md, and handoff/<builder>/.gitkeep.",
+        "Existing files are left alone; each path is reported as created or exists.",
+        "",
+        "Every other command runs the checkout's discovery/discover.py or viz/watcher.py in place,",
         "or the copies vendored in this package when no checkout is found.",
-        "--root defaults to the current working directory for list, done, map, serve, and window.",
+        "--root defaults to the current working directory for list, done, map, serve, window, and init.",
         "Each project root gets its own watcher and port: window walks up from --port over 20 ports,",
         "reuses the watcher whose /state root matches --root, and otherwise starts one on the first silent",
         "port. The next window from the same project finds that watcher again.",
@@ -66,6 +72,8 @@ def parse_window_arguments(arguments):
 
 
 def dispatch(command, arguments):
+    if command == "init":
+        return run_init(arguments)
     repo = find_code_folder()
     if command in DISCOVER_COMMANDS:
         return run_script_in_place(discover_script(repo), command, with_default_root(command, arguments))

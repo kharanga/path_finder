@@ -26,9 +26,11 @@ path-finder list                          # every live session under the current
 path-finder window                        # opens a small app-mode window on this project's watcher, starting one if needed
 ```
 
+To lay out a new agent workspace, `path-finder init --builder api --builder web` (in the project root, or with `--root DIR`) creates the empty placeholders that the `setup-agent-workspace` skill fills in but never creates: `CLAUDE.md`, `SPEC.md`, `.claude/roles/manager.md`, `.claude/roles/validator.md`, one `.claude/roles/<builder>.md` and one `handoff/<builder>/.gitkeep` per builder. Files that already exist are left untouched; every path is reported as created or exists.
+
 Each project root gets its own watcher and port. `window` walks up from port 4780 (or `--port`), reuses the watcher whose `/state` root matches the current folder, and otherwise starts one on the first silent port. The next `window` from the same project finds that watcher again; the printed line names the port and root used.
 
-The Claude Code plugin gives the same two steps as slash commands, `/path-finder:identify <role>` and `/path-finder:mesh`. Install it from GitHub:
+The Claude Code plugin gives the same steps as slash commands, `/path-finder:identify <role>`, `/path-finder:mesh`, and `/path-finder:init <builder names>`. Install it from GitHub:
 
 ```
 claude plugin marketplace add kharanga/path_finder
