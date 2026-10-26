@@ -13,3 +13,13 @@ viz/events.jsonl
 build/
 dist/
 *.egg-info/
+
+.claude/
+CLAUDE.md
+SPEC.md
+handoff/
+tests/
+docs/plan-visualization.md
+docs/cross-session-message-format.md
+docs/jsonl-transcript-spec.md
+docs/ui-frames.png

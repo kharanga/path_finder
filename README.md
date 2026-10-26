@@ -48,9 +48,6 @@ Discovery writes `identity/<pid>.json` per session and `sessions.json` into one 
 git clone https://github.com/kharanga/path_finder.git
 cd path_finder
 python3 -m venv .venv && .venv/bin/pip install -e .
-.venv/bin/python -m pytest tests
 ```
 
 An editable install runs the checkout's scripts in place, so edits to `discovery/discover.py`, `viz/watcher.py`, or the pages take effect at once. The scripts also run directly: `python3 discovery/discover.py list` and `python3 viz/watcher.py serve`. To build a wheel: `pip wheel . --no-deps -w dist`.
-
-`CLAUDE.md`, `SPEC.md`, and `.claude/roles/` describe how the agent team that builds this project works.
