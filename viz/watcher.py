@@ -80,6 +80,13 @@ REGISTRY_SOURCE = "registry"
 SPEC_SOURCE = "spec"
 SPEC_PATH = VIZ_DIR.parent / "SPEC.md"
 TASK_LINE = re.compile(r"^- \[(?P<mark>[ x~])\] (?P<id>[A-Za-z]+\d+): (?P<text>.+)$")
+TASKS_SECTION_HEADER = re.compile(r"^## (?:\d+\.\s+)?Tasks\s*$")
+AREA_HEADER = re.compile(r"^### (?P<area>\S.*?)\s*$")
+TASK_HEADER = re.compile(r"^#### (?P<id>[A-Za-z]+-?\d+): (?P<title>\S.*?)\s*$")
+TASK_FIELD_SEPARATOR = re.compile(r"\s*(?:·|,|;)\s*(?=[A-Za-z][A-Za-z ]*:\s)")
+TASK_FIELD = re.compile(r"^(?P<key>[A-Za-z][A-Za-z ]*):\s*(?P<value>.*?)\s*$")
+ACCEPTANCE_HEADER = "Acceptance criteria:"
+STATUS_STATES = (("to do", "todo"), ("blocked", "todo"), ("in progress", "in_progress"), ("in review", "in_progress"), ("done", "done"))
 TASK_STATES = {" ": "todo", "x": "done", "~": "in_progress"}
 TASK_OWNERS = {"D": "discovery-builder", "V": "viz-builder"}
 TASK_AREAS = {"D": "Discovery", "V": "Visualization", "P": "Packaging"}
@@ -809,27 +816,101 @@ def task_area(task_id):
     return TASK_AREAS.get(series, series)
 
 
+def state_from_status(status):
+    lowered = status.lower()
+    for leading_words, state in STATUS_STATES:
+        if lowered.startswith(leading_words):
+            return state
+    return "todo"
+
+
+def task_fields(line):
+    fields = {}
+    for piece in TASK_FIELD_SEPARATOR.split(line.strip()):
+        match = TASK_FIELD.match(piece)
+        if match:
+            fields[match.group("key").lower()] = match.group("value")
+    return fields
+
+
+def old_format_task(match):
+    task_id = match.group("id")
+    return {
+        "id": task_id,
+        "state": TASK_STATES[match.group("mark")],
+        "title": task_title(match.group("text")),
+        "text": match.group("text").strip(),
+        "owner": TASK_OWNERS.get(task_id[0].upper()),
+        "area": task_area(task_id),
+        "status": None,
+    }
+
+
+class HeaderTaskDraft:
+    def __init__(self, task_id, title, area):
+        self.task = {"id": task_id, "state": "todo", "title": title, "text": "", "owner": None, "area": area, "status": None}
+        self.fields_pending = True
+        self.collecting_text = True
+        self.text_parts = []
+
+    def feed(self, line):
+        stripped = line.strip()
+        if self.fields_pending and stripped:
+            self.fields_pending = False
+            fields = task_fields(stripped)
+            if "owner" in fields or "status" in fields:
+                self.task["owner"] = fields.get("owner") or None
+                if fields.get("status"):
+                    self.task["status"] = fields["status"]
+                    self.task["state"] = state_from_status(fields["status"])
+                return
+        if stripped.startswith(ACCEPTANCE_HEADER):
+            self.collecting_text = False
+        elif self.collecting_text and stripped:
+            self.text_parts.append(stripped)
+
+    def finish(self):
+        return {**self.task, "text": " ".join(self.text_parts).strip()}
+
+
 def parse_spec_tasks(text):
     tasks = []
     in_tasks = False
+    area = None
+    draft = None
+
+    def close_draft():
+        nonlocal draft
+        if draft is not None:
+            tasks.append(draft.finish())
+            draft = None
+
     for line in text.splitlines():
         if line.startswith("## "):
-            in_tasks = line.strip() == "## Tasks"
+            close_draft()
+            in_tasks = bool(TASKS_SECTION_HEADER.match(line.rstrip()))
+            area = None
             continue
         if not in_tasks:
             continue
-        match = TASK_LINE.match(line.rstrip())
-        if not match:
+        area_match = AREA_HEADER.match(line.rstrip())
+        if area_match:
+            close_draft()
+            area = area_match.group("area")
             continue
-        task_id = match.group("id")
-        tasks.append({
-            "id": task_id,
-            "state": TASK_STATES[match.group("mark")],
-            "title": task_title(match.group("text")),
-            "text": match.group("text").strip(),
-            "owner": TASK_OWNERS.get(task_id[0].upper()),
-            "area": task_area(task_id),
-        })
+        header_match = TASK_HEADER.match(line.rstrip())
+        if header_match:
+            close_draft()
+            draft = HeaderTaskDraft(header_match.group("id"), header_match.group("title"), area or task_area(header_match.group("id")))
+            continue
+        line_match = TASK_LINE.match(line.rstrip())
+        if line_match:
+            close_draft()
+            tasks.append(old_format_task(line_match))
+            continue
+        if draft is not None:
+            draft.feed(line)
+    close_draft()
     return tasks
 
 

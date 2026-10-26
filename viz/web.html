@@ -44,6 +44,7 @@
   .task .towner { grid-column: 2 / -1; font-size: 11px; color: var(--blue-fg); display: flex; align-items: center; gap: 5px; }
   .task .tfull { grid-column: 1 / -1; display: none; color: var(--win-muted); font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; border-top: 1px solid #262626; padding-top: 5px; margin-top: 3px; }
   .task.open .tfull { display: block; }
+  .task .tstatus { font-family: var(--mono); font-size: 10px; color: var(--blue-fg); margin-bottom: 3px; }
   .task-badge { font-family: var(--mono); font-size: 10px; color: var(--blue-fg); background: var(--blue-bg); padding: 0 4px; border-radius: 4px; flex: none; }
   .node.tasked, .arow.tasked { border-color: #35506f; box-shadow: 0 0 0 1px #2e4a6e; }
   @media (max-width: 639px) {
@@ -1449,7 +1450,10 @@
       owner.append(document.createTextNode(pid !== null ? labelFor(pid) : task.owner));
       item.append(owner);
     }
-    item.append(el("div", "tfull", task.text));
+    const full = el("div", "tfull");
+    if (task.status) full.append(el("div", "tstatus", task.status));
+    full.append(document.createTextNode(task.text));
+    item.append(full);
     item.title = openTaskIds.has(task.id) ? "click to collapse" : "click for the full SPEC text";
     item.addEventListener("click", () => toggleTask(task.id));
     item.addEventListener("mouseenter", () => { hoveredTaskId = task.id; item.classList.add("hover"); });
